@@ -395,6 +395,18 @@
         <label for="fSignupPasswordConfirm">Confirmar password</label>
         <input type="password" id="fSignupPasswordConfirm" autocomplete="new-password">
       </div>
+      <div class="field" id="signupFamilyModeField" hidden>
+        <label>Família</label>
+        <div class="segmented" id="signupFamilySeg">
+          <button type="button" data-family-mode="new" class="active">Família nova</button>
+          <button type="button" data-family-mode="join">Juntar com código</button>
+        </div>
+      </div>
+      <div class="field" id="signupFamilyCodeField" hidden>
+        <label for="fSignupFamilyCode">Código da família</label>
+        <input type="text" id="fSignupFamilyCode" placeholder="Pede o código a quem já tem conta" autocomplete="off">
+        <div class="hint">Quem já tem conta encontra o código em Definições → "O teu código de família".</div>
+      </div>
       <div class="field-error" id="loginError"></div>
       <button type="submit" class="btn primary" id="loginSubmit" style="width:100%;">Entrar</button>
     </form>
@@ -766,6 +778,15 @@
     </div>
 
     <div class="field">
+      <label>O teu código de família</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="familyCodeDisplay" readonly style="flex:1;">
+        <button type="button" class="btn ghost" id="copyFamilyCodeBtn" style="flex-shrink:0; padding:9px 14px; font-size:12.5px;">Copiar</button>
+      </div>
+      <div class="hint">Partilha este código com quem quiseres que veja os mesmos dados que tu — essa pessoa cola-o ao criar a conta dela, em "Juntar com código".</div>
+    </div>
+
+    <div class="field">
       <label>Conta</label>
       <button type="button" class="btn ghost" id="logoutBtn">Sair da conta</button>
     </div>
@@ -819,6 +840,7 @@
     loading: true,
     yearLoading: true,
     dbAvailable: null,             // null = connecting, 'setup' = needs config, 'nofamily' = conta sem família, false = failed, true = ready
+    familyId: null,                // id da família desta conta (também serve de "código de família" a partilhar)
     openMenuId: null,
     editingPaymentId: null,
     searchQuery: '',
@@ -2716,9 +2738,29 @@
 
   document.getElementById('openSettings').addEventListener('click', function(){
     renderCategoryChips();
+    document.getElementById('familyCodeDisplay').value = state.familyId || '';
     settingsOverlay.classList.add('open');
   });
   document.getElementById('closeSettings').addEventListener('click', function(){ settingsOverlay.classList.remove('open'); });
+  document.getElementById('copyFamilyCodeBtn').addEventListener('click', function(){
+    var input = document.getElementById('familyCodeDisplay');
+    var btn = document.getElementById('copyFamilyCodeBtn');
+    var restore = function(){ btn.textContent = 'Copiar'; };
+    function fallbackCopy(){
+      input.removeAttribute('readonly');
+      input.focus();
+      input.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      input.setAttribute('readonly', 'readonly');
+    }
+    var afterCopy = function(){ btn.textContent = 'Copiado!'; setTimeout(restore, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(input.value).then(afterCopy).catch(function(){ fallbackCopy(); afterCopy(); });
+    } else {
+      fallbackCopy();
+      afterCopy();
+    }
+  });
   document.getElementById('logoutBtn').addEventListener('click', function(){
     settingsOverlay.classList.remove('open');
     if (window.__ContasApp && window.__ContasApp.logout){
@@ -2963,20 +3005,45 @@
     'auth/weak-password': 'A password tem de ter pelo menos 6 caracteres.'
   };
   var isSignupMode = false;
+  var isJoiningFamily = false;
+  function updateLoginSubtitle(){
+    var subtitle = document.getElementById('loginSubtitle');
+    if (!isSignupMode){
+      subtitle.textContent = 'Entra com a tua conta para veres os teus dados.';
+    } else if (isJoiningFamily){
+      subtitle.textContent = 'Cria a tua conta e junta-te a uma família existente com o código dela.';
+    } else {
+      subtitle.textContent = 'Cria a tua conta — só tu vais ter acesso aos teus dados.';
+    }
+  }
   function setSignupMode(on){
     isSignupMode = on;
-    document.getElementById('loginSubtitle').textContent = on
-      ? 'Cria a tua conta — só tu vais ter acesso aos teus dados.'
-      : 'Entra com a tua conta para veres os teus dados.';
     document.getElementById('signupConfirmField').hidden = !on;
+    document.getElementById('signupFamilyModeField').hidden = !on;
     document.getElementById('fLoginPassword').autocomplete = on ? 'new-password' : 'current-password';
     document.getElementById('loginSubmit').textContent = on ? 'Criar conta' : 'Entrar';
     document.getElementById('toggleSignupLink').textContent = on ? 'Já tens conta? Entra.' : 'Ainda não tens conta? Cria uma.';
     document.getElementById('loginError').style.display = 'none';
+    if (!on) setFamilyMode('new');
+    updateLoginSubtitle();
+  }
+  function setFamilyMode(mode){
+    isJoiningFamily = mode === 'join';
+    document.getElementById('signupFamilyCodeField').hidden = !isJoiningFamily;
+    var buttons = document.querySelectorAll('#signupFamilySeg button');
+    for (var i = 0; i < buttons.length; i++){
+      buttons[i].classList.toggle('active', buttons[i].getAttribute('data-family-mode') === mode);
+    }
+    updateLoginSubtitle();
   }
   document.getElementById('toggleSignupLink').addEventListener('click', function(ev){
     ev.preventDefault();
     setSignupMode(!isSignupMode);
+  });
+  document.getElementById('signupFamilySeg').addEventListener('click', function(ev){
+    var btn = ev.target.closest('button[data-family-mode]');
+    if (!btn) return;
+    setFamilyMode(btn.getAttribute('data-family-mode'));
   });
   document.getElementById('loginForm').addEventListener('submit', function(ev){
     ev.preventDefault();
@@ -2989,6 +3056,7 @@
       errorEl.style.display = 'block';
       return;
     }
+    var familyCode = null;
     if (isSignupMode){
       var confirmPassword = document.getElementById('fSignupPasswordConfirm').value;
       if (password !== confirmPassword){
@@ -2996,10 +3064,18 @@
         errorEl.style.display = 'block';
         return;
       }
+      if (isJoiningFamily){
+        familyCode = document.getElementById('fSignupFamilyCode').value.trim();
+        if (!familyCode){
+          errorEl.textContent = 'Cola o código de família que a outra pessoa te deu.';
+          errorEl.style.display = 'block';
+          return;
+        }
+      }
     }
     var submitBtn = document.getElementById('loginSubmit');
     submitBtn.disabled = true;
-    var action = isSignupMode ? window.__ContasApp.attemptSignup(email, password) : window.__ContasApp.attemptLogin(email, password);
+    var action = isSignupMode ? window.__ContasApp.attemptSignup(email, password, familyCode) : window.__ContasApp.attemptLogin(email, password);
     action.catch(function(err){
       submitBtn.disabled = false;
       var msg = LOGIN_ERROR_MESSAGES[err && err.code] || 'Não foi possível continuar. Tenta novamente.';
@@ -3018,10 +3094,11 @@
     showLogin: function(){
       document.getElementById('loginScreen').hidden = false;
     },
-    start: function(dbAdapter){
+    start: function(dbAdapter, familyId){
       document.getElementById('loginScreen').hidden = true;
       db = dbAdapter;
       state.dbAvailable = true;
+      state.familyId = familyId || null;
       loadSettings();
       loadMonth(state.monthKey);
     },
@@ -3143,13 +3220,17 @@
           return result;
         });
       };
-      window.__ContasApp.attemptSignup = function(email, password){
-        // Uma conta nova fica sempre isolada: o familyId é o seu próprio
-        // UID, portanto ninguém mais começa com acesso aos dados dela. Se
-        // um dia quiseres juntar esta conta a uma família existente, isso
-        // faz-se manualmente na Consola do Firebase (ver CONFIGURAR.md).
+      window.__ContasApp.attemptSignup = function(email, password, familyCode){
+        // Por omissão uma conta nova fica isolada: o familyId é o seu
+        // próprio UID, portanto ninguém mais começa com acesso aos dados
+        // dela. Se for dado um familyCode (a pessoa escolheu "Juntar com
+        // código" e colou o código de outra conta), usamos esse valor como
+        // familyId em vez de gerar um novo — ou seja, esta conta passa
+        // logo a partilhar os dados dessa família.
+        var familyId = (familyCode && familyCode.trim()) ? familyCode.trim() : null;
         return createUserWithEmailAndPassword(auth, email, password).then(function(cred){
-          return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: cred.user.uid }).then(function(){
+          var finalFamilyId = familyId || cred.user.uid;
+          return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: finalFamilyId }).then(function(){
             markLoginNow();
             // Recarrega para arrancar pelo caminho normal de boot (login
             // já feito, users/{uid} já criado) em vez de duplicar aqui a
@@ -3191,7 +3272,7 @@
                 window.__ContasApp.noFamily();
                 return;
               }
-              window.__ContasApp.start(makeAdapter(firestore, familyId));
+              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId);
             }).catch(function(err){
               window.__ContasApp.fail(err);
             });
