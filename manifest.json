@@ -1,0 +1,16 @@
+{
+  "name": "Contas em Dia",
+  "short_name": "Contas em Dia",
+  "description": "Despesas e receitas da casa, recorrentes e pontuais, partilhadas em tempo real.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0f4",
+  "theme_color": "#b9740f",
+  "lang": "pt",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
