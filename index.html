@@ -381,7 +381,7 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v16H4z" fill="none"/><path d="M6 8h12M6 12h12M6 16h7" stroke="#241a04" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
     <h1>Contas em Dia</h1>
-    <p class="hint" style="margin-bottom:20px;">Entra com a tua conta para veres os dados partilhados.</p>
+    <p class="hint" id="loginSubtitle" style="margin-bottom:20px;">Entra com a tua conta para veres os teus dados.</p>
     <form id="loginForm">
       <div class="field">
         <label for="fLoginEmail">Email</label>
@@ -391,9 +391,16 @@
         <label for="fLoginPassword">Password</label>
         <input type="password" id="fLoginPassword" autocomplete="current-password" required>
       </div>
+      <div class="field" id="signupConfirmField" hidden>
+        <label for="fSignupPasswordConfirm">Confirmar password</label>
+        <input type="password" id="fSignupPasswordConfirm" autocomplete="new-password">
+      </div>
       <div class="field-error" id="loginError"></div>
       <button type="submit" class="btn primary" id="loginSubmit" style="width:100%;">Entrar</button>
     </form>
+    <p class="hint" style="margin-top:16px;">
+      <a href="#" id="toggleSignupLink" style="color:var(--accent-ink); font-weight:700; text-decoration:none;">Ainda não tens conta? Cria uma.</a>
+    </p>
   </div>
 </div>
 
@@ -2944,31 +2951,58 @@
     }
   });
 
-  // ---------- Login ----------
+  // ---------- Login / Criar conta ----------
   var LOGIN_ERROR_MESSAGES = {
     'auth/invalid-credential': 'Email ou password incorretos.',
     'auth/wrong-password': 'Email ou password incorretos.',
     'auth/user-not-found': 'Email ou password incorretos.',
     'auth/invalid-email': 'Email inválido.',
     'auth/too-many-requests': 'Demasiadas tentativas. Espera uns minutos e tenta de novo.',
-    'auth/network-request-failed': 'Sem ligação à internet.'
+    'auth/network-request-failed': 'Sem ligação à internet.',
+    'auth/email-already-in-use': 'Já existe uma conta com este email.',
+    'auth/weak-password': 'A password tem de ter pelo menos 6 caracteres.'
   };
+  var isSignupMode = false;
+  function setSignupMode(on){
+    isSignupMode = on;
+    document.getElementById('loginSubtitle').textContent = on
+      ? 'Cria a tua conta — só tu vais ter acesso aos teus dados.'
+      : 'Entra com a tua conta para veres os teus dados.';
+    document.getElementById('signupConfirmField').hidden = !on;
+    document.getElementById('fLoginPassword').autocomplete = on ? 'new-password' : 'current-password';
+    document.getElementById('loginSubmit').textContent = on ? 'Criar conta' : 'Entrar';
+    document.getElementById('toggleSignupLink').textContent = on ? 'Já tens conta? Entra.' : 'Ainda não tens conta? Cria uma.';
+    document.getElementById('loginError').style.display = 'none';
+  }
+  document.getElementById('toggleSignupLink').addEventListener('click', function(ev){
+    ev.preventDefault();
+    setSignupMode(!isSignupMode);
+  });
   document.getElementById('loginForm').addEventListener('submit', function(ev){
     ev.preventDefault();
     var email = document.getElementById('fLoginEmail').value.trim();
     var password = document.getElementById('fLoginPassword').value;
     var errorEl = document.getElementById('loginError');
     errorEl.style.display = 'none';
-    if (!window.__ContasApp || !window.__ContasApp.attemptLogin){
+    if (!window.__ContasApp || !window.__ContasApp.attemptLogin || !window.__ContasApp.attemptSignup){
       errorEl.textContent = 'A app ainda está a carregar. Tenta novamente daqui a pouco.';
       errorEl.style.display = 'block';
       return;
     }
+    if (isSignupMode){
+      var confirmPassword = document.getElementById('fSignupPasswordConfirm').value;
+      if (password !== confirmPassword){
+        errorEl.textContent = 'As duas passwords têm de ser iguais.';
+        errorEl.style.display = 'block';
+        return;
+      }
+    }
     var submitBtn = document.getElementById('loginSubmit');
     submitBtn.disabled = true;
-    window.__ContasApp.attemptLogin(email, password).catch(function(err){
+    var action = isSignupMode ? window.__ContasApp.attemptSignup(email, password) : window.__ContasApp.attemptLogin(email, password);
+    action.catch(function(err){
       submitBtn.disabled = false;
-      var msg = LOGIN_ERROR_MESSAGES[err && err.code] || 'Não foi possível entrar. Tenta novamente.';
+      var msg = LOGIN_ERROR_MESSAGES[err && err.code] || 'Não foi possível continuar. Tenta novamente.';
       errorEl.textContent = msg;
       errorEl.style.display = 'block';
     });
@@ -3020,8 +3054,8 @@
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
-    getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-    setPersistence, browserLocalPersistence
+    getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    signOut, setPersistence, browserLocalPersistence
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
   // ======= CONFIGURA AQUI OS DADOS DO TEU PROJETO FIREBASE =======
@@ -3107,6 +3141,22 @@
         return signInWithEmailAndPassword(auth, email, password).then(function(result){
           markLoginNow();
           return result;
+        });
+      };
+      window.__ContasApp.attemptSignup = function(email, password){
+        // Uma conta nova fica sempre isolada: o familyId é o seu próprio
+        // UID, portanto ninguém mais começa com acesso aos dados dela. Se
+        // um dia quiseres juntar esta conta a uma família existente, isso
+        // faz-se manualmente na Consola do Firebase (ver CONFIGURAR.md).
+        return createUserWithEmailAndPassword(auth, email, password).then(function(cred){
+          return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: cred.user.uid }).then(function(){
+            markLoginNow();
+            // Recarrega para arrancar pelo caminho normal de boot (login
+            // já feito, users/{uid} já criado) em vez de duplicar aqui a
+            // lógica de arranque da app.
+            window.location.reload();
+            return cred;
+          });
         });
       };
       window.__ContasApp.logout = function(){
