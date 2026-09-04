@@ -13,7 +13,7 @@
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <title>MAB360</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
   :root{
     /* MAB360 design tokens — light */
@@ -24,13 +24,13 @@
     --text:#17201b;
     --text-muted:#6b756f;
     --text-faint:#9aa79f;
-    --accent:#16a36a;
-    --accent-strong:#0d7a50;
-    --accent-soft:#eaf7f1;
-    --accent-ink:#0d7a50;
-    --success:#16a36a;
-    --success-soft:#eaf7f1;
-    --success-ink:#0d7a50;
+    --accent:#138a5b;
+    --accent-strong:#0c6b45;
+    --accent-soft:#e8f3ee;
+    --accent-ink:#0c6b45;
+    --success:#138a5b;
+    --success-soft:#e8f3ee;
+    --success-ink:#0c6b45;
     --danger:#c7402f;
     --danger-soft:#fbeae7;
     --warning:#a3660f;
@@ -61,13 +61,13 @@
       --text:#f3f6f4;
       --text-muted:#9ca79f;
       --text-faint:#6e7972;
-      --accent:#34c98a;
-      --accent-strong:#5fdda3;
+      --accent:#2fb37e;
+      --accent-strong:#4fce97;
       --accent-soft:#173226;
-      --accent-ink:#6fe3ac;
-      --success:#34c98a;
+      --accent-ink:#5fdda3;
+      --success:#2fb37e;
       --success-soft:#173226;
-      --success-ink:#6fe3ac;
+      --success-ink:#5fdda3;
       --danger:#e2937f;
       --danger-soft:#3a241f;
       --warning:#e3a94a;
@@ -94,13 +94,13 @@
     --text:#f3f6f4;
     --text-muted:#9ca79f;
     --text-faint:#6e7972;
-    --accent:#34c98a;
-    --accent-strong:#5fdda3;
+    --accent:#2fb37e;
+    --accent-strong:#4fce97;
     --accent-soft:#173226;
-    --accent-ink:#6fe3ac;
-    --success:#34c98a;
+    --accent-ink:#5fdda3;
+    --success:#2fb37e;
     --success-soft:#173226;
-    --success-ink:#6fe3ac;
+    --success-ink:#5fdda3;
     --danger:#e2937f;
     --danger-soft:#3a241f;
     --warning:#e3a94a;
@@ -135,7 +135,7 @@
     min-height:100vh;
   }
   h1,h2,h3{font-family:'Manrope',system-ui,-apple-system,sans-serif; font-weight:800; letter-spacing:-.01em; margin:0;}
-  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+  .mono{font-family:'Manrope',sans-serif; font-weight:700; font-variant-numeric:tabular-nums;}
 
   /* Topbar */
   .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;}
@@ -367,7 +367,7 @@
   .month-table{width:100%; border-collapse:collapse; font-size:12.5px;}
   .month-table th{text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); font-weight:700; padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap;}
   .month-table th:first-child, .month-table td:first-child{text-align:left;}
-  .month-table td{padding:9px 10px; text-align:right; border-bottom:1px solid var(--border); font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .month-table td{padding:9px 10px; text-align:right; border-bottom:1px solid var(--border); font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap;}
   .month-table tr:last-child td{border-bottom:none;}
   .month-table tr{cursor:pointer;}
   .month-table tr.selected td{background:var(--accent-soft);}
@@ -464,7 +464,7 @@
   .setup-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px; box-shadow:var(--shadow); text-align:left;}
   .setup-card h3{font-size:16px; margin-bottom:10px;}
   .setup-card p{font-size:13px; line-height:1.7; color:var(--text-muted); margin:0 0 10px;}
-  .setup-card code{background:var(--surface-2); padding:1px 6px; border-radius:5px; font-family:'IBM Plex Mono',monospace; font-size:12px;}
+  .setup-card code{background:var(--surface-2); padding:1px 6px; border-radius:5px; font-family:ui-monospace,'SF Mono','Courier New',monospace; font-size:12px;}
   [hidden]{display:none !important;}
 
   /* ---------- Início (dashboard) ---------- */
@@ -475,17 +475,51 @@
   .hero-label{font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;}
   .hero-value{font-size:38px; font-weight:800; letter-spacing:-.02em; font-family:'Manrope',sans-serif; line-height:1.05;}
   .hero-note{font-size:13px; color:var(--text-muted); margin-top:6px;}
-  .trio-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:18px;}
-  .trio-tile{background:var(--surface-2); border-radius:var(--radius-md); padding:11px 8px; text-align:center;}
-  .trio-label{font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin-bottom:5px;}
-  .trio-value{font-size:15px; font-weight:800; font-family:'IBM Plex Mono',monospace;}
+  .trio-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:18px;}
+  .trio-grid.four{grid-template-columns:repeat(2,1fr); row-gap:8px;}
+  .trio-tile{background:var(--surface-2); border-radius:var(--radius-md); padding:11px 6px; text-align:center; min-width:0;}
+  .trio-label{font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint); margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .trio-value{font-size:15px; font-weight:800; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis;}
   .budget-progress-row{margin-top:16px;}
   .budget-progress-label{display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:6px;}
+  .progress-context{font-size:12px; color:var(--text-faint); margin-top:7px;}
+
+  /* ---------- Resumo do mês ---------- */
+  .summary-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; box-shadow:var(--shadow); margin-bottom:12px;}
+  .summary-title{font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin-bottom:10px;}
+  .summary-msg{display:flex; gap:10px; align-items:flex-start; font-size:13.5px; line-height:1.5; color:var(--text);}
+  .summary-msg + .summary-msg{margin-top:10px; padding-top:10px; border-top:1px solid var(--border);}
+  .summary-msg .icon{width:17px; height:17px; margin-top:1px; flex-shrink:0;}
+  .summary-msg.success .icon{color:var(--success-ink);}
+  .summary-msg.warning .icon{color:var(--warning);}
+  .summary-msg.danger .icon{color:var(--danger);}
+  .summary-msg.info .icon{color:var(--info);}
+
+  /* ---------- Saúde Financeira ---------- */
+  .health-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; box-shadow:var(--shadow); margin-bottom:12px;}
+  .health-head{display:flex; align-items:center; gap:9px; margin-bottom:12px;}
+  .health-label{font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint);}
+  .health-score-row{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:9px;}
+  .health-score{font-size:26px; font-weight:800; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums; letter-spacing:-.01em;}
+  .health-score-max{font-size:13px; font-weight:700; color:var(--text-faint); margin-left:1px;}
+  .health-tier{font-size:12px; font-weight:800; padding:4px 10px; border-radius:999px;}
+  .health-tier.success{background:var(--success-soft); color:var(--success-ink);}
+  .health-tier.warning{background:var(--warning-soft); color:var(--warning);}
+  .health-tier.danger{background:var(--danger-soft); color:var(--danger);}
+  .health-bar-track{height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden;}
+  .health-bar-fill{height:100%; border-radius:999px; transition:width .2s ease;}
+  .health-bar-fill.success{background:var(--success);}
+  .health-bar-fill.warning{background:var(--warning);}
+  .health-bar-fill.danger{background:var(--danger);}
+  .health-details{margin-top:11px;}
+  .health-details summary{font-size:12px; font-weight:700; color:var(--accent-ink); cursor:pointer; list-style:none;}
+  .health-details summary::-webkit-details-marker{display:none;}
+  .health-details p{font-size:12px; color:var(--text-faint); line-height:1.55; margin:7px 0 0;}
   .mini-card-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;}
   .mini-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:8px;}
   .mini-card-head{display:flex; align-items:center; gap:9px;}
   .mini-card-label{font-size:11.5px; font-weight:700; color:var(--text-muted);}
-  .mini-card-value{font-size:17px; font-weight:800; font-family:'IBM Plex Mono',monospace;}
+  .mini-card-value{font-size:17px; font-weight:800; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums;}
   .mini-card-value.positive{color:var(--success-ink);}
   .mini-card-value.negative{color:var(--danger);}
   .mini-card-note{font-size:11px; color:var(--text-faint);}
@@ -495,7 +529,7 @@
   .upcoming-body{flex:1; min-width:0;}
   .upcoming-name{font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .upcoming-date{font-size:11.5px; color:var(--text-faint); margin-top:1px;}
-  .upcoming-amount{font-size:13.5px; font-weight:700; white-space:nowrap; font-family:'IBM Plex Mono',monospace;}
+  .upcoming-amount{font-size:13.5px; font-weight:700; white-space:nowrap; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums;}
   .section-head{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 0; padding:0 2px 10px; margin-top:6px;}
   .section-head .budget-toggle{flex:1 0 100%; margin:6px 0 0;}
   .section-head .budget-toggle button{padding:7px 4px; font-size:12px;}
@@ -515,7 +549,7 @@
   .budget-cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:12px; box-shadow:var(--shadow); overflow:hidden;}
   .budget-cat-head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:inherit;}
   .budget-cat-name{font-size:14px; font-weight:800; color:var(--text);}
-  .budget-cat-amounts{font-size:12px; color:var(--text-faint); margin-top:1px; font-family:'IBM Plex Mono',monospace;}
+  .budget-cat-amounts{font-size:12px; color:var(--text-faint); margin-top:1px; font-family:'Manrope',sans-serif; font-weight:600; font-variant-numeric:tabular-nums;}
   .budget-cat-head .chev{margin-left:auto; color:var(--text-faint); transition:transform .18s ease; flex-shrink:0;}
   .budget-cat-card.open .budget-cat-head .chev{transform:rotate(90deg);}
   .budget-cat-track{padding:0 16px 14px;}
@@ -528,7 +562,7 @@
   .budget-line-body{flex:1; min-width:0;}
   .budget-line-top{display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-bottom:5px;}
   .budget-line-name{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .budget-line-amounts{font-family:'IBM Plex Mono',monospace; color:var(--text-muted); font-size:12px; white-space:nowrap; flex-shrink:0;}
+  .budget-line-amounts{font-family:'Manrope',sans-serif; font-weight:600; font-variant-numeric:tabular-nums; color:var(--text-muted); font-size:12px; white-space:nowrap; flex-shrink:0;}
   .budget-status-pill{display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; margin-left:6px;}
   .budget-status-pill.warning{background:var(--warning-soft); color:var(--warning);}
   .budget-status-pill.danger{background:var(--danger-soft); color:var(--danger);}
@@ -574,6 +608,9 @@
   /* ---------- Responsive: tablet & desktop ---------- */
   @media (min-width:700px){
     .mini-card-grid{grid-template-columns:1fr 1fr 1fr;}
+  }
+  @media (min-width:480px){
+    .trio-grid.four{grid-template-columns:repeat(4,1fr);}
   }
   @media (min-width:900px){
     .bottom-nav{
@@ -1558,6 +1595,21 @@
     var v = Number(n)||0;
     return v.toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
   }
+  // Saudação do dashboard — nome vem do campo opcional das Definições
+  // (guardado por dispositivo em localStorage), com fallback ao email.
+  function greetingName(){
+    var name = '';
+    try { name = (localStorage.getItem('contasMyName') || '').trim(); } catch(e){}
+    if (name) return name.split(' ')[0];
+    if (state.myEmail) return state.myEmail.split('@')[0];
+    return '';
+  }
+  function greetingWord(){
+    var h = new Date().getHours();
+    if (h < 12) return 'Bom dia';
+    if (h < 20) return 'Boa tarde';
+    return 'Boa noite';
+  }
   function bucketOf(dueDay){
     var d = Number(dueDay)||1;
     return {key:'d'+d, label:'Dia '+d, order:d};
@@ -2478,6 +2530,112 @@
     return html;
   }
 
+  // "Resumo do mês" — mensagens simples por regras (sem IA), a partir dos
+  // valores já calculados no dashboard. No máximo 2, por ordem de prioridade:
+  // categoria perto/acima do orçamento definido > ritmo de gastos vs dias já
+  // passados do mês > projeção de poupança > despesas nos próximos 7 dias.
+  function computeMonthSummary(sR, sD, poupMes, pendentes){
+    var msgs = [];
+    var isCurrentMonth = state.monthKey === monthKeyOf(new Date());
+
+    var breakdown = (state.categoryBudgetsLoading ? [] : categoryBudgetBreakdown(state.entries))
+      .filter(function(r){ return r.budget != null && r.budget > 0; });
+    var worst = null;
+    breakdown.forEach(function(r){
+      var pct = r.total / r.budget;
+      if (!worst || pct > worst.pct) worst = {label:r.def.label, pct:pct};
+    });
+    if (worst && worst.pct >= 1){
+      msgs.push({type:'danger', icon:'alert', text:'Atenção: já ultrapassaste o orçamento de <strong>' + escapeHtml(worst.label) + '</strong> este mês.'});
+    } else if (worst && worst.pct >= 0.8){
+      msgs.push({type:'warning', icon:'alert', text:'Atenção à <strong>' + escapeHtml(worst.label) + '</strong>. Já utilizaste ' + Math.round(worst.pct*100) + '% do orçamento desta categoria.'});
+    }
+
+    if (isCurrentMonth && sD.total > 0){
+      var now = new Date();
+      var daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+      var expectedPct = (now.getDate()/daysInMonth)*100;
+      var actualPct = (sD.done/sD.total)*100;
+      var diff = expectedPct - actualPct;
+      if (diff >= 8){
+        msgs.push({type:'success', icon:'trending', text: monthLabelOf(state.monthKey).split(' ')[0] + ' está a correr bem. Gastaste ' + Math.round(diff) + '% menos do que seria de esperar a esta altura do mês.'});
+      } else if (diff <= -12){
+        msgs.push({type:'warning', icon:'trending', text:'Estás a gastar mais depressa do que o previsto: já vais em ' + Math.round(actualPct) + '% do orçamento, a meio do mês em ' + Math.round(expectedPct) + '%.'});
+      }
+    }
+
+    if (poupMes > 0 && state.savingsGoals.length){
+      msgs.push({type:'info', icon:'piggy', text:'Estás a caminho de poupar <strong>' + euro(poupMes) + '</strong> este mês.'});
+    }
+
+    if (isCurrentMonth){
+      var today = new Date().getDate();
+      var total7 = pendentes.filter(function(e){ return e.dueDay >= today && e.dueDay <= today + 7; })
+        .reduce(function(s,e){ return s + effectiveAmount(e); }, 0);
+      if (total7 > 0){
+        msgs.push({type:'info', icon:'bell', text:'Existem <strong>' + euro(total7) + '</strong> em despesas previstas para os próximos 7 dias.'});
+      }
+    }
+
+    return msgs.slice(0,2);
+  }
+  function monthSummaryHtml(sR, sD, poupMes, pendentes){
+    var msgs = computeMonthSummary(sR, sD, poupMes, pendentes);
+    if (!msgs.length) return '';
+    return '<div class="summary-card">' +
+      '<div class="summary-title">Resumo do mês</div>' +
+      msgs.map(function(m){
+        return '<div class="summary-msg ' + m.type + '">' + icon(m.icon) + '<span>' + m.text + '</span></div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // "Saúde Financeira" — pontuação simples 0-100 a partir de dados já
+  // existentes: cumprimento do orçamento, taxa de poupança, nível de dívida
+  // face aos ativos e categorias que ultrapassaram o previsto. Não depende
+  // de nenhuma métrica nova por calcular — fica preparado para evoluir
+  // (ex.: comparação com o mês anterior) quando essa informação existir.
+  function computeFinancialHealth(sR, sD, poupMes, netw){
+    var score = 100;
+    if (sD.total > 0){
+      var overspend = Math.max(0, (sD.done - sD.total) / sD.total);
+      score -= Math.min(30, overspend * 100);
+    }
+    if (sR.total > 0){
+      var savingsRate = poupMes / sR.total;
+      if (savingsRate < 0) score -= 15;
+      else if (savingsRate < 0.05) score -= 8;
+    }
+    if (netw.assets > 0){
+      var debtRatio = netw.liabilities / netw.assets;
+      if (debtRatio > 1) score -= 20;
+      else if (debtRatio > 0.6) score -= 10;
+    } else if (netw.liabilities > 0){
+      score -= 15;
+    }
+    score -= Math.min(20, overBudgetCategories().length * 7);
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    var tier = score >= 80 ? {label:'Muito boa', cls:'success'} :
+      score >= 60 ? {label:'Boa', cls:'success'} :
+      score >= 40 ? {label:'Razoável', cls:'warning'} :
+      {label:'Requer atenção', cls:'danger'};
+    return {score:score, tier:tier};
+  }
+  function financialHealthHtml(sR, sD, poupMes, netw){
+    var h = computeFinancialHealth(sR, sD, poupMes, netw);
+    return '<div class="health-card">' +
+      '<div class="health-head"><span class="icon-badge sm">' + icon('shield') + '</span><span class="health-label">Saúde Financeira</span></div>' +
+      '<div class="health-score-row">' +
+        '<div class="health-score mono">' + h.score + '<span class="health-score-max">/100</span></div>' +
+        '<div class="health-tier ' + h.tier.cls + '">' + h.tier.label + '</div>' +
+      '</div>' +
+      '<div class="health-bar-track"><div class="health-bar-fill ' + h.tier.cls + '" style="width:' + h.score + '%"></div></div>' +
+      '<details class="health-details"><summary>Como é calculado?</summary>' +
+        '<p>O resultado tem em conta o cumprimento do orçamento, a taxa de poupança, o nível de dívida face aos ativos e categorias que ultrapassaram o previsto este mês.</p>' +
+      '</details>' +
+    '</div>';
+  }
+
   function miniCardHtml(view, iconName, label, value, valueCls, note){
     return '<div class="mini-card" data-action="goto" data-view="' + view + '">' +
       '<div class="mini-card-head"><span class="icon-badge sm">' + icon(iconName) + '</span><span class="mini-card-label">' + label + '</span></div>' +
@@ -2496,23 +2654,36 @@
     var sR = summaryOf(split.receitas), sD = summaryOf(split.despesas);
     var poupMes = state.savingsLoading ? 0 : savingsMonthNet(state.monthKey);
     var disponivel = sR.total - sD.total - poupMes;
-    var pctGasto = sD.total > 0 ? Math.round((sD.done/sD.total)*100) : 0;
     var pendentes = split.despesas.filter(function(e){ return !e.paid; });
     var overdueList = pendentes.filter(isOverdue);
+    var netw = netWorthTotals();
 
-    var html = '<div class="greeting-row"><h1>Início</h1><div class="sub">' + monthLabelOf(state.monthKey) + '</div></div>';
+    // % do rendimento do mês já comprometido em despesas planeadas (não é a
+    // mesma coisa que "% já pago" — é quanto do que entra já tem destino).
+    var pctComprometido = sR.total > 0 ? Math.round((sD.total/sR.total)*100) : 0;
+    var progressCls = pctComprometido >= 100 ? 'danger' : (pctComprometido >= 80 ? 'warning' : 'success');
+
+    var html = '<div class="greeting-row"><h1>' + greetingWord() + (greetingName() ? ', ' + escapeHtml(greetingName()) : '') + '</h1><div class="sub">' + monthLabelOf(state.monthKey) + '</div></div>';
 
     html += '<div class="hero-card">' +
-      '<div class="hero-label">Disponível este mês</div>' +
+      '<div class="hero-label">Disponível para gastar</div>' +
       '<div class="hero-value mono ' + (disponivel >= 0 ? 'positive' : 'negative') + '">' + (disponivel >= 0 ? '+' : '') + euro(disponivel) + '</div>' +
-      '<div class="hero-note">Receitas previstas menos despesas e poupanças já atribuídas este mês.</div>' +
-      '<div class="trio-grid">' +
-        '<div class="trio-tile"><div class="trio-label">Orçamentado</div><div class="trio-value mono">' + euro(sD.total) + '</div></div>' +
+      '<div class="hero-note">' + (sR.total > 0 ? 'de ' + euro(sR.total) + ' de rendimento previsto este mês' : 'até ao fim do mês') + '</div>' +
+      '<div class="trio-grid' + (state.savingsGoals.length ? ' four' : '') + '">' +
+        '<div class="trio-tile"><div class="trio-label">Planeado</div><div class="trio-value mono">' + euro(sD.total) + '</div></div>' +
         '<div class="trio-tile"><div class="trio-label">Gasto</div><div class="trio-value mono">' + euro(sD.done) + '</div></div>' +
         '<div class="trio-tile"><div class="trio-label">Restante</div><div class="trio-value mono">' + euro(Math.max(0, sD.total - sD.done)) + '</div></div>' +
+        (state.savingsGoals.length ? '<div class="trio-tile"><div class="trio-label">Poupado</div><div class="trio-value mono">' + euro(Math.max(0,poupMes)) + '</div></div>' : '') +
       '</div>' +
-      '<div class="budget-progress-row"><div class="progress-track"><div class="progress-fill ' + (pctGasto >= 100 ? 'danger' : (pctGasto >= 80 ? 'warning' : 'success')) + '" style="width:' + Math.max(0,Math.min(100,pctGasto)) + '%"></div></div></div>' +
+      '<div class="budget-progress-row">' +
+        '<div class="budget-progress-label"><span>' + pctComprometido + '% do orçamento utilizado</span></div>' +
+        '<div class="progress-track"><div class="progress-fill ' + progressCls + '" style="width:' + Math.max(0,Math.min(100,pctComprometido)) + '%"></div></div>' +
+        (sR.total > 0 ? '<div class="progress-context">' + euro(sD.total) + ' comprometidos de ' + euro(sR.total) + ' disponíveis</div>' : '') +
+      '</div>' +
     '</div>';
+
+    html += monthSummaryHtml(sR, sD, poupMes, pendentes);
+    html += financialHealthHtml(sR, sD, poupMes, netw);
 
     if (overdueList.length){
       html += '<div class="alert-banner danger">' + icon('alert') +
@@ -2522,7 +2693,6 @@
     html += extraAlertsHtml();
 
     var cards = '';
-    var netw = netWorthTotals();
     if (state.loans.length || state.investments.length || state.savingsGoals.length){
       cards += miniCardHtml('patrimonio', 'trending', 'Património líquido', euro(netw.net), netw.net >= 0 ? 'positive' : 'negative');
     }
@@ -2663,8 +2833,8 @@
       labels += '<text x="' + cx + '" y="' + (H-9) + '" text-anchor="middle" font-size="10.5" font-family="Manrope, sans-serif" font-weight="' + (isSel?'800':'600') + '" fill="' + (isSel?'var(--text)':'var(--text-faint)') + '">' + MONTHS_ABBR_PT[i] + '</text>';
 
       if (isSel){
-        if (m.receitas > 0) selLabels += '<text x="' + cx + '" y="' + Math.max(padTop-3, baseline-rH-7) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" font-weight="600" fill="var(--success-ink)">' + euro(m.receitas) + '</text>';
-        if (m.despesas > 0) selLabels += '<text x="' + cx + '" y="' + (baseline+dH+13) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" font-weight="600" fill="var(--info)">' + euro(m.despesas) + '</text>';
+        if (m.receitas > 0) selLabels += '<text x="' + cx + '" y="' + Math.max(padTop-3, baseline-rH-7) + '" text-anchor="middle" font-size="10" font-family="Manrope, sans-serif" font-weight="600" fill="var(--success-ink)">' + euro(m.receitas) + '</text>';
+        if (m.despesas > 0) selLabels += '<text x="' + cx + '" y="' + (baseline+dH+13) + '" text-anchor="middle" font-size="10" font-family="Manrope, sans-serif" font-weight="600" fill="var(--info)">' + euro(m.despesas) + '</text>';
       }
 
       hits += '<rect class="chart-col" data-action="select-month" data-month="' + m.monthKey + '" x="' + (colW*i) + '" y="0" width="' + colW + '" height="' + H + '" fill="' + (isSel?'var(--surface-2)':'transparent') + '" opacity="' + (isSel?'0.6':'1') + '"/>';
@@ -2783,9 +2953,9 @@
       (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--cat-1)" stroke-width="2.2" stroke-linejoin="round"/>' + dots : '') +
       '<line x1="' + todayX.toFixed(1) + '" y1="' + padTop + '" x2="' + todayX.toFixed(1) + '" y2="' + (H-padBottom) + '" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 3"/>' +
       '<circle cx="' + todayX.toFixed(1) + '" cy="' + todayY.toFixed(1) + '" r="4" fill="var(--accent)"/>' +
-      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--text-faint)">' + euro(P) + ' inicial</text>' +
+      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">' + euro(P) + ' inicial</text>' +
       '<text x="' + (W-padRight) + '" y="' + (H-padBottom+18) + '" text-anchor="end" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">fim do prazo</text>' +
-      '<text x="' + todayLabelX.toFixed(1) + '" y="' + todayLabelY.toFixed(1) + '" text-anchor="' + todayAnchor + '" font-size="10.5" font-family="IBM Plex Mono, monospace" font-weight="700" fill="var(--accent-ink)">' + euro(todayVal) + '</text>' +
+      '<text x="' + todayLabelX.toFixed(1) + '" y="' + todayLabelY.toFixed(1) + '" text-anchor="' + todayAnchor + '" font-size="10.5" font-family="Manrope, sans-serif" font-weight="700" fill="var(--accent-ink)">' + euro(todayVal) + '</text>' +
     '</svg>';
   }
 
@@ -2900,8 +3070,8 @@
       (valuePath ? '<path d="' + valuePath + '" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linejoin="round"/>' : '') +
       dots +
       '<circle cx="' + todayX.toFixed(1) + '" cy="' + todayY.toFixed(1) + '" r="4" fill="var(--success)"/>' +
-      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--text-faint)">investido: ' + euro(g.contributed) + '</text>' +
-      '<text x="' + todayLabelX.toFixed(1) + '" y="' + todayLabelY.toFixed(1) + '" text-anchor="' + todayAnchor + '" font-size="10.5" font-family="IBM Plex Mono, monospace" font-weight="700" fill="var(--success-ink)">' + euro(g.current) + '</text>' +
+      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">investido: ' + euro(g.contributed) + '</text>' +
+      '<text x="' + todayLabelX.toFixed(1) + '" y="' + todayLabelY.toFixed(1) + '" text-anchor="' + todayAnchor + '" font-size="10.5" font-family="Manrope, sans-serif" font-weight="700" fill="var(--success-ink)">' + euro(g.current) + '</text>' +
     '</svg>';
   }
 
@@ -3060,7 +3230,7 @@
       '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
       '<circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="4" fill="' + lastColor + '"/>' +
       '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">' + monthLabelOf(series.months[0]) + '</text>' +
-      '<text x="' + lastX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" font-weight="700" fill="' + lastColor + '">' + euro(lastNet) + '</text>' +
+      '<text x="' + lastX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="end" font-size="10.5" font-family="Manrope, sans-serif" font-weight="700" fill="' + lastColor + '">' + euro(lastNet) + '</text>' +
     '</svg>';
   }
 
