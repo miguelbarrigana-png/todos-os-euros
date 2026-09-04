@@ -1,12 +1,14 @@
-// Service worker for "Contas em Dia" — caches the app shell so the app
-// opens instantly and works offline. Firestore has its own offline cache
-// (enabled in index.html) for the actual data.
+// Service worker for "MAB360" (formerly "Contas em Dia") — caches the app
+// shell so the app opens instantly and works offline. Firestore has its own
+// offline cache (enabled in index.html) for the actual data.
 //
 // IMPORTANT: bump CACHE_NAME (v2, v3, ...) every time index.html changes.
 // Changing this string is what makes the browser notice the service worker
 // itself changed, install the new one, and throw away the old cached files.
 // Without it, phones can keep showing an old version indefinitely.
-var CACHE_NAME = 'contas-em-dia-v2';
+// (The cache key name itself is an internal identifier, left as-is for
+// upgrade compatibility with installs already running v5.)
+var CACHE_NAME = 'contas-em-dia-v6';
 var SHELL_FILES = [
   './',
   './index.html',
@@ -47,7 +49,7 @@ self.addEventListener('fetch', function (event) {
 
   if (isNavigation) {
     event.respondWith(
-      fetch(req).then(function (res) {
+      fetch(req, { cache: 'no-store' }).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
         return res;
