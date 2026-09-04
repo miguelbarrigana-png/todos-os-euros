@@ -4271,10 +4271,36 @@
       }
     }
     var submitBtn = document.getElementById('loginSubmit');
+    var idleLabel = submitBtn.textContent;
     submitBtn.disabled = true;
+    submitBtn.textContent = isSignupMode ? 'A criar conta…' : 'A entrar…';
+    var settled = false;
+    function resetButton(){
+      submitBtn.disabled = false;
+      submitBtn.textContent = idleLabel;
+    }
+    // Rede de segurança: o login pode ter sucesso (signInWithEmailAndPassword
+    // resolve) mas o passo seguinte — ir buscar a família em users/{uid} —
+    // corre à parte, fora desta promise. Se essa parte ficar presa (rede
+    // instável, por exemplo) o ecrã de login nunca era escondido e o botão
+    // ficava desativado para sempre, obrigando a um refresh. Isto garante
+    // que, ao fim de 20s sem transição para a app, o botão volta a ficar
+    // disponível com uma mensagem — em vez de parecer simplesmente avariado.
+    var safetyTimer = setTimeout(function(){
+      if (settled) return;
+      var loginScreenEl = document.getElementById('loginScreen');
+      if (loginScreenEl.hidden){ settled = true; return; } // já avançou por outro caminho
+      settled = true;
+      resetButton();
+      errorEl.textContent = 'Isto está a demorar mais do que o normal. Verifica a tua ligação à internet e tenta novamente.';
+      errorEl.style.display = 'block';
+    }, 20000);
     var action = isSignupMode ? window.__ContasApp.attemptSignup(email, password, familyCode) : window.__ContasApp.attemptLogin(email, password);
     action.catch(function(err){
-      submitBtn.disabled = false;
+      if (settled) return;
+      settled = true;
+      clearTimeout(safetyTimer);
+      resetButton();
       var msg = LOGIN_ERROR_MESSAGES[err && err.code] || 'Não foi possível continuar. Tenta novamente.';
       errorEl.textContent = msg;
       errorEl.style.display = 'block';
@@ -4313,6 +4339,10 @@
     },
     fail: function(err){
       console.error('Firebase init failed', err);
+      // Isto pode acontecer DEPOIS de um login bem-sucedido (ex.: falhou ir
+      // buscar a família em users/{uid}) — sem isto, o ecrã de login fica
+      // por cima a tapar esta mensagem, parecendo que a app não faz nada.
+      document.getElementById('loginScreen').hidden = true;
       state.dbAvailable = false;
       state.loading = false;
       state.yearLoading = false;
