@@ -297,9 +297,13 @@
   .group-list .item:first-child{border-top-left-radius:var(--radius-md); border-top-right-radius:var(--radius-md);}
   .group-list .item:last-child{border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);}
 
-  .item{border-bottom:1px solid var(--border); position:relative; overflow:hidden;}
+  .item{border-bottom:1px solid var(--border); position:relative;}
   .item:last-child{border-bottom:none;}
   .item.overdue{background:var(--danger-soft);}
+  /* Só este contentor interno é recortado (para o gesto de deslizar) — o
+     ".item" em si fica sem overflow:hidden, para o menu de "..." (que se
+     sobrepõe às linhas seguintes) continuar visível como sempre. */
+  .item-swipe-clip{position:relative; overflow:hidden; border-radius:inherit;}
   .item-swipe-body{display:flex; align-items:center; gap:12px; padding:13px 14px; position:relative; z-index:1; background:var(--surface); touch-action:pan-y;}
   .item.overdue .item-swipe-body{background:var(--danger-soft);}
   .item.swipe-anim .item-swipe-body{transition:transform .2s ease;}
@@ -409,7 +413,11 @@
   .toast .icon{width:16px; height:16px; flex-shrink:0;}
 
   /* ---------- Microinterações ---------- */
-  @keyframes contentFadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  /* Só anima opacidade (sem "transform") de propósito: um "transform"
+     diferente de none cria um novo contexto de empilhamento (stacking
+     context) enquanto a animação decorre, o que já causou o menu de "..."
+     de um pagamento a ficar escondido atrás da linha seguinte da lista. */
+  @keyframes contentFadeIn{ from{opacity:0;} to{opacity:1;} }
   #content.anim-in > *{animation:contentFadeIn .32s ease both;}
   #content.anim-in > *:nth-child(1){animation-delay:0ms;}
   #content.anim-in > *:nth-child(2){animation-delay:40ms;}
@@ -445,6 +453,7 @@
   .btn.ghost{background:var(--surface-2); color:var(--text);}
   .btn.danger-solid{background:var(--danger); color:#fff;}
   .field-error{font-size:12px; color:var(--danger); margin-top:5px; display:none;}
+  .field-error.success{color:var(--success-ink);}
   .checkbox-row{display:flex; align-items:center; gap:10px; padding:12px; background:var(--surface-2); border-radius:10px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--text);}
   .checkbox-row input{width:18px; height:18px; accent-color:var(--accent); flex-shrink:0;}
 
@@ -511,6 +520,9 @@
   .budget-cat-track{padding:0 16px 14px;}
   .budget-cat-body{max-height:0; overflow:hidden; transition:max-height .22s ease;}
   .budget-cat-card.open .budget-cat-body{max-height:2000px;}
+  .budget-cat-target-row{padding:0 16px 12px; font-size:12.5px; color:var(--text-faint); display:flex; align-items:center; flex-wrap:wrap; gap:6px;}
+  .budget-cat-empty{padding:16px; font-size:12.5px; color:var(--text-faint); text-align:center;}
+  .link-btn{background:none; border:none; padding:0; margin:0; font:inherit; font-weight:700; color:var(--accent-ink); cursor:pointer; text-decoration:underline;}
   .budget-line{display:flex; align-items:center; gap:11px; padding:9px 16px;}
   .budget-line-body{flex:1; min-width:0;}
   .budget-line-top{display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-bottom:5px;}
@@ -602,6 +614,9 @@
         <label for="fLoginPassword">Password</label>
         <input type="password" id="fLoginPassword" autocomplete="current-password" required>
       </div>
+      <p class="hint" id="forgotPasswordRow" style="margin:-8px 0 4px; text-align:right;">
+        <a href="#" id="forgotPasswordLink" style="color:var(--text-faint); font-weight:600; text-decoration:none; font-size:12.5px;">Esqueci-me da password</a>
+      </p>
       <div class="field" id="signupConfirmField" hidden>
         <label for="fSignupPasswordConfirm">Confirmar password</label>
         <input type="password" id="fSignupPasswordConfirm" autocomplete="new-password">
@@ -785,6 +800,24 @@
       <button type="button" class="btn ghost" id="amountCancel">Cancelar</button>
       <button type="button" class="btn primary" id="amountSave">Guardar</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="categoryBudgetOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Orçamento da categoria</h2>
+    <p class="hint" id="categoryBudgetHint" style="margin-bottom:14px;"></p>
+    <div class="field">
+      <label for="fCategoryBudgetAmount">Valor-alvo por mês (€)</label>
+      <input type="number" id="fCategoryBudgetAmount" step="0.01" min="0" placeholder="Ex.: 400">
+    </div>
+    <div class="field-error" id="categoryBudgetError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="categoryBudgetCancel">Cancelar</button>
+      <button type="button" class="btn primary" id="categoryBudgetSave">Guardar</button>
+    </div>
+    <button type="button" class="btn ghost" id="categoryBudgetRemove" style="width:100%; margin-top:8px; color:var(--danger);" hidden>Remover orçamento desta categoria</button>
   </div>
 </div>
 
@@ -1070,6 +1103,12 @@
     </div>
 
     <div class="field">
+      <label>Dados</label>
+      <button type="button" class="btn ghost" id="exportDataBtn">Exportar dados da família</button>
+      <div class="hint">Descarrega uma cópia de segurança de tudo (pagamentos, movimentos, créditos, investimentos, poupanças) num ficheiro .json.</div>
+    </div>
+
+    <div class="field">
       <label>Conta</label>
       <button type="button" class="btn ghost" id="logoutBtn">Sair da conta</button>
     </div>
@@ -1159,7 +1198,9 @@
     myEmail: null,
     familyMembers: [],
     familyMembersLoading: true,
-    recurrencesLoading: true
+    recurrencesLoading: true,
+    categoryBudgets: {},           // categoryKey -> valor-alvo mensal definido manualmente (não varia por mês)
+    categoryBudgetsLoading: true
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -1269,6 +1310,14 @@
     if (found) return found;
     var fallback = (CATEGORIES[kindOf(e)]||CATEGORIES.despesa).filter(function(c){ return c.key === 'outros'; })[0];
     return fallback || list[list.length-1];
+  }
+  // Encontra a definição de uma categoria de despesa só pela key, sem
+  // precisar de um registo (entry) — usado para mostrar o cartão de uma
+  // categoria que já tem orçamento definido mas ainda não tem nenhuma
+  // despesa lançada este mês.
+  function despesaCategoryDefByKey(key){
+    var list = effectiveCategories('despesa');
+    return list.filter(function(c){ return c.key === key; })[0] || null;
   }
   function effectiveAmount(e){
     return (e.actualAmount !== undefined && e.actualAmount !== null && e.actualAmount !== '') ? Number(e.actualAmount) : (Number(e.amount)||0);
@@ -1983,6 +2032,28 @@
     });
   }
 
+  // Orçamento-alvo por categoria de despesa — um valor fixo por categoria
+  // (não varia por mês, tal como um pagamento recorrente), para se poder
+  // definir p.ex. "Alimentação = 400€" e comparar o que se vai lançando
+  // durante o mês contra esse valor, em vez de só se saber o total no fim.
+  function loadCategoryBudgets(){
+    state.categoryBudgetsLoading = true;
+    return db.collection('categoryBudgets').get().then(function(snap){
+      var map = {};
+      snap.docs.forEach(function(d){
+        var amt = d.data().amount;
+        if (typeof amt === 'number' && amt > 0) map[d.id] = amt;
+      });
+      state.categoryBudgets = map;
+      state.categoryBudgetsLoading = false;
+      render();
+    }).catch(function(err){
+      console.error('loadCategoryBudgets failed', err);
+      state.categoryBudgetsLoading = false;
+      render();
+    });
+  }
+
   // Escreve/atualiza o registo desta conta em familyMembers (nome + email),
   // para que os outros membros da família a vejam na página Família. O nome
   // continua a viver principalmente em localStorage (por telemóvel); isto
@@ -2067,16 +2138,41 @@
   function categoryBudgetBreakdown(entries){
     var totals = {};
     var order = [];
+    var budgets = state.categoryBudgets || {};
+    // Semeia primeiro uma linha para cada categoria que já tem um
+    // orçamento-alvo definido manualmente — mesmo que ainda não tenha
+    // nenhuma despesa lançada este mês. É o que permite definir "Alimentação
+    // = 400€" ANTES de começar a lançar compras, e ver o controlo a partir
+    // daí (em vez de a categoria só aparecer depois de já lá haver algo).
+    Object.keys(budgets).forEach(function(key){
+      var def = despesaCategoryDefByKey(key);
+      if (!def || budgets[key] == null) return; // categoria pode ter sido removida entretanto
+      if (!totals[key]){ totals[key] = {def:def, total:0, done:0, items:[], budget:budgets[key]}; order.push(key); }
+    });
     entries.forEach(function(e){
       if (kindOf(e) !== 'despesa') return;
       var cat = categoryOf(e);
-      if (!totals[cat.key]){ totals[cat.key] = {def:cat, total:0, done:0, items:[]}; order.push(cat.key); }
+      if (!totals[cat.key]){
+        var b = budgets[cat.key];
+        totals[cat.key] = {def:cat, total:0, done:0, items:[], budget: (b != null) ? b : null};
+        order.push(cat.key);
+      }
       var amt = effectiveAmount(e);
       totals[cat.key].total += amt;
       if (e.paid) totals[cat.key].done += amt;
       totals[cat.key].items.push(e);
     });
-    return order.map(function(k){ return totals[k]; }).sort(function(a,b){ return b.total - a.total; });
+    return order.map(function(k){ return totals[k]; }).sort(function(a,b){
+      var basisA = a.budget != null ? a.budget : a.total;
+      var basisB = b.budget != null ? b.budget : b.total;
+      return basisB - basisA;
+    }).map(function(r){
+      // Sem isto, os itens dentro de cada categoria ficam pela ordem em que
+      // foram lidos da base de dados (mais ou menos aleatória), em vez de
+      // pelo dia do mês — a mesma ordenação que já é usada em Receitas.
+      r.items.sort(function(a,b){ return (a.dueDay - b.dueDay) || a.name.localeCompare(b.name); });
+      return r;
+    });
   }
 
   function catTint(color){ return 'background:color-mix(in srgb, ' + color + ' 16%, transparent); color:' + color + ';'; }
@@ -2085,13 +2181,27 @@
     var rows = categoryBudgetBreakdown(entries);
     if (!rows.length) return '';
     return rows.map(function(r){
-      var pct = r.total > 0 ? Math.round((r.done/r.total)*100) : 0;
-      var restante = Math.max(0, r.total - r.done);
-      var over = r.done > r.total + 0.005;
+      var hasBudget = r.budget != null && r.budget > 0;
+      // Com orçamento definido, "planeado/100%" passa a ser esse valor-alvo
+      // em vez da soma do que já foi lançado — é o que permite definir
+      // "Alimentação = 400€" e ver o controlo à medida que vais lançando as
+      // compras reais, em vez de só saberes o total no fim do mês.
+      var basis = hasBudget ? r.budget : r.total;
+      var pct = basis > 0 ? Math.round((r.done/basis)*100) : 0;
+      var restante = Math.max(0, basis - r.done);
+      var over = r.done > basis + 0.005;
       var barCls = over ? 'danger' : (pct >= 80 ? 'warning' : 'success');
-      var metricValue = state.budgetMetric === 'gasto' ? r.done : (state.budgetMetric === 'restante' ? restante : r.total);
+      var metricValue = state.budgetMetric === 'gasto' ? r.done : (state.budgetMetric === 'restante' ? restante : basis);
       var statusPill = over ? '<span class="budget-status-pill danger">Acima</span>' : (pct >= 80 && pct < 100 ? '<span class="budget-status-pill warning">Perto</span>' : '');
       var open = state.openCategoryKey === r.def.key;
+      var targetRow = '<div class="budget-cat-target-row">' +
+        (hasBudget
+          ? 'Orçamento definido: <strong>' + euro(r.budget) + '</strong>'
+          : 'Sem orçamento definido — a mostrar a soma do que já foi lançado.') +
+        ' <button type="button" class="link-btn" data-action="edit-category-budget" data-key="' + r.def.key + '">' + (hasBudget ? 'Editar' : 'Definir orçamento') + '</button>' +
+      '</div>';
+      var itemsHtml = r.items.length ? r.items.map(itemRow).join('') :
+        '<div class="budget-cat-empty">Ainda não lançaste despesas nesta categoria este mês.</div>';
       return '<div class="budget-cat-card' + (open?' open':'') + '">' +
         '<button type="button" class="budget-cat-head" data-action="toggle-category" data-key="' + r.def.key + '">' +
           '<span class="icon-badge sm" style="' + catTint(r.def.color) + '">' + icon(categoryIconOf(r.def.key)) + '</span>' +
@@ -2100,7 +2210,7 @@
           icon('chevronRight', 'chev') +
         '</button>' +
         '<div class="budget-cat-track"><div class="progress-track"><div class="progress-fill ' + barCls + '" style="width:' + Math.max(0,Math.min(100,pct)) + '%"></div></div></div>' +
-        '<div class="budget-cat-body"><div class="group-list">' + r.items.map(itemRow).join('') + '</div></div>' +
+        '<div class="budget-cat-body">' + targetRow + '<div class="group-list">' + itemsHtml + '</div></div>' +
       '</div>';
     }).join('');
   }
@@ -2179,32 +2289,39 @@
           icon('trash') + '<span>Eliminar</span>' +
         '</button>' +
       '</div>';
+    // O menu de "..." (Editar/Ajustar valor/Eliminar) fica FORA do
+    // contentor que é recortado (overflow:hidden) para o gesto de deslizar
+    // — precisa de se sobrepor às linhas seguintes da lista, e ficaria
+    // cortado/invisível se estivesse lá dentro.
+    var menuHtml = (isExample || !menuOpen) ? '' :
+      '<div class="item-actions">' +
+        '<button data-action="edit" data-id="' + e.paymentId + '">Editar</button>' +
+        '<button data-action="adjust-amount" data-id="' + e.paymentId + '">Ajustar valor</button>' +
+        (e.type === 'pontual' ? '<button data-action="duplicate" data-id="' + e.id + '">Duplicar</button>' : '') +
+        '<button class="danger" data-action="delete" data-id="' + e.paymentId + '" data-name="' + escapeHtml(e.name) + '" data-type="' + e.type + '">Eliminar</button>' +
+      '</div>';
     return (
       '<div class="item ' + (e.paid?'paid':'') + (overdue?' overdue':'') + '" data-entry-id="' + e.id + '">' +
-        swipeActionsHtml +
-        '<div class="item-swipe-body">' +
-          '<button class="check ' + (e.paid?'paid':'') + ' ' + (isReceita?'receita':'') + '" data-action="toggle" data-id="' + e.id + '" ' + (isExample?'disabled':'') + ' aria-label="Marcar como ' + (isReceita?'recebido':'pago') + '">' +
-            '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-          '</button>' +
-          '<span class="item-icon-badge" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
-          '<div class="item-body">' +
-            '<div class="item-name">' + escapeHtml(e.name) + '</div>' +
-            '<div class="item-meta">' + meta + '</div>' +
-          '</div>' +
-          '<div class="item-amount mono ' + (isReceita?'receita':'') + '">' + (isReceita?'+':'') + euro(eff) + '</div>' +
-          (isExample ? '' :
-            '<button class="item-menu-btn" data-action="menu" data-id="' + e.id + '" aria-label="Mais opções">' +
-              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>' +
+        '<div class="item-swipe-clip">' +
+          swipeActionsHtml +
+          '<div class="item-swipe-body">' +
+            '<button class="check ' + (e.paid?'paid':'') + ' ' + (isReceita?'receita':'') + '" data-action="toggle" data-id="' + e.id + '" ' + (isExample?'disabled':'') + ' aria-label="Marcar como ' + (isReceita?'recebido':'pago') + '">' +
+              '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
             '</button>' +
-            (menuOpen ?
-              '<div class="item-actions">' +
-                '<button data-action="edit" data-id="' + e.paymentId + '">Editar</button>' +
-                '<button data-action="adjust-amount" data-id="' + e.paymentId + '">Ajustar valor</button>' +
-                (e.type === 'pontual' ? '<button data-action="duplicate" data-id="' + e.id + '">Duplicar</button>' : '') +
-                '<button class="danger" data-action="delete" data-id="' + e.paymentId + '" data-name="' + escapeHtml(e.name) + '" data-type="' + e.type + '">Eliminar</button>' +
-              '</div>' : '')
-          ) +
+            '<span class="item-icon-badge" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
+            '<div class="item-body">' +
+              '<div class="item-name">' + escapeHtml(e.name) + '</div>' +
+              '<div class="item-meta">' + meta + '</div>' +
+            '</div>' +
+            '<div class="item-amount mono ' + (isReceita?'receita':'') + '">' + (isReceita?'+':'') + euro(eff) + '</div>' +
+            (isExample ? '' :
+              '<button class="item-menu-btn" data-action="menu" data-id="' + e.id + '" aria-label="Mais opções">' +
+                '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>' +
+              '</button>'
+            ) +
+          '</div>' +
         '</div>' +
+        menuHtml +
       '</div>'
     );
   }
@@ -3427,6 +3544,63 @@
     closeAmountSheet();
   });
 
+  // ---------- Orçamento-alvo por categoria ----------
+  var categoryBudgetOverlay = document.getElementById('categoryBudgetOverlay');
+  var pendingCategoryBudgetKey = null;
+
+  function openCategoryBudgetSheet(catKey){
+    var def = despesaCategoryDefByKey(catKey);
+    if (!def) return;
+    pendingCategoryBudgetKey = catKey;
+    var current = (state.categoryBudgets || {})[catKey];
+    document.getElementById('categoryBudgetHint').textContent = 'Define quanto queres gastar por mês em "' + def.label + '". Aplica-se a todos os meses, até mudares outra vez.';
+    document.getElementById('fCategoryBudgetAmount').value = current != null ? current : '';
+    document.getElementById('categoryBudgetError').style.display = 'none';
+    document.getElementById('categoryBudgetRemove').hidden = (current == null);
+    categoryBudgetOverlay.classList.add('open');
+  }
+  function closeCategoryBudgetSheet(){ categoryBudgetOverlay.classList.remove('open'); pendingCategoryBudgetKey = null; }
+
+  document.getElementById('categoryBudgetCancel').addEventListener('click', closeCategoryBudgetSheet);
+  categoryBudgetOverlay.addEventListener('click', function(ev){ if (ev.target === categoryBudgetOverlay) closeCategoryBudgetSheet(); });
+  document.getElementById('categoryBudgetSave').addEventListener('click', function(){
+    if (!pendingCategoryBudgetKey || !db) return;
+    var raw = document.getElementById('fCategoryBudgetAmount').value;
+    var errorEl = document.getElementById('categoryBudgetError');
+    var value = parseFloat(raw);
+    if (raw === '' || isNaN(value) || value <= 0){
+      errorEl.textContent = 'Introduz um valor maior do que zero (ou usa "Remover orçamento" para tirar o alvo desta categoria).';
+      errorEl.style.display = 'block';
+      return;
+    }
+    var key = pendingCategoryBudgetKey;
+    db.collection('categoryBudgets').doc(key).set({amount: value, updatedAt: new Date().toISOString()}).then(function(){
+      return loadCategoryBudgets();
+    }).then(function(){
+      closeCategoryBudgetSheet();
+      showToast('Orçamento guardado', {icon:'check'});
+    }).catch(function(err){
+      console.error('save categoryBudget failed', err);
+      errorEl.textContent = 'Não foi possível guardar. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+  document.getElementById('categoryBudgetRemove').addEventListener('click', function(){
+    if (!pendingCategoryBudgetKey || !db) return;
+    var key = pendingCategoryBudgetKey;
+    db.collection('categoryBudgets').doc(key).delete().then(function(){
+      return loadCategoryBudgets();
+    }).then(function(){
+      closeCategoryBudgetSheet();
+      showToast('Orçamento removido', {icon:'x'});
+    }).catch(function(err){
+      console.error('remove categoryBudget failed', err);
+      var errorEl = document.getElementById('categoryBudgetError');
+      errorEl.textContent = 'Não foi possível remover. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+
   // ---------- Pesquisa por nome ----------
   document.getElementById('searchInput').addEventListener('input', function(ev){
     state.searchQuery = ev.target.value;
@@ -3889,6 +4063,52 @@
     });
   }
 
+  // ---------- Exportar dados (cópia de segurança) ----------
+  // Vai buscar TODAS as coleções da família (não só o mês atual) e junta
+  // tudo num único ficheiro .json que o utilizador pode guardar como
+  // backup — útil se algum dia precisar de recuperar dados manualmente.
+  var EXPORT_COLLECTIONS = ['payments', 'entries', 'loans', 'loanSnapshots', 'investments', 'investmentContributions', 'investmentSnapshots', 'savingsGoals', 'savingsMovements', 'familyMembers'];
+  function exportAllFamilyData(){
+    if (!db) return Promise.reject(new Error('Sem ligação à base de dados.'));
+    return Promise.all(EXPORT_COLLECTIONS.map(function(name){
+      return db.collection(name).get().then(function(snap){
+        return snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); });
+      });
+    })).then(function(results){
+      var data = { exportedAt: new Date().toISOString(), app: 'MAB360' };
+      EXPORT_COLLECTIONS.forEach(function(name, i){ data[name] = results[i]; });
+      return data;
+    });
+  }
+  function downloadJson(filename, dataObj){
+    var blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  document.getElementById('exportDataBtn').addEventListener('click', function(){
+    var btn = document.getElementById('exportDataBtn');
+    var idleText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'A preparar…';
+    exportAllFamilyData().then(function(data){
+      var stamp = todayStr().replace(/-/g, '');
+      downloadJson('mab360-dados-' + stamp + '.json', data);
+      showToast('Dados exportados', {icon:'check'});
+    }).catch(function(err){
+      console.error('exportAllFamilyData failed', err);
+      showToast('Não foi possível exportar os dados', {icon:'x'});
+    }).then(function(){
+      btn.disabled = false;
+      btn.textContent = idleText;
+    });
+  });
+
   document.getElementById('openSettings').addEventListener('click', function(){
     renderCategoryChips();
     settingsOverlay.classList.add('open');
@@ -4195,6 +4415,8 @@
       var catKey = actionEl.getAttribute('data-key');
       state.openCategoryKey = state.openCategoryKey === catKey ? null : catKey;
       render();
+    } else if (action === 'edit-category-budget'){
+      openCategoryBudgetSheet(actionEl.getAttribute('data-key'));
     } else if (action === 'mov-filter'){
       state.movFilter = actionEl.getAttribute('data-filter');
       render();
@@ -4321,7 +4543,7 @@
     else if (view === 'investment'){ if (db) return loadInvestments(); }
     else if (view === 'poupancas'){ if (db) return loadSavingsGoals(); }
     else if (view === 'home' || view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals()]); }
-    else if (view === 'month' || view === 'movimentos'){ if (db) return loadMonth(state.monthKey); }
+    else if (view === 'month' || view === 'movimentos'){ if (db) return Promise.all([loadMonth(state.monthKey), loadCategoryBudgets()]); }
     else if (view === 'recorrencias'){
       if (db){
         state.recurrencesLoading = true;
@@ -4337,12 +4559,25 @@
   // voltar a adicionar a classe é o que faz o browser repetir uma animação
   // CSS que já correu antes). Só é chamado ao trocar de página — não em
   // cada pequena atualização de render(), para não ficar a "piscar".
+  var contentAnimTimer = null;
   function playContentEnterAnim(){
     var content = document.getElementById('content');
     if (!content) return;
     content.classList.remove('anim-in');
     void content.offsetWidth;
     content.classList.add('anim-in');
+    // A classe tem de ser removida outra vez depois da animação acabar —
+    // caso contrário, qualquer render() normal dentro da MESMA página (ex.:
+    // abrir o menu de "...") recria elementos novos que continuam a
+    // corresponder a "#content.anim-in > *" e repetem a animação sem
+    // querer. Isso também deixava esses elementos com uma propriedade
+    // "transform" aplicada indefinidamente, o que criava sem querer um
+    // novo contexto de empilhamento (stacking context) e podia esconder o
+    // menu de "..." atrás da linha seguinte da lista.
+    clearTimeout(contentAnimTimer);
+    contentAnimTimer = setTimeout(function(){
+      content.classList.remove('anim-in');
+    }, 600);
   }
   function switchView(view){
     if (view === 'mais'){ openMoreSheet(); return; }
@@ -4409,6 +4644,7 @@
     isSignupMode = on;
     document.getElementById('signupConfirmField').hidden = !on;
     document.getElementById('signupFamilyModeField').hidden = !on;
+    document.getElementById('forgotPasswordRow').hidden = on;
     document.getElementById('fLoginPassword').autocomplete = on ? 'new-password' : 'current-password';
     document.getElementById('loginSubmit').textContent = on ? 'Criar conta' : 'Entrar';
     document.getElementById('toggleSignupLink').textContent = on ? 'Já tens conta? Entra.' : 'Ainda não tens conta? Cria uma.';
@@ -4439,6 +4675,7 @@
     var email = document.getElementById('fLoginEmail').value.trim();
     var password = document.getElementById('fLoginPassword').value;
     var errorEl = document.getElementById('loginError');
+    errorEl.className = 'field-error';
     errorEl.style.display = 'none';
     if (!window.__ContasApp || !window.__ContasApp.attemptLogin || !window.__ContasApp.attemptSignup){
       errorEl.textContent = 'A app ainda está a carregar. Tenta novamente daqui a pouco.';
@@ -4499,6 +4736,52 @@
     });
   });
 
+  // ---------- Recuperação de password ----------
+  document.getElementById('forgotPasswordLink').addEventListener('click', function(ev){
+    ev.preventDefault();
+    var errorEl = document.getElementById('loginError');
+    var email = document.getElementById('fLoginEmail').value.trim();
+    errorEl.className = 'field-error';
+    errorEl.style.display = 'none';
+    if (!email){
+      errorEl.textContent = 'Escreve o teu email em cima e volta a tocar em "Esqueci-me da password".';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (!window.__ContasApp || !window.__ContasApp.resetPassword){
+      errorEl.textContent = 'A app ainda está a carregar. Tenta novamente daqui a pouco.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    var link = document.getElementById('forgotPasswordLink');
+    var idleLinkText = link.textContent;
+    link.textContent = 'A enviar…';
+    function showSentMessage(){
+      errorEl.className = 'field-error success';
+      errorEl.textContent = 'Se existir uma conta com este email, foi enviado um link para repores a password. Verifica a caixa de entrada (e o spam).';
+      errorEl.style.display = 'block';
+    }
+    window.__ContasApp.resetPassword(email).then(function(){
+      link.textContent = idleLinkText;
+      showSentMessage();
+    }).catch(function(err){
+      link.textContent = idleLinkText;
+      if (err && err.code === 'auth/invalid-email'){
+        errorEl.textContent = 'Email inválido.';
+        errorEl.style.display = 'block';
+      } else if (err && err.code === 'auth/user-not-found'){
+        // Por privacidade, não revelamos se existe ou não uma conta com este email.
+        showSentMessage();
+      } else if (err && err.code === 'auth/too-many-requests'){
+        errorEl.textContent = 'Demasiadas tentativas. Espera uns minutos e tenta de novo.';
+        errorEl.style.display = 'block';
+      } else {
+        errorEl.textContent = 'Não foi possível enviar o email. Verifica a tua ligação e tenta novamente.';
+        errorEl.style.display = 'block';
+      }
+    });
+  });
+
   // ---------- Acessibilidade das sheets/overlays (genérico, cobre todas) ----------
   // Mapeia cada overlay para o botão que já usa para fechar "normalmente"
   // (Cancelar/Fechar/X) — a tecla Esc simula um clique nesse botão, para
@@ -4506,6 +4789,7 @@
   // duplicar lógica por cada sheet.
   var OVERLAY_CANCEL_BUTTONS = {
     formOverlay:'cancelForm', confirmOverlay:'confirmCancel', amountOverlay:'amountCancel',
+    categoryBudgetOverlay:'categoryBudgetCancel',
     loanFormOverlay:'cancelLoanForm', snapshotOverlay:'snapshotCancel',
     investmentFormOverlay:'cancelInvestmentForm', invContribOverlay:'invContribCancel', invSnapshotOverlay:'invSnapshotCancel',
     savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel',
@@ -4626,7 +4910,7 @@
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signOut, setPersistence, browserLocalPersistence
+    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
   // ======= CONFIGURA AQUI OS DADOS DO TEU PROJETO FIREBASE =======
@@ -4738,6 +5022,9 @@
       window.__ContasApp.logout = function(){
         clearLoginMark();
         return signOut(auth);
+      };
+      window.__ContasApp.resetPassword = function(email){
+        return sendPasswordResetEmail(auth, email);
       };
 
       function expireIfNeeded(){
