@@ -243,8 +243,9 @@
   .cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px; box-shadow:var(--shadow); margin-bottom:20px;}
   .cat-card h3{font-size:13px; font-weight:700; margin-bottom:12px;}
   .cat-bar-row{display:flex; align-items:center; gap:10px; padding:7px 0;}
-  .cat-bar-label{flex:0 0 116px; font-size:12px; font-weight:600; display:flex; align-items:flex-start; gap:7px; line-height:1.3; white-space:normal; word-break:break-word;}
-  .cat-bar-label .cat-dot{margin-top:3px;}
+  .cat-bar-label{flex:0 0 138px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:8px; line-height:1.3; white-space:normal; word-break:break-word;}
+  .cat-bar-label .cat-dot{flex-shrink:0;}
+  .cat-bar-label .icon-badge{flex-shrink:0;}
   .cat-dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
   .cat-bar-track{flex:1; height:8px; border-radius:999px; background:var(--surface-2); overflow:hidden;}
   .cat-bar-fill{height:100%; border-radius:999px;}
@@ -255,6 +256,8 @@
   .loan-head{margin-bottom:14px;}
   .loan-head h3{font-size:16px; font-weight:700;}
   .loan-head .sub{font-size:12px; color:var(--text-faint); margin-top:2px;}
+  .loan-head-row{display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;}
+  .loan-head-row .loan-head{margin-bottom:0; flex:1; min-width:0;}
   .loan-progress-label{display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); margin:14px 0 6px;}
   .loan-chart-wrap{margin:16px 0 4px;}
   .loan-chart-wrap svg{width:100%; height:auto; display:block; overflow:visible;}
@@ -337,7 +340,7 @@
   .legend-item{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); font-weight:600;}
   .legend-dot{width:9px;height:9px;border-radius:50%; flex-shrink:0;}
   .legend-dot.receita{background:var(--success);}
-  .legend-dot.despesa{background:var(--accent);}
+  .legend-dot.despesa{background:var(--info);}
   .chart-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 10px 6px; box-shadow:var(--shadow); margin-bottom:16px;}
   .chart-card svg{width:100%; height:auto; display:block; overflow:visible;}
   .chart-col{cursor:pointer;}
@@ -1130,7 +1133,8 @@
     bell: '<path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14 6 10z"/><path d="M10 19a2 2 0 0 0 4 0"/>',
     users: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.5" cy="9" r="2.3"/><path d="M15 14.2c2.7.3 4.5 2.6 4.5 5.8"/>',
     alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9"/>',
-    check: '<path d="M4 12l5 5 11-11"/>'
+    check: '<path d="M4 12l5 5 11-11"/>',
+    coins: '<circle cx="9" cy="9" r="6"/><path d="M14.5 8.3A6 6 0 1 1 8.3 14.5"/><path d="M9 6.8v4.4M7 9h4"/>'
   };
   function icon(name, cls){
     var d = ICON_PATHS[name] || ICON_PATHS.tag;
@@ -1177,6 +1181,11 @@
   function investmentTypeOf(inv){
     return INVESTMENT_TYPES.filter(function(t){ return t.key === inv.type; })[0] || INVESTMENT_TYPES[INVESTMENT_TYPES.length-1];
   }
+  var INVESTMENT_TYPE_ICONS = {
+    ppr:'shield', acoes_etf:'trending', obrigacoes:'banknote', deposito:'landmark',
+    certificados:'landmark', cripto:'coins', fundo:'trending', outro:'tag'
+  };
+  function investmentTypeIconOf(inv){ return INVESTMENT_TYPE_ICONS[inv.type] || 'tag'; }
 
   // User-managed additions/removals on top of the built-in categories (synced via Firestore).
   var settingsCategoryConfig = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
@@ -2293,13 +2302,13 @@
       var rPath = barPath(cx-barW/2, barW, baseline-rH, baseline, 4, true, false);
       var dPath = barPath(cx-barW/2, barW, baseline, baseline+dH, 4, false, true);
       if (rPath) bars += '<path d="' + rPath + '" fill="var(--success)" opacity="' + op + '"/>';
-      if (dPath) bars += '<path d="' + dPath + '" fill="var(--accent)" opacity="' + op + '"/>';
+      if (dPath) bars += '<path d="' + dPath + '" fill="var(--info)" opacity="' + op + '"/>';
 
       labels += '<text x="' + cx + '" y="' + (H-9) + '" text-anchor="middle" font-size="10.5" font-family="Manrope, sans-serif" font-weight="' + (isSel?'800':'600') + '" fill="' + (isSel?'var(--text)':'var(--text-faint)') + '">' + MONTHS_ABBR_PT[i] + '</text>';
 
       if (isSel){
         if (m.receitas > 0) selLabels += '<text x="' + cx + '" y="' + Math.max(padTop-3, baseline-rH-7) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" font-weight="600" fill="var(--success-ink)">' + euro(m.receitas) + '</text>';
-        if (m.despesas > 0) selLabels += '<text x="' + cx + '" y="' + (baseline+dH+13) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" font-weight="600" fill="var(--accent-ink)">' + euro(m.despesas) + '</text>';
+        if (m.despesas > 0) selLabels += '<text x="' + cx + '" y="' + (baseline+dH+13) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" font-weight="600" fill="var(--info)">' + euro(m.despesas) + '</text>';
       }
 
       hits += '<rect class="chart-col" data-action="select-month" data-month="' + m.monthKey + '" x="' + (colW*i) + '" y="0" width="' + colW + '" height="' + H + '" fill="' + (isSel?'var(--surface-2)':'transparent') + '" opacity="' + (isSel?'0.6':'1') + '"/>';
@@ -2454,8 +2463,9 @@
     var balanceLabel = lastUpdate ? 'Capital em dívida (atualizado ' + lastUpdate.split('-').reverse().join('/') + ')' : 'Capital em dívida (estimado)';
 
     return '<div class="loan-card" data-loan-id="' + loan.id + '">' +
+      '<div class="loan-head-row"><span class="icon-badge" style="' + catTint('var(--info)') + '">' + icon('landmark') + '</span>' +
       '<div class="loan-head"><h3>' + escapeHtml(loan.name) + '</h3>' +
-        '<div class="sub">' + rateLabel + ' · ' + loan.rate + '% · ' + Math.round(loan.termMonths/12) + ' anos desde ' + monthLabelOf(loan.startMonth) + '</div></div>' +
+        '<div class="sub">' + rateLabel + ' · ' + loan.rate + '% · ' + Math.round(loan.termMonths/12) + ' anos desde ' + monthLabelOf(loan.startMonth) + '</div></div></div>' +
       '<div class="saldo-row"><div class="label">' + balanceLabel + '</div><div class="saldo-value mono">' + euro(balance) + '</div></div>' +
       '<div class="loan-progress-label"><span>' + paidPct + '% amortizado</span><span>' + euro(P) + ' inicial</span></div>' +
       '<div class="progress-track"><div class="progress-fill accent" style="width:' + paidPct + '%"></div></div>' +
@@ -2578,8 +2588,9 @@
         '<div class="progress-track"><div class="progress-fill accent" style="width:' + goalPct + '%"></div></div>';
     }
     return '<div class="loan-card" data-investment-id="' + inv.id + '">' +
+      '<div class="loan-head-row"><span class="icon-badge" style="' + catTint(t.color) + '">' + icon(investmentTypeIconOf(inv)) + '</span>' +
       '<div class="loan-head"><h3>' + escapeHtml(inv.name) + '</h3>' +
-        '<div class="sub">' + escapeHtml(metaParts.join(' · ')) + '</div></div>' +
+        '<div class="sub">' + escapeHtml(metaParts.join(' · ')) + '</div></div></div>' +
       '<div class="saldo-row"><div class="label">Valor atual</div><div class="saldo-value mono">' + euro(g.current) + '</div></div>' +
       goalHtml +
       '<div class="loan-chart-wrap">' + buildInvestmentChart(inv) + '</div>' +
@@ -2631,8 +2642,9 @@
     var lastMov = movs.length ? movs[movs.length-1] : null;
     var lastHtml = lastMov ? '<div class="loan-review-chip">Último movimento: ' + (lastMov.amount>=0?'+':'') + euro(lastMov.amount) + ' em ' + lastMov.date.split('-').reverse().join('/') + '</div>' : '';
     return '<div class="loan-card" data-savings-id="' + goal.id + '">' +
+      '<div class="loan-head-row"><span class="icon-badge" style="' + catTint('var(--success)') + '">' + icon('piggy') + '</span>' +
       '<div class="loan-head"><h3>' + escapeHtml(goal.name) + '</h3>' +
-        (goal.goalAmount ? '' : '<div class="sub">Sem objetivo definido — só a acumular</div>') + '</div>' +
+        (goal.goalAmount ? '' : '<div class="sub">Sem objetivo definido — só a acumular</div>') + '</div></div>' +
       '<div class="saldo-row"><div class="label">Guardado até agora</div><div class="saldo-value mono positive">' + euro(saved) + '</div></div>' +
       goalHtml + lastHtml +
       '<div class="inv-actions-row">' +
@@ -2701,8 +2713,11 @@
     var max = rows.reduce(function(m,r){ return Math.max(m, r.value); }, 0) || 1;
     var body = rows.map(function(r){
       var pct = Math.max(4, Math.round((r.value/max)*100));
+      var marker = r.icon ?
+        '<span class="icon-badge sm" style="' + catTint(color) + '">' + icon(r.icon) + '</span>' :
+        '<span class="cat-dot" style="background:' + color + '"></span>';
       return '<div class="cat-bar-row">' +
-        '<span class="cat-bar-label"><span class="cat-dot" style="background:' + color + '"></span>' + escapeHtml(r.label) + '</span>' +
+        '<span class="cat-bar-label">' + marker + escapeHtml(r.label) + '</span>' +
         '<span class="cat-bar-track"><span class="cat-bar-fill" style="width:' + pct + '%; background:' + color + '"></span></span>' +
         '<span class="cat-bar-amount mono">' + euro(r.value) + '</span>' +
       '</div>';
@@ -2736,15 +2751,15 @@
       '<div class="chart-card">' + buildPatrimonyChart(series) +
         '<div class="chart-caption"><span>Evolução mensal desde ' + monthLabelOf(series.months[0]) + '</span></div></div>' : '';
 
-    var ativosRows = state.investments.map(function(inv){ return {label:inv.name, value:currentValueOf(inv.id)}; })
-      .concat(state.loans.filter(function(l){ return l.propertyValue; }).map(function(l){ return {label:'Imóvel — ' + l.name, value:Number(l.propertyValue)||0}; }))
-      .concat(state.savingsGoals.map(function(g){ return {label:'Poupança — ' + g.name, value:savingsSavedOf(g.id)}; }))
+    var ativosRows = state.investments.map(function(inv){ return {label:inv.name, value:currentValueOf(inv.id), icon:investmentTypeIconOf(inv)}; })
+      .concat(state.loans.filter(function(l){ return l.propertyValue; }).map(function(l){ return {label:'Imóvel — ' + l.name, value:Number(l.propertyValue)||0, icon:'home'}; }))
+      .concat(state.savingsGoals.map(function(g){ return {label:'Poupança — ' + g.name, value:savingsSavedOf(g.id), icon:'piggy'}; }))
       .sort(function(a,b){ return b.value-a.value; });
-    var passivosRows = state.loans.map(function(l){ return {label:l.name, value:currentBalance(l)}; }).sort(function(a,b){ return b.value-a.value; });
+    var passivosRows = state.loans.map(function(l){ return {label:l.name, value:currentBalance(l), icon:'landmark'}; }).sort(function(a,b){ return b.value-a.value; });
 
     content.innerHTML = summaryHtml + chartHtml +
       patrimonyBreakdownHtml('Ativos', ativosRows, 'var(--success)') +
-      patrimonyBreakdownHtml('Passivos', passivosRows, 'var(--accent)');
+      patrimonyBreakdownHtml('Passivos', passivosRows, 'var(--info)');
   }
 
   // ---------- Root render ----------
