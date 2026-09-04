@@ -486,6 +486,22 @@
   .budget-status-pill{display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; margin-left:6px;}
   .budget-status-pill.warning{background:var(--warning-soft); color:var(--warning);}
   .budget-status-pill.danger{background:var(--danger-soft); color:var(--danger);}
+  .budget-status-pill.success{background:var(--success-soft); color:var(--success-ink);}
+
+  /* ---------- Família (members) ---------- */
+  .member-row{display:flex; align-items:center; gap:12px; padding:11px 2px;}
+  .member-row + .member-row{border-top:1px solid var(--border);}
+  .avatar-badge{width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:800; font-size:13px; font-family:'Manrope',sans-serif; letter-spacing:.01em;}
+  .member-body{flex:1; min-width:0;}
+  .member-name{font-weight:700; font-size:14px;}
+  .member-email{font-size:12px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .member-you-tag{display:inline-block; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; background:var(--accent-soft); color:var(--accent-ink); padding:1px 6px; border-radius:999px; margin-left:6px; vertical-align:middle;}
+
+  /* ---------- Welcome / onboarding sheet ---------- */
+  .welcome-tip{display:flex; gap:12px; align-items:flex-start; margin-bottom:16px;}
+  .welcome-tip .icon-badge{margin-top:1px;}
+  .welcome-tip strong{display:block; font-size:13.5px; margin-bottom:2px;}
+  .welcome-tip .note{font-size:12.5px; color:var(--text-muted); line-height:1.55;}
 
   /* ---------- Movimentos ---------- */
   .filter-chip-row{display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; margin-bottom:16px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
@@ -1016,12 +1032,8 @@
     </div>
 
     <div class="field">
-      <label>O teu código de família</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="familyCodeDisplay" readonly style="flex:1;">
-        <button type="button" class="btn ghost" id="copyFamilyCodeBtn" style="flex-shrink:0; padding:9px 14px; font-size:12.5px;">Copiar</button>
-      </div>
-      <div class="hint">Partilha este código com quem quiseres que veja os mesmos dados que tu — essa pessoa cola-o ao criar a conta dela, em "Juntar com código".</div>
+      <label>Família</label>
+      <div class="hint">Vê quem faz parte e partilha o código de família em Mais → Família.</div>
     </div>
 
     <div class="field">
@@ -1042,6 +1054,19 @@
     <div id="deletedList"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="closeDeleted">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="welcomeOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="login-brand-mark" style="margin:0 auto 14px;">M</div>
+    <h2 style="text-align:center;">Bem-vindo(a) à MAB360</h2>
+    <p class="hint" style="text-align:center; margin-bottom:18px;">A tua conta está pronta. Três coisas para começares bem:</p>
+    <div id="welcomeBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="welcomeClose">Começar</button>
     </div>
   </div>
 </div>
@@ -1094,7 +1119,12 @@
     investmentsLoading: true,
     savingsGoals: [],
     savingsMovements: {},   // goalId -> [{id,date,amount}] sorted by date — amount can be negative (retirada)
-    savingsLoading: true
+    savingsLoading: true,
+    myUid: null,
+    myEmail: null,
+    familyMembers: [],
+    familyMembersLoading: true,
+    recurrencesLoading: true
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -1847,6 +1877,64 @@
     return Promise.all(ops).then(function(){ return loadMonth(state.monthKey); });
   }
 
+  // Recorrências: "pausar" é uma ação imediata — define o mês de fim do
+  // modelo para o mês anterior ao atual, para deixar de aparecer já a
+  // partir de agora (os meses passados mantêm o histórico). Isto dá
+  // feedback imediato (o estado muda logo para "Pausado"), ao contrário de
+  // definir o fim para o mês corrente, que só produziria efeito no mês
+  // seguinte. "Reativar" limpa o mês de fim, sem tocar no mês de início.
+  function pauseRecurrence(paymentId){
+    var cutoff = monthKeyAdd(monthKeyOf(new Date()), -1);
+    return db.collection('payments').doc(paymentId).update({endMonth: cutoff}).then(function(){
+      return loadPayments();
+    }).then(function(){ render(); });
+  }
+  function resumeRecurrence(paymentId){
+    return db.collection('payments').doc(paymentId).update({endMonth: null}).then(function(){
+      return loadPayments();
+    }).then(function(){ render(); });
+  }
+
+  // ---------- Família (membros) ----------
+  function loadFamilyMembers(){
+    state.familyMembersLoading = true;
+    render();
+    return db.collection('familyMembers').get().then(function(snap){
+      state.familyMembers = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return (a.joinedAt||'') < (b.joinedAt||'') ? -1 : ((a.joinedAt||'') > (b.joinedAt||'') ? 1 : 0); });
+      state.familyMembersLoading = false;
+      render();
+    }).catch(function(err){
+      console.error('loadFamilyMembers failed', err);
+      state.familyMembersLoading = false;
+      render();
+    });
+  }
+
+  // Escreve/atualiza o registo desta conta em familyMembers (nome + email),
+  // para que os outros membros da família a vejam na página Família. O nome
+  // continua a viver principalmente em localStorage (por telemóvel); isto
+  // só publica uma cópia para os outros verem quem faz parte.
+  function upsertMyFamilyMember(){
+    if (!db || !state.myUid) return Promise.resolve();
+    var name = '';
+    try { name = localStorage.getItem('contasMyName') || ''; } catch(e){}
+    var ref = db.collection('familyMembers').doc(state.myUid);
+    return ref.get().then(function(doc){
+      var existing = (doc && doc.exists) ? doc.data() : {};
+      var payload = {
+        uid: state.myUid,
+        email: state.myEmail || existing.email || '',
+        name: name || existing.name || '',
+        joinedAt: existing.joinedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      return ref.set(payload);
+    }).then(function(){ return loadFamilyMembers(); }).catch(function(err){
+      console.error('upsertMyFamilyMember failed', err);
+    });
+  }
+
   // ---------- Shared math ----------
   function groupEntries(entries){
     var groups = {};
@@ -2123,6 +2211,69 @@
   }
 
   // ---------- Início (dashboard) ----------
+  // ---------- Alertas (para além dos pagamentos em atraso) ----------
+  function upcomingReviewAlerts(){
+    if (state.loansLoading) return [];
+    var now = new Date();
+    var soon = new Date(now.getTime() + 60*24*60*60*1000); // próximos 60 dias
+    return state.loans.map(function(l){ return {loan:l, date: nextReviewDate(l)}; })
+      .filter(function(x){ return x.date && x.date >= now && x.date <= soon; })
+      .sort(function(a,b){ return a.date - b.date; });
+  }
+  // Compara o que já foi efetivamente pago (valor real, quando ajustado)
+  // com o valor habitual somado de TODA a categoria — para apanhar o caso
+  // em que um único ajuste de valor (ex.: supermercado saiu mais caro) já
+  // ultrapassa sozinho o que estava previsto para a categoria inteira.
+  function overBudgetCategories(){
+    if (state.loading) return [];
+    var totals = {};
+    var order = [];
+    state.entries.forEach(function(e){
+      if (kindOf(e) !== 'despesa') return;
+      var cat = categoryOf(e);
+      if (!totals[cat.key]){ totals[cat.key] = {def:cat, planned:0, done:0}; order.push(cat.key); }
+      totals[cat.key].planned += Number(e.amount) || 0;
+      if (e.paid) totals[cat.key].done += effectiveAmount(e);
+    });
+    return order.map(function(k){ return totals[k]; }).filter(function(r){ return r.done > r.planned + 0.005; });
+  }
+  function stalledSavingsGoals(){
+    if (state.savingsLoading) return [];
+    var THRESHOLD_DAYS = 60;
+    var now = todayStr();
+    return state.savingsGoals.filter(function(g){
+      var movs = state.savingsMovements[g.id] || [];
+      var lastDate = movs.length ? movs[movs.length-1].date : (g.createdAt ? g.createdAt.slice(0,10) : null);
+      if (!lastDate) return false;
+      return daysBetween(lastDate, now) >= THRESHOLD_DAYS;
+    });
+  }
+  function extraAlertsHtml(){
+    var html = '';
+    var reviews = upcomingReviewAlerts();
+    if (reviews.length){
+      var loanNames = reviews.map(function(r){ return r.loan.name; }).join(', ');
+      html += '<div class="alert-banner warning">' + icon('bell') +
+        '<div><strong>Revisão de taxa a aproximar-se</strong><br>' + escapeHtml(loanNames) +
+        (reviews.length === 1 ? ' revê a taxa' : ' revêem a taxa') + ' nos próximos 60 dias.</div></div>';
+    }
+    var overBudget = overBudgetCategories();
+    if (overBudget.length){
+      var catNames = overBudget.map(function(r){ return r.def.label; }).join(', ');
+      html += '<div class="alert-banner danger">' + icon('alert') +
+        '<div><strong>Orçamento ultrapassado</strong><br>' + escapeHtml(catNames) +
+        (overBudget.length === 1 ? ' já passou' : ' já passaram') + ' o valor planeado este mês.</div></div>';
+    }
+    var stalled = stalledSavingsGoals();
+    if (stalled.length){
+      var goalNames = stalled.map(function(g){ return g.name; }).join(', ');
+      html += '<div class="alert-banner info">' + icon('piggy') +
+        '<div><strong>Poupanças paradas</strong><br>' + escapeHtml(goalNames) +
+        (stalled.length === 1 ? ' não tem' : ' não têm') + ' movimentos há mais de 2 meses.</div></div>';
+    }
+    return html;
+  }
+
   function miniCardHtml(view, iconName, label, value, valueCls, note){
     return '<div class="mini-card" data-action="goto" data-view="' + view + '">' +
       '<div class="mini-card-head"><span class="icon-badge sm">' + icon(iconName) + '</span><span class="mini-card-label">' + label + '</span></div>' +
@@ -2164,6 +2315,7 @@
         '<div><strong>' + overdueList.length + (overdueList.length === 1 ? ' pagamento atrasado' : ' pagamentos atrasados') + '</strong><br>Confirma os pagamentos em atraso no Orçamento.</div></div>';
     }
     html += zeroBudgetBannerHtml(sR.total, sD.total);
+    html += extraAlertsHtml();
 
     var cards = '';
     var netw = netWorthTotals();
@@ -2762,12 +2914,114 @@
       patrimonyBreakdownHtml('Passivos', passivosRows, 'var(--info)');
   }
 
+  // ---------- Recorrências (gestão dedicada) ----------
+  function recurrenceStatusOf(p){
+    var nowKey = monthKeyOf(new Date());
+    if (p.endMonth && p.endMonth < nowKey) return 'paused';
+    if (p.endMonth) return 'ending';
+    return 'active';
+  }
+  function recurrenceCardHtml(p){
+    var cat = categoryOf(p);
+    var isReceita = kindOf(p) === 'receita';
+    var status = recurrenceStatusOf(p);
+    var statusHtml = status === 'paused' ? '<span class="budget-status-pill danger">Pausado</span>' :
+      (status === 'ending' ? '<span class="budget-status-pill warning">Termina em ' + monthLabelOf(p.endMonth) + '</span>' :
+      '<span class="budget-status-pill success">Ativo</span>');
+    return '<div class="loan-card">' +
+      '<div class="loan-head-row"><span class="icon-badge" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
+        '<div class="loan-head"><h3>' + escapeHtml(p.name) + '</h3><div class="sub">' + escapeHtml(cat.label) + ' · dia ' + p.dueDay + '</div></div>' +
+        statusHtml +
+      '</div>' +
+      '<div class="saldo-row"><div class="label">Valor habitual</div><div class="saldo-value mono ' + (isReceita?'positive':'') + '">' + (isReceita?'+':'') + euro(p.amount) + '</div></div>' +
+      '<div class="inv-actions-row">' +
+        (status === 'paused' ?
+          '<button type="button" class="btn ghost" data-action="recur-resume" data-id="' + p.id + '">Reativar</button>' :
+          '<button type="button" class="btn ghost" data-action="recur-pause" data-id="' + p.id + '">Pausar</button>') +
+        '<button type="button" class="btn ghost" data-action="delete" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" data-type="recorrente">Eliminar</button>' +
+      '</div>' +
+    '</div>';
+  }
+  function renderRecorrenciasView(content){
+    if (state.recurrencesLoading){
+      content.innerHTML = '<div class="skeleton">A carregar as recorrências…</div>';
+      return;
+    }
+    var list = (state.payments || []).filter(function(p){ return p.type === 'recorrente'; });
+    if (!list.length){
+      content.innerHTML = '<div class="empty"><h3>Ainda não há pagamentos recorrentes</h3>' +
+        '<p>Cria uma despesa ou receita e marca-a como "Recorrente" para apareceres aqui, sem teres de a repetir todos os meses.</p></div>';
+      return;
+    }
+    var despesas = list.filter(function(p){ return kindOf(p) === 'despesa'; });
+    var receitas = list.filter(function(p){ return kindOf(p) === 'receita'; });
+    var totalDespesas = despesas.reduce(function(s,p){ return s + (Number(p.amount)||0); }, 0);
+    var totalReceitas = receitas.reduce(function(s,p){ return s + (Number(p.amount)||0); }, 0);
+    var summaryHtml = '<div class="summary">' +
+      '<div class="saldo-row"><div class="label">Compromisso mensal recorrente</div><div class="saldo-value mono negative">-' + euro(totalDespesas) + '</div></div>' +
+      '<div class="stat-grid">' +
+        '<div class="stat-tile receita"><div class="stat-label">Receitas fixas</div><div class="stat-value mono">' + euro(totalReceitas) + '</div></div>' +
+        '<div class="stat-tile despesa"><div class="stat-label">Despesas fixas</div><div class="stat-value mono">' + euro(totalDespesas) + '</div></div>' +
+      '</div>' +
+    '</div>';
+    var sorted = list.slice().sort(function(a,b){ return (a.dueDay||0) - (b.dueDay||0); });
+    content.innerHTML = summaryHtml + sorted.map(recurrenceCardHtml).join('');
+  }
+
+  // ---------- Família ----------
+  var AVATAR_COLORS = ['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)','var(--cat-5)','var(--cat-6)','var(--cat-7)','var(--cat-8)'];
+  function memberInitials(m){
+    var base = (m.name && m.name.trim()) || m.email || '?';
+    var parts = base.trim().split(/\s+/);
+    var s = parts.length > 1 ? (parts[0][0] + parts[parts.length-1][0]) : base.slice(0,2);
+    return s.toUpperCase();
+  }
+  function memberColor(uid){
+    var key = uid || 'x';
+    var sum = 0;
+    for (var i = 0; i < key.length; i++){ sum += key.charCodeAt(i); }
+    return AVATAR_COLORS[sum % AVATAR_COLORS.length];
+  }
+  function memberRowHtml(m){
+    var isMe = m.uid === state.myUid;
+    var color = memberColor(m.uid || m.id);
+    return '<div class="member-row">' +
+      '<span class="avatar-badge" style="' + catTint(color) + '">' + escapeHtml(memberInitials(m)) + '</span>' +
+      '<div class="member-body"><div class="member-name">' + escapeHtml(m.name || 'Sem nome definido') +
+        (isMe ? '<span class="member-you-tag">Tu</span>' : '') + '</div>' +
+        (m.email ? '<div class="member-email">' + escapeHtml(m.email) + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }
+  function renderFamiliaView(content){
+    if (state.familyMembersLoading){
+      content.innerHTML = '<div class="skeleton">A carregar a família…</div>';
+      return;
+    }
+    var members = state.familyMembers || [];
+    var membersHtml = members.length ? members.map(memberRowHtml).join('') :
+      '<p class="hint">Ainda não há outros membros — partilha o código abaixo com quem quiseres juntar à família.</p>';
+    content.innerHTML =
+      '<div class="cat-card"><h3>Quem faz parte</h3>' + membersHtml + '</div>' +
+      '<div class="cat-card">' +
+        '<h3>O teu código de família</h3>' +
+        '<div class="field" style="margin-bottom:0;">' +
+          '<div class="hint" style="margin:0 0 10px;">Partilha este código com quem quiseres que veja os mesmos dados — essa pessoa cola-o ao criar a conta dela, em "Juntar com código".</div>' +
+          '<div style="display:flex; gap:8px;">' +
+            '<input type="text" readonly value="' + escapeHtml(state.familyId || '') + '" id="familyCodeDisplayView" style="flex:1;">' +
+            '<button type="button" class="btn ghost" data-action="copy-family-code" style="flex-shrink:0; padding:9px 14px; font-size:12.5px;">Copiar</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
   // ---------- Root render ----------
   var VIEW_LABELS = {
     home:'Início', month:'Orçamento', movimentos:'Movimentos', patrimonio:'Património',
-    year:'Visão anual', loan:'Créditos', investment:'Investimentos', poupancas:'Poupanças'
+    year:'Visão anual', loan:'Créditos', investment:'Investimentos', poupancas:'Poupanças',
+    recorrencias:'Recorrências', familia:'Família'
   };
-  var MORE_VIEWS = ['year','loan','investment','poupancas'];
+  var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia'];
 
   function render(){
     var isYear = state.view === 'year';
@@ -2778,6 +3032,8 @@
     var isHome = state.view === 'home';
     var isMovimentos = state.view === 'movimentos';
     var isMonth = state.view === 'month';
+    var isRecorrencias = state.view === 'recorrencias';
+    var isFamilia = state.view === 'familia';
 
     document.getElementById('periodLabel').textContent = isYear ? String(state.year) : monthLabelOf(state.monthKey);
     var headerSubtitle = document.getElementById('headerSubtitle');
@@ -2830,7 +3086,7 @@
       return;
     }
 
-    fab.hidden = isYear || isPatrimony;
+    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia;
 
     if (isHome){
       renderHomeView(content);
@@ -2846,6 +3102,10 @@
       renderSavingsView(content);
     } else if (isPatrimony){
       renderPatrimonyView(content);
+    } else if (isRecorrencias){
+      renderRecorrenciasView(content);
+    } else if (isFamilia){
+      renderFamiliaView(content);
     } else {
       renderMonthView(content);
     }
@@ -3491,7 +3751,32 @@
   try { fMyName.value = localStorage.getItem('contasMyName') || ''; } catch(e){}
   fMyName.addEventListener('change', function(){
     try { localStorage.setItem('contasMyName', fMyName.value.trim()); } catch(e){}
+    if (db) upsertMyFamilyMember();
   });
+
+  // ---------- Ecrã de boas-vindas (primeiro login após criar conta) ----------
+  var WELCOME_TIPS = [
+    {icon:'plusCircle', title:'Regista os teus pagamentos', note:'Usa o botão + para criares despesas e receitas. Marca-as como "Recorrente" e não precisas de as repetir todos os meses.'},
+    {icon:'users', title:'A tua família', note:'Em Mais → Família vês quem já faz parte e podes partilhar o código para juntar mais alguém aos mesmos dados.'},
+    {icon:'trending', title:'O teu património', note:'Regista créditos, investimentos e poupanças para veres tudo reunido na página Património.'}
+  ];
+  function renderWelcomeOverlay(){
+    document.getElementById('welcomeBody').innerHTML = WELCOME_TIPS.map(function(t){
+      return '<div class="welcome-tip"><span class="icon-badge sm">' + icon(t.icon) + '</span>' +
+        '<div><strong>' + t.title + '</strong><span class="note">' + t.note + '</span></div></div>';
+    }).join('');
+  }
+  document.getElementById('welcomeClose').addEventListener('click', function(){
+    document.getElementById('welcomeOverlay').classList.remove('open');
+  });
+  function maybeShowWelcome(){
+    var pending;
+    try { pending = localStorage.getItem('contasWelcomePending'); } catch(e){ pending = null; }
+    if (!pending) return;
+    try { localStorage.removeItem('contasWelcomePending'); } catch(e){}
+    renderWelcomeOverlay();
+    document.getElementById('welcomeOverlay').classList.add('open');
+  }
 
   Array.prototype.forEach.call(document.querySelectorAll('.swatch-row'), function(row){
     var kindForRow = row.getAttribute('data-swatch-for');
@@ -3518,29 +3803,9 @@
 
   document.getElementById('openSettings').addEventListener('click', function(){
     renderCategoryChips();
-    document.getElementById('familyCodeDisplay').value = state.familyId || '';
     settingsOverlay.classList.add('open');
   });
   document.getElementById('closeSettings').addEventListener('click', function(){ settingsOverlay.classList.remove('open'); });
-  document.getElementById('copyFamilyCodeBtn').addEventListener('click', function(){
-    var input = document.getElementById('familyCodeDisplay');
-    var btn = document.getElementById('copyFamilyCodeBtn');
-    var restore = function(){ btn.textContent = 'Copiar'; };
-    function fallbackCopy(){
-      input.removeAttribute('readonly');
-      input.focus();
-      input.select();
-      try { document.execCommand('copy'); } catch (e) {}
-      input.setAttribute('readonly', 'readonly');
-    }
-    var afterCopy = function(){ btn.textContent = 'Copiado!'; setTimeout(restore, 1500); };
-    if (navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(input.value).then(afterCopy).catch(function(){ fallbackCopy(); afterCopy(); });
-    } else {
-      fallbackCopy();
-      afterCopy();
-    }
-  });
   document.getElementById('logoutBtn').addEventListener('click', function(){
     settingsOverlay.classList.remove('open');
     if (window.__ContasApp && window.__ContasApp.logout){
@@ -3755,6 +4020,30 @@
     } else if (action === 'mov-filter'){
       state.movFilter = actionEl.getAttribute('data-filter');
       render();
+    } else if (action === 'recur-pause'){
+      pauseRecurrence(actionEl.getAttribute('data-id'));
+    } else if (action === 'recur-resume'){
+      resumeRecurrence(actionEl.getAttribute('data-id'));
+    } else if (action === 'copy-family-code'){
+      var codeInput = document.getElementById('familyCodeDisplayView');
+      var codeBtn = actionEl;
+      var codeVal = state.familyId || '';
+      var restoreCodeLabel = function(){ codeBtn.textContent = 'Copiar'; };
+      var doneCodeCopy = function(){ codeBtn.textContent = 'Copiado!'; setTimeout(restoreCodeLabel, 1500); };
+      function fallbackCodeCopy(){
+        if (!codeInput) return;
+        codeInput.removeAttribute('readonly');
+        codeInput.focus();
+        codeInput.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        codeInput.setAttribute('readonly', 'readonly');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(codeVal).then(doneCodeCopy).catch(function(){ fallbackCodeCopy(); doneCodeCopy(); });
+      } else {
+        fallbackCodeCopy();
+        doneCodeCopy();
+      }
     }
   });
 
@@ -3781,6 +4070,7 @@
     {nav:'loan', icon:'landmark', label:'Créditos'},
     {nav:'investment', icon:'trending', label:'Investimentos'},
     {nav:'poupancas', icon:'piggy', label:'Poupanças por objetivo'},
+    {nav:'recorrencias', icon:'refresh', label:'Recorrências'},
     {nav:'familia', icon:'users', label:'Família'},
     {nav:'definicoes', icon:'more', label:'Definições'}
   ];
@@ -3815,9 +4105,8 @@
     if (!btn) return;
     var target = btn.getAttribute('data-more');
     closeMoreSheet();
-    if (target === 'definicoes' || target === 'familia'){
+    if (target === 'definicoes'){
       renderCategoryChips();
-      document.getElementById('familyCodeDisplay').value = state.familyId || '';
       settingsOverlay.classList.add('open');
     } else {
       switchView(target);
@@ -3853,6 +4142,14 @@
     else if (view === 'poupancas'){ if (db) return loadSavingsGoals(); }
     else if (view === 'home' || view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals()]); }
     else if (view === 'month' || view === 'movimentos'){ if (db) return loadMonth(state.monthKey); }
+    else if (view === 'recorrencias'){
+      if (db){
+        state.recurrencesLoading = true;
+        render();
+        return loadPayments().then(function(){ state.recurrencesLoading = false; render(); });
+      }
+    }
+    else if (view === 'familia'){ if (db) return loadFamilyMembers(); }
     render();
   }
 
@@ -3994,16 +4291,20 @@
     showLogin: function(){
       document.getElementById('loginScreen').hidden = false;
     },
-    start: function(dbAdapter, familyId){
+    start: function(dbAdapter, familyId, profile){
       document.getElementById('loginScreen').hidden = true;
       db = dbAdapter;
       state.dbAvailable = true;
       state.familyId = familyId || null;
+      state.myUid = (profile && profile.uid) || null;
+      state.myEmail = (profile && profile.email) || null;
       loadSettings();
       loadMonth(state.monthKey);
       loadSavingsGoals();
       loadLoans();
       loadInvestments();
+      upsertMyFamilyMember();
+      maybeShowWelcome();
     },
     noFamily: function(){
       document.getElementById('loginScreen').hidden = true;
@@ -4135,6 +4436,7 @@
           var finalFamilyId = familyId || cred.user.uid;
           return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: finalFamilyId }).then(function(){
             markLoginNow();
+            try { localStorage.setItem('contasWelcomePending', '1'); } catch (e) {}
             // Recarrega para arrancar pelo caminho normal de boot (login
             // já feito, users/{uid} já criado) em vez de duplicar aqui a
             // lógica de arranque da app.
@@ -4175,7 +4477,7 @@
                 window.__ContasApp.noFamily();
                 return;
               }
-              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId);
+              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email});
             }).catch(function(err){
               window.__ContasApp.fail(err);
             });
