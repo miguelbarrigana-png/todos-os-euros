@@ -297,9 +297,19 @@
   .group-list .item:first-child{border-top-left-radius:var(--radius-md); border-top-right-radius:var(--radius-md);}
   .group-list .item:last-child{border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);}
 
-  .item{display:flex; align-items:center; gap:12px; padding:13px 14px; border-bottom:1px solid var(--border); position:relative;}
+  .item{border-bottom:1px solid var(--border); position:relative; overflow:hidden;}
   .item:last-child{border-bottom:none;}
   .item.overdue{background:var(--danger-soft);}
+  .item-swipe-body{display:flex; align-items:center; gap:12px; padding:13px 14px; position:relative; z-index:1; background:var(--surface); touch-action:pan-y;}
+  .item.overdue .item-swipe-body{background:var(--danger-soft);}
+  .item.swipe-anim .item-swipe-body{transition:transform .2s ease;}
+  .item-swipe-actions{position:absolute; top:0; right:0; bottom:0; display:flex; z-index:0; width:148px;}
+  .swipe-action-btn{flex:1; border:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:10.5px; font-weight:700; color:#fff; cursor:pointer; font-family:inherit; padding:0;}
+  .swipe-action-btn .icon{width:17px; height:17px;}
+  .swipe-action-btn.pay{background:var(--accent);}
+  .item.paid .swipe-action-btn.pay{background:var(--text-faint);}
+  .swipe-action-btn.remove{background:var(--danger);}
+  @media (hover:hover){ .swipe-action-btn:hover{filter:brightness(1.08);} }
   .overdue-badge{display:inline-block; padding:1px 7px; border-radius:999px; background:var(--danger); color:#fff; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin-left:2px;}
   .check{
     width:24px;height:24px;border-radius:50%;border:2px solid var(--border); background:transparent; flex-shrink:0;
@@ -391,6 +401,29 @@
   }
   .overlay.open .sheet{transform:translateY(0);}
   .sheet-handle{width:36px;height:4px;background:var(--border);border-radius:99px;margin:8px auto 14px;}
+
+  /* ---------- Toast notifications ---------- */
+  .toast-stack{position:fixed; left:0; right:0; bottom:calc(78px + env(safe-area-inset-bottom)); z-index:200; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none; padding:0 16px;}
+  .toast{max-width:420px; width:100%; background:var(--text); color:var(--bg); font-size:13px; font-weight:600; padding:11px 16px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.25); display:flex; align-items:center; gap:8px; opacity:0; transform:translateY(10px) scale(.96); transition:opacity .22s ease, transform .22s ease;}
+  .toast.show{opacity:1; transform:translateY(0) scale(1);}
+  .toast .icon{width:16px; height:16px; flex-shrink:0;}
+
+  /* ---------- Microinterações ---------- */
+  @keyframes contentFadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  #content.anim-in > *{animation:contentFadeIn .32s ease both;}
+  #content.anim-in > *:nth-child(1){animation-delay:0ms;}
+  #content.anim-in > *:nth-child(2){animation-delay:40ms;}
+  #content.anim-in > *:nth-child(3){animation-delay:80ms;}
+  #content.anim-in > *:nth-child(4){animation-delay:120ms;}
+  #content.anim-in > *:nth-child(n+5){animation-delay:160ms;}
+  .btn:active, .icon-btn:active, .menu-sheet-item:active, .filter-chip:active{transform:scale(.97);}
+  .btn, .icon-btn, .menu-sheet-item, .filter-chip{transition:transform .12s ease;}
+  @keyframes checkPop{ 0%{transform:scale(1);} 45%{transform:scale(1.22);} 100%{transform:scale(1);} }
+  .check.pop-once{animation:checkPop .28s ease;}
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important;}
+  }
   .sheet h2{font-size:19px; margin-bottom:16px;}
   .field{margin-bottom:14px;}
   .field label{display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin-bottom:6px;}
@@ -1071,6 +1104,8 @@
   </div>
 </div>
 
+<div class="toast-stack" id="toastStack" aria-live="polite" role="status"></div>
+
 <script>
 (function(){
   "use strict";
@@ -1164,7 +1199,8 @@
     users: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.5" cy="9" r="2.3"/><path d="M15 14.2c2.7.3 4.5 2.6 4.5 5.8"/>',
     alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9"/>',
     check: '<path d="M4 12l5 5 11-11"/>',
-    coins: '<circle cx="9" cy="9" r="6"/><path d="M14.5 8.3A6 6 0 1 1 8.3 14.5"/><path d="M9 6.8v4.4M7 9h4"/>'
+    coins: '<circle cx="9" cy="9" r="6"/><path d="M14.5 8.3A6 6 0 1 1 8.3 14.5"/><path d="M9 6.8v4.4M7 9h4"/>',
+    trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>'
   };
   function icon(name, cls){
     var d = ICON_PATHS[name] || ICON_PATHS.tag;
@@ -1481,6 +1517,27 @@
     });
   }
 
+  // ---------- Toast (confirmação rápida, não bloqueante) ----------
+  function showToast(message, opts){
+    var stack = document.getElementById('toastStack');
+    if (!stack) return;
+    var iconName = (opts && opts.icon) || 'check';
+    var el = document.createElement('div');
+    el.className = 'toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = icon(iconName) + '<span></span>';
+    el.querySelector('span').textContent = message;
+    stack.appendChild(el);
+    // Duas frames para garantir que o browser regista o estado inicial
+    // antes de adicionar "show" — caso contrário a transição não corre.
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ el.classList.add('show'); }); });
+    var life = (opts && opts.duration) || 2600;
+    setTimeout(function(){
+      el.classList.remove('show');
+      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 260);
+    }, life);
+  }
+
   // ---------- Sample / empty state ----------
   var EXAMPLE_ENTRIES = [
     {id:'ex0', name:'Salário', amount:1450, dueDay:1, type:'recorrente', kind:'receita', category:'salario', paid:true, example:true},
@@ -1608,7 +1665,22 @@
     });
   }
 
-  function togglePaid(entry){ return setPaid(entry, !entry.paid); }
+  // A animação de "pop" só deve correr quando o estado MUDA de verdade
+  // (não sempre que a linha é reconstruída num render por outro motivo,
+  // ex.: abrir/fechar uma categoria) — por isso é acionada aqui, a apontar
+  // ao botão concreto já recriado pelo render(), e não por CSS ligado
+  // apenas à presença da classe "paid".
+  function togglePaid(entry){
+    var willBePaid = !entry.paid;
+    var result = setPaid(entry, willBePaid);
+    if (willBePaid){
+      requestAnimationFrame(function(){
+        var btn = document.querySelector('.check[data-id="' + entry.id + '"]');
+        if (btn) btn.classList.add('pop-once');
+      });
+    }
+    return result;
+  }
 
   function setActualAmount(entry, value){
     var prev = entry.actualAmount;
@@ -2098,29 +2170,41 @@
     var meta = '<span class="type-dot" style="background:' + cat.color + '"></span>' + escapeHtml(cat.label) + ' · ' + typeLabel + ' · dia ' + e.dueDay +
       (hasOverride ? ' · habitual ' + euro(e.amount) : '') +
       (overdue ? '<span class="overdue-badge">Atrasado</span>' : '');
+    var swipeActionsHtml = isExample ? '' :
+      '<div class="item-swipe-actions">' +
+        '<button type="button" class="swipe-action-btn pay" data-action="toggle" data-id="' + e.id + '" aria-label="Marcar como ' + (isReceita?'recebido':'pago') + '">' +
+          icon(e.paid ? 'x' : 'check') + '<span>' + (e.paid ? 'Anular' : (isReceita?'Recebido':'Pago')) + '</span>' +
+        '</button>' +
+        '<button type="button" class="swipe-action-btn remove" data-action="delete" data-id="' + e.paymentId + '" data-name="' + escapeHtml(e.name) + '" data-type="' + e.type + '" aria-label="Eliminar">' +
+          icon('trash') + '<span>Eliminar</span>' +
+        '</button>' +
+      '</div>';
     return (
       '<div class="item ' + (e.paid?'paid':'') + (overdue?' overdue':'') + '" data-entry-id="' + e.id + '">' +
-        '<button class="check ' + (e.paid?'paid':'') + ' ' + (isReceita?'receita':'') + '" data-action="toggle" data-id="' + e.id + '" ' + (isExample?'disabled':'') + ' aria-label="Marcar como ' + (isReceita?'recebido':'pago') + '">' +
-          '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-        '</button>' +
-        '<span class="item-icon-badge" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
-        '<div class="item-body">' +
-          '<div class="item-name">' + escapeHtml(e.name) + '</div>' +
-          '<div class="item-meta">' + meta + '</div>' +
-        '</div>' +
-        '<div class="item-amount mono ' + (isReceita?'receita':'') + '">' + (isReceita?'+':'') + euro(eff) + '</div>' +
-        (isExample ? '' :
-          '<button class="item-menu-btn" data-action="menu" data-id="' + e.id + '" aria-label="Mais opções">' +
-            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>' +
+        swipeActionsHtml +
+        '<div class="item-swipe-body">' +
+          '<button class="check ' + (e.paid?'paid':'') + ' ' + (isReceita?'receita':'') + '" data-action="toggle" data-id="' + e.id + '" ' + (isExample?'disabled':'') + ' aria-label="Marcar como ' + (isReceita?'recebido':'pago') + '">' +
+            '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
           '</button>' +
-          (menuOpen ?
-            '<div class="item-actions">' +
-              '<button data-action="edit" data-id="' + e.paymentId + '">Editar</button>' +
-              '<button data-action="adjust-amount" data-id="' + e.paymentId + '">Ajustar valor</button>' +
-              (e.type === 'pontual' ? '<button data-action="duplicate" data-id="' + e.id + '">Duplicar</button>' : '') +
-              '<button class="danger" data-action="delete" data-id="' + e.paymentId + '" data-name="' + escapeHtml(e.name) + '" data-type="' + e.type + '">Eliminar</button>' +
-            '</div>' : '')
-        ) +
+          '<span class="item-icon-badge" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
+          '<div class="item-body">' +
+            '<div class="item-name">' + escapeHtml(e.name) + '</div>' +
+            '<div class="item-meta">' + meta + '</div>' +
+          '</div>' +
+          '<div class="item-amount mono ' + (isReceita?'receita':'') + '">' + (isReceita?'+':'') + euro(eff) + '</div>' +
+          (isExample ? '' :
+            '<button class="item-menu-btn" data-action="menu" data-id="' + e.id + '" aria-label="Mais opções">' +
+              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>' +
+            '</button>' +
+            (menuOpen ?
+              '<div class="item-actions">' +
+                '<button data-action="edit" data-id="' + e.paymentId + '">Editar</button>' +
+                '<button data-action="adjust-amount" data-id="' + e.paymentId + '">Ajustar valor</button>' +
+                (e.type === 'pontual' ? '<button data-action="duplicate" data-id="' + e.id + '">Duplicar</button>' : '') +
+                '<button class="danger" data-action="delete" data-id="' + e.paymentId + '" data-name="' + escapeHtml(e.name) + '" data-type="' + e.type + '">Eliminar</button>' +
+              '</div>' : '')
+          ) +
+        '</div>' +
       '</div>'
     );
   }
@@ -3299,10 +3383,10 @@
     if (!pendingDelete) return;
     var id = pendingDelete; var kind = pendingDeleteKind; pendingDelete = null;
     confirmOverlay.classList.remove('open');
-    if (kind === 'loan') deleteLoan(id);
-    else if (kind === 'investment') deleteInvestment(id);
-    else if (kind === 'savings') deleteSavingsGoal(id);
-    else deletePayment(id);
+    if (kind === 'loan'){ deleteLoan(id); showToast('Crédito removido', {icon:'x'}); }
+    else if (kind === 'investment'){ deleteInvestment(id); showToast('Investimento removido', {icon:'x'}); }
+    else if (kind === 'savings'){ deleteSavingsGoal(id); showToast('Poupança removida', {icon:'x'}); }
+    else { deletePayment(id); showToast('Eliminado', {icon:'x'}); }
   });
 
   // ---------- Ajustar valor (previsto vs. real) ----------
@@ -3464,6 +3548,7 @@
     var todayStr = new Date().toISOString().slice(0,10);
     closeSnapshotSheet();
     addLoanSnapshot(loanId, todayStr, value);
+    showToast('Valor atualizado', {icon:'check'});
   });
 
   // ---------- Investir: formulário de investimento ----------
@@ -3584,6 +3669,7 @@
     var investmentId = pendingContribInvestmentId;
     closeInvContribSheet();
     addInvestmentContribution(investmentId, value);
+    showToast('Aporte registado', {icon:'check'});
   });
 
   // ---------- Investir: atualizar valor atual ----------
@@ -3614,6 +3700,7 @@
     var investmentId = pendingInvSnapshotId;
     closeInvSnapshotSheet();
     addInvestmentSnapshot(investmentId, value);
+    showToast('Valor atualizado', {icon:'check'});
   });
 
   // ---------- Poupanças por objetivo: criar / editar ----------
@@ -3727,6 +3814,7 @@
     var signedAmount = selectedMoveType === 'withdraw' ? -value : value;
     closeSavingsMoveSheet();
     addSavingsMovement(goalId, signedAmount);
+    showToast(selectedMoveType === 'withdraw' ? 'Levantamento registado' : 'Adicionado à poupança', {icon:'piggy'});
   });
 
   // ---------- Definições ----------
@@ -3888,6 +3976,96 @@
     });
   });
 
+  // ---------- Swipe-to-act gestures (deslizar para marcar pago / eliminar) ----------
+  // Attached once on #content and delegated to any ".item[data-entry-id]" row
+  // rendered inside it (Movimentos, Orçamento por categoria, listas por dia).
+  // Deliberately conservative: only responds once a touch is clearly more
+  // horizontal than vertical (a small dead-zone decides the direction once),
+  // so it never fights with the page's normal vertical scrolling — a touch
+  // that turns out to be a vertical scroll is left completely alone (no
+  // preventDefault ever called on it).
+  (function setupItemSwipeGestures(){
+    var contentEl = document.getElementById('content');
+    var SWIPE_WIDTH = 148;
+    var OPEN_THRESHOLD = SWIPE_WIDTH / 2;
+    var touchState = null;
+    var openItemEl = null;
+
+    function closeItem(itemEl){
+      if (!itemEl) return;
+      var body = itemEl.querySelector('.item-swipe-body');
+      itemEl.classList.add('swipe-anim');
+      itemEl.classList.remove('swipe-open');
+      if (body) body.style.transform = '';
+      if (openItemEl === itemEl) openItemEl = null;
+    }
+    function openItem(itemEl){
+      if (!itemEl) return;
+      var body = itemEl.querySelector('.item-swipe-body');
+      itemEl.classList.add('swipe-anim');
+      itemEl.classList.add('swipe-open');
+      if (body) body.style.transform = 'translateX(-' + SWIPE_WIDTH + 'px)';
+      openItemEl = itemEl;
+    }
+
+    contentEl.addEventListener('touchstart', function(ev){
+      if (ev.touches.length !== 1) return;
+      var itemEl = ev.target.closest('.item[data-entry-id]');
+      if (!itemEl){
+        if (openItemEl) closeItem(openItemEl);
+        touchState = null;
+        return;
+      }
+      if (ev.target.closest('.item-swipe-actions')) return; // let taps on the revealed buttons behave as normal taps
+      if (openItemEl && openItemEl !== itemEl) closeItem(openItemEl);
+      if (!itemEl.querySelector('.item-swipe-actions')){ touchState = null; return; } // example rows have nothing to reveal
+      var body = itemEl.querySelector('.item-swipe-body');
+      if (!body) return;
+      var t = ev.touches[0];
+      touchState = {
+        itemEl: itemEl,
+        body: body,
+        startX: t.clientX,
+        startY: t.clientY,
+        startTranslate: itemEl.classList.contains('swipe-open') ? -SWIPE_WIDTH : 0,
+        dir: null
+      };
+      itemEl.classList.remove('swipe-anim');
+    }, {passive:true});
+
+    contentEl.addEventListener('touchmove', function(ev){
+      if (!touchState || ev.touches.length !== 1) return;
+      var t = ev.touches[0];
+      var dx = t.clientX - touchState.startX;
+      var dy = t.clientY - touchState.startY;
+      if (!touchState.dir){
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        touchState.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (touchState.dir !== 'h') return; // vertical: hand it back to the browser untouched
+      ev.preventDefault();
+      var translate = touchState.startTranslate + dx;
+      if (translate > 0) translate = 0;
+      if (translate < -SWIPE_WIDTH) translate = -SWIPE_WIDTH;
+      touchState.body.style.transform = 'translateX(' + translate + 'px)';
+      touchState.lastTranslate = translate;
+    }, {passive:false});
+
+    function endSwipe(){
+      if (!touchState) return;
+      var itemEl = touchState.itemEl;
+      if (touchState.dir === 'h'){
+        var finalTranslate = touchState.lastTranslate !== undefined ? touchState.lastTranslate : touchState.startTranslate;
+        if (finalTranslate <= -OPEN_THRESHOLD) openItem(itemEl); else closeItem(itemEl);
+      } else {
+        itemEl.classList.add('swipe-anim');
+      }
+      touchState = null;
+    }
+    contentEl.addEventListener('touchend', endSwipe, {passive:true});
+    contentEl.addEventListener('touchcancel', endSwipe, {passive:true});
+  })();
+
   // ---------- Delegated content clicks (handles HTML rows and inline SVG chart) ----------
   document.getElementById('content').addEventListener('click', function(ev){
     var actionEl = ev.target.closest('[data-action]');
@@ -4022,8 +4200,10 @@
       render();
     } else if (action === 'recur-pause'){
       pauseRecurrence(actionEl.getAttribute('data-id'));
+      showToast('Pausado', {icon:'bell'});
     } else if (action === 'recur-resume'){
       resumeRecurrence(actionEl.getAttribute('data-id'));
+      showToast('Reativado', {icon:'check'});
     } else if (action === 'copy-family-code'){
       var codeInput = document.getElementById('familyCodeDisplayView');
       var codeBtn = actionEl;
@@ -4153,6 +4333,17 @@
     render();
   }
 
+  // Reinicia a animação de entrada do conteúdo (remover + forçar reflow +
+  // voltar a adicionar a classe é o que faz o browser repetir uma animação
+  // CSS que já correu antes). Só é chamado ao trocar de página — não em
+  // cada pequena atualização de render(), para não ficar a "piscar".
+  function playContentEnterAnim(){
+    var content = document.getElementById('content');
+    if (!content) return;
+    content.classList.remove('anim-in');
+    void content.offsetWidth;
+    content.classList.add('anim-in');
+  }
   function switchView(view){
     if (view === 'mais'){ openMoreSheet(); return; }
     closeMoreSheet();
@@ -4160,6 +4351,7 @@
     if (view === state.view) return;
     state.view = view;
     state.openMenuId = null;
+    playContentEnterAnim();
     loadForView(view);
   }
 
@@ -4306,6 +4498,74 @@
       errorEl.style.display = 'block';
     });
   });
+
+  // ---------- Acessibilidade das sheets/overlays (genérico, cobre todas) ----------
+  // Mapeia cada overlay para o botão que já usa para fechar "normalmente"
+  // (Cancelar/Fechar/X) — a tecla Esc simula um clique nesse botão, para
+  // herdar exatamente a mesma limpeza de estado que esse botão já faz, sem
+  // duplicar lógica por cada sheet.
+  var OVERLAY_CANCEL_BUTTONS = {
+    formOverlay:'cancelForm', confirmOverlay:'confirmCancel', amountOverlay:'amountCancel',
+    loanFormOverlay:'cancelLoanForm', snapshotOverlay:'snapshotCancel',
+    investmentFormOverlay:'cancelInvestmentForm', invContribOverlay:'invContribCancel', invSnapshotOverlay:'invSnapshotCancel',
+    savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel',
+    welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
+    moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd'
+  };
+  function topOpenOverlay(){
+    var openOverlays = document.querySelectorAll('.overlay.open');
+    return openOverlays.length ? openOverlays[openOverlays.length - 1] : null;
+  }
+  function focusableIn(container){
+    var nodes = container.querySelectorAll('input, select, textarea, button:not([disabled]), a[href]');
+    return Array.prototype.filter.call(nodes, function(el){ return el.offsetParent !== null; });
+  }
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape'){
+      var top = topOpenOverlay();
+      if (!top) return;
+      var btnId = OVERLAY_CANCEL_BUTTONS[top.id];
+      var btn = btnId ? document.getElementById(btnId) : null;
+      if (btn){ btn.click(); } else { top.classList.remove('open'); }
+      return;
+    }
+    if (ev.key === 'Tab'){
+      var topT = topOpenOverlay();
+      if (!topT) return;
+      var list = focusableIn(topT);
+      if (!list.length) return;
+      var first = list[0], last = list[list.length - 1];
+      if (ev.shiftKey && document.activeElement === first){
+        ev.preventDefault(); last.focus();
+      } else if (!ev.shiftKey && document.activeElement === last){
+        ev.preventDefault(); first.focus();
+      }
+    }
+  });
+  // Foco automático no primeiro campo ao abrir uma sheet, e devolve o foco
+  // a quem a abriu quando fecha — sem precisar de tocar em cada open/close
+  // individual, observa diretamente a classe "open" de cada overlay.
+  (function setupOverlayFocusManagement(){
+    var lastFocused = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.overlay'), function(ov){
+      var wasOpen = ov.classList.contains('open');
+      new MutationObserver(function(){
+        var isOpen = ov.classList.contains('open');
+        if (isOpen && !wasOpen){
+          lastFocused = document.activeElement;
+          setTimeout(function(){
+            var list = focusableIn(ov);
+            if (list.length) list[0].focus();
+          }, 60);
+        } else if (!isOpen && wasOpen){
+          if (lastFocused && document.body.contains(lastFocused) && typeof lastFocused.focus === 'function'){
+            lastFocused.focus();
+          }
+        }
+        wasOpen = isOpen;
+      }).observe(ov, {attributes:true, attributeFilter:['class']});
+    });
+  })();
 
   // ---------- Boot bridge for the Firebase module script below ----------
   render();
