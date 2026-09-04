@@ -1573,6 +1573,18 @@
     return {assets:assetsTotal, liabilities:liabilitiesTotal, net:assetsTotal-liabilitiesTotal, savingsTotal:savingsTotal};
   }
 
+  // Ordena por data e, em caso de empate (ex.: duas atualizações de valor no
+  // mesmo dia), pelo instante de criação — sem isto, um sort só por "date"
+  // (que só tem granularidade ao dia) podia deixar o registo mais recente
+  // ANTES do anterior, porque a ordem que o Firestore devolve para docs
+  // empatados na data não é garantida. Isso fazia com que atualizar o valor
+  // de um investimento/crédito uma segunda vez no mesmo dia parecesse não
+  // ter efeito nenhum — [snaps.length-1] continuava a apanhar o valor antigo.
+  function sortByDateThenCreated(a, b){
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    var ca = a.createdAt || '', cb = b.createdAt || '';
+    return ca < cb ? -1 : (ca > cb ? 1 : 0);
+  }
   function daysBetween(aStr, bStr){
     var a = new Date(aStr + 'T00:00:00'); var b = new Date(bStr + 'T00:00:00');
     return Math.round((b - a) / 86400000);
@@ -1891,7 +1903,7 @@
       var snapPromises = state.loans.map(function(l){
         return db.collection('loanSnapshots').where('loanId','==',l.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-          list.sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+          list.sort(sortByDateThenCreated);
           state.loanSnapshots[l.id] = list;
         });
       });
@@ -1939,12 +1951,12 @@
       state.investments.forEach(function(inv){
         subPromises.push(db.collection('investmentContributions').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-          list.sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+          list.sort(sortByDateThenCreated);
           state.investmentContributions[inv.id] = list;
         }));
         subPromises.push(db.collection('investmentSnapshots').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-          list.sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+          list.sort(sortByDateThenCreated);
           state.investmentSnapshots[inv.id] = list;
         }));
       });
@@ -2000,7 +2012,7 @@
       var subPromises = state.savingsGoals.map(function(g){
         return db.collection('savingsMovements').where('goalId','==',g.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-          list.sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+          list.sort(sortByDateThenCreated);
           state.savingsMovements[g.id] = list;
         });
       });
