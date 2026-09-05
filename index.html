@@ -12,9 +12,11 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <title>MAB360</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"></noscript>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-
   :root{
     /* MAB360 design tokens — light */
     --bg:#f7f8f7;
@@ -175,6 +177,24 @@
   .swatch.active{border-color:var(--text);}
   .deleted-row{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px;}
   .deleted-row:last-child{border-bottom:none;}
+
+  /* ---------- Espaços Financeiros: seletor ---------- */
+  .space-switch-row{display:flex; justify-content:flex-start; margin-bottom:14px;}
+  .space-switch-btn{display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:6px 12px 6px 6px; box-shadow:var(--shadow); cursor:pointer; max-width:100%;}
+  .space-switch-btn .icon-badge{flex-shrink:0;}
+  .space-switch-name{font-size:13px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;}
+  .space-switch-caret{color:var(--text-faint); font-size:12px;}
+  .space-switch-item{position:relative;}
+  .space-switch-item-text{display:flex; flex-direction:column; align-items:flex-start; gap:1px; flex:1; min-width:0;}
+  .space-switch-item-name{font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;}
+  .space-switch-item-meta{font-size:11.5px; color:var(--text-faint); font-weight:600;}
+  .space-switch-item.active{background:var(--accent-soft);}
+  .space-switch-item .icon.check-mark{color:var(--accent-strong); flex-shrink:0;}
+  .space-switch-item-edit{flex-shrink:0; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-faint); background:transparent; border:none; cursor:pointer;}
+  .space-switch-item-edit:hover{background:var(--surface-2); color:var(--text);}
+  .sidebar-space-switch{display:none;}
+  .select-chip{display:inline-flex; align-items:center; gap:6px; padding:8px 13px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted); font-size:12.5px; font-weight:700; cursor:pointer;}
+  .select-chip.active{background:var(--accent-soft); color:var(--accent-ink); border-color:transparent;}
 
   .period-switch-row{display:flex; justify-content:flex-start; margin-bottom:16px;}
   .month-switch{display:flex; align-items:center; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; box-shadow:var(--shadow);}
@@ -666,6 +686,14 @@
     .fab-wrap{margin-left:222px; max-width:760px;}
     .fab{bottom:calc(28px + env(safe-area-inset-bottom));}
     .topbar{display:none;}
+    .space-switch-row{display:none;}
+    .sidebar-space-switch{
+      display:flex; align-items:center; gap:9px; width:100%; margin:0 0 14px; padding:9px 10px;
+      background:var(--surface-2); border:1px solid var(--border); border-radius:12px; cursor:pointer; text-align:left;
+    }
+    .sidebar-space-switch-text{display:flex; flex-direction:column; gap:0; min-width:0; flex:1;}
+    .sidebar-space-switch-label{font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint);}
+    .sidebar-space-switch-name{font-size:13px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   }
   @media (min-width:1200px){
     .shell{max-width:960px;}
@@ -861,6 +889,14 @@
     </div>
   </div>
 
+  <div class="space-switch-row" id="spaceSwitchRow">
+    <button type="button" class="space-switch-btn" id="spaceSwitchBtn">
+      <span class="icon-badge sm" id="spaceSwitchIcon"></span>
+      <span class="space-switch-name" id="spaceSwitchName">—</span>
+      <span class="space-switch-caret">⌄</span>
+    </button>
+  </div>
+
   <div class="period-switch-row" id="periodSwitchRow" hidden>
     <div class="month-switch" id="monthSwitch">
       <button id="prevPeriod" aria-label="Período anterior">‹</button>
@@ -880,6 +916,14 @@
 
 <nav class="bottom-nav" id="bottomNav">
   <div class="nav-brand" id="navBrand"><span class="nav-brand-mark"><img src="./icons/logo-mark.png" alt="MAB360"></span><span>MAB360</span></div>
+  <button type="button" class="sidebar-space-switch" id="sidebarSpaceSwitchBtn">
+    <span class="icon-badge sm" id="sidebarSpaceSwitchIcon"></span>
+    <span class="sidebar-space-switch-text">
+      <span class="sidebar-space-switch-label">Espaço atual</span>
+      <span class="sidebar-space-switch-name" id="sidebarSpaceSwitchName">—</span>
+    </span>
+    <span class="space-switch-caret">⌄</span>
+  </button>
   <button type="button" class="nav-btn active" data-nav="home"></button>
   <button type="button" class="nav-btn" data-nav="month"></button>
   <button type="button" class="nav-btn" data-nav="movimentos"></button>
@@ -911,6 +955,91 @@
     <div id="quickAddList"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="closeQuickAdd">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Espaços Financeiros: seletor rápido + assistente de criação ======= -->
+<div class="overlay" id="spaceSwitchOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="spaceSwitchTitle">Meus Espaços</h2>
+    <div id="spaceSwitchList"></div>
+    <button type="button" class="menu-sheet-item" id="createSpaceBtn">
+      <span class="icon-badge sm"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span>Criar novo espaço</span>
+    </button>
+    <button type="button" class="link-btn" id="toggleArchivedSpaces" style="margin-top:10px; display:block;">Espaços arquivados</button>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="closeSpaceSwitch">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="editSpaceOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Editar espaço</h2>
+    <div class="field">
+      <label for="fSpaceEditName">Nome</label>
+      <input type="text" id="fSpaceEditName" maxlength="40">
+    </div>
+    <div class="field" id="editSpaceArchiveField">
+      <button type="button" class="btn ghost" id="editSpaceArchiveBtn">Arquivar espaço</button>
+      <div class="hint">Deixa de aparecer no seletor principal, mas os dados continuam guardados e acessíveis em Espaços arquivados.</div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="closeEditSpace">Cancelar</button>
+      <button type="button" class="btn primary" id="saveEditSpace">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="spaceFormOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Criar espaço</h2>
+    <div class="field">
+      <label for="fSpaceName">Nome do espaço</label>
+      <input type="text" id="fSpaceName" placeholder="Ex.: Férias Algarve 2027" maxlength="40">
+    </div>
+    <div class="field">
+      <label>Tipo</label>
+      <div class="segmented" id="spaceTypeSeg">
+        <button type="button" data-space-type="mensal" class="active">Mensal</button>
+        <button type="button" data-space-type="temporario">Temporário</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Visibilidade</label>
+      <div class="segmented" id="spaceVisibilitySeg">
+        <button type="button" data-space-visibility="partilhado" class="active">Partilhado</button>
+        <button type="button" data-space-visibility="privado">Privado</button>
+      </div>
+      <div class="hint" id="spaceVisibilityHint">Visível para os membros da família que escolheres abaixo.</div>
+    </div>
+    <div class="field" id="spaceMembersField">
+      <label>Membros com acesso</label>
+      <div id="spaceMembersList" class="chip-row"></div>
+    </div>
+    <div class="field" id="spaceDatesField" hidden>
+      <label>Período</label>
+      <div class="date-range-row" style="display:flex; gap:8px;">
+        <input type="date" id="fSpaceStartDate" style="flex:1;">
+        <input type="date" id="fSpaceEndDate" style="flex:1;">
+      </div>
+    </div>
+    <div class="field" id="spaceBudgetField" hidden>
+      <label for="fSpaceBudget">Orçamento total</label>
+      <input type="number" id="fSpaceBudget" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+    </div>
+    <div class="field">
+      <label>Categorias iniciais</label>
+      <div class="chip-row" id="spaceTemplateChips"></div>
+    </div>
+    <div class="field" id="formError" style="display:none;"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="closeSpaceForm">Cancelar</button>
+      <button type="button" class="btn primary" id="submitSpaceForm">Criar espaço</button>
     </div>
   </div>
 </div>
@@ -1426,7 +1555,13 @@
     familyMembersLoading: true,
     recurrencesLoading: true,
     categoryBudgets: {},           // categoryKey -> valor-alvo mensal definido manualmente (não varia por mês)
-    categoryBudgetsLoading: true
+    categoryBudgetsLoading: true,
+    // ---------- Espaços Financeiros ----------
+    spaces: [],                    // todos os espaços não arquivados desta família, visíveis para esta conta
+    archivedSpaces: [],
+    spacesLoading: true,
+    activeSpaceId: null,           // id do espaço atualmente ativo (por omissão = familyId)
+    spacesView: 'active'           // 'active' | 'archived' — dentro do ecrã "Espaços"
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -1520,12 +1655,69 @@
   };
   function investmentTypeIconOf(inv){ return INVESTMENT_TYPE_ICONS[inv.type] || 'tag'; }
 
-  // User-managed additions/removals on top of the built-in categories (synced via Firestore).
-  var settingsCategoryConfig = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+  // ---------- Espaços Financeiros — constantes ----------
+  // Tipos preparados no modelo de dados (inclui 'anual'), mas o assistente de
+  // criação e os dashboards dedicados só cobrem 'mensal' e 'temporario' por
+  // agora — 'anual' fica pronto para uma futura iteração, sem complicar esta.
+  var SPACE_TYPES = [
+    {key:'mensal', label:'Mensal'},
+    {key:'temporario', label:'Temporário'},
+    {key:'anual', label:'Anual'}
+  ];
+  var SPACE_TYPE_LABELS = {mensal:'Mensal', temporario:'Temporário', anual:'Anual'};
+  var SPACE_VISIBILITY_LABELS = {privado:'Privado', partilhado:'Partilhado'};
+  // Templates disponíveis no passo final do assistente — só pré-preenchem
+  // categorias (despesaExtra/despesaRemoved, reaproveitando o mecanismo que
+  // já existe para personalizar categorias) e um ícone/nome sugerido. Nunca
+  // impedem editar depois.
+  var SPACE_TEMPLATES = {
+    branco: {label:'Em branco', icon:'wallet', despesaExtra:[], despesaRemoved:[]},
+    viagem: {label:'Férias / Viagem', icon:'plane', despesaExtra:[
+      {key:'alojamento', label:'Alojamento', color:'var(--cat-1)'},
+      {key:'voos', label:'Voos', color:'var(--cat-2)'},
+      {key:'atividades', label:'Atividades', color:'var(--cat-5)'}
+    ], despesaRemoved:['casa','saude','subscricoes','educacao']},
+    obras: {label:'Obras', icon:'home', despesaExtra:[
+      {key:'materiais', label:'Materiais', color:'var(--cat-1)'},
+      {key:'mao_de_obra', label:'Mão de obra', color:'var(--cat-3)'}
+    ], despesaRemoved:['saude','lazer','subscricoes','educacao']},
+    evento: {label:'Evento', icon:'calendar', despesaExtra:[
+      {key:'local', label:'Local', color:'var(--cat-1)'},
+      {key:'convidados', label:'Convidados', color:'var(--cat-2)'},
+      {key:'fornecedores', label:'Fornecedores', color:'var(--cat-3)'}
+    ], despesaRemoved:['casa','saude','subscricoes','educacao']},
+    pessoal: {label:'Pessoal', icon:'user', despesaExtra:[], despesaRemoved:[]},
+    familia: {label:'Família', icon:'users', despesaExtra:[], despesaRemoved:[]}
+  };
+  function spaceTemplateCategoryPatch(templateKey){
+    var t = SPACE_TEMPLATES[templateKey] || SPACE_TEMPLATES.branco;
+    return {despesaExtra:t.despesaExtra.slice(), despesaRemoved:t.despesaRemoved.slice(), receitaExtra:[], receitaRemoved:[]};
+  }
+
+  // User-managed additions/removals on top of the built-in categories (synced via Firestore),
+  // agora uma por Espaço (chave = spaceId). O Espaço por omissão (id = familyId) continua a
+  // ler/escrever exatamente o documento 'settings/categories' de sempre — retrocompatível,
+  // sem qualquer migração de dados antigos.
+  var settingsCategoryConfigBySpace = {};
+  var BLANK_CATEGORY_CONFIG = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+  function categoryConfigFor(spaceId){
+    return settingsCategoryConfigBySpace[spaceId] || BLANK_CATEGORY_CONFIG;
+  }
+  // Como categoryConfigFor() pode devolver o objeto partilhado BLANK_CATEGORY_CONFIG
+  // (quando ainda não há nada carregado/guardado para este Espaço), qualquer código
+  // que precise de MUTAR a configuração tem de passar primeiro por aqui, para nunca
+  // escrever sem querer nesse objeto partilhado por omissão.
+  function ensureCategoryConfig(spaceId){
+    if (!settingsCategoryConfigBySpace[spaceId]){
+      settingsCategoryConfigBySpace[spaceId] = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+    }
+    return settingsCategoryConfigBySpace[spaceId];
+  }
   function effectiveCategories(kind){
+    var cfg = categoryConfigFor(state.activeSpaceId);
     var base = CATEGORIES[kind] || CATEGORIES.despesa;
-    var removed = settingsCategoryConfig[kind+'Removed'] || [];
-    var extra = settingsCategoryConfig[kind+'Extra'] || [];
+    var removed = cfg[kind+'Removed'] || [];
+    var extra = cfg[kind+'Extra'] || [];
     var kept = base.filter(function(c){ return removed.indexOf(c.key) === -1; });
     return kept.concat(extra);
   }
@@ -2078,13 +2270,15 @@
   }
 
   function entrySnapshot(monthKey, p){
-    return {monthKey:monthKey, paymentId:p.id, name:p.name, amount:p.amount, dueDay:p.dueDay, type:p.type, kind:kindOf(p), category:p.category || 'outros', paid:false, paidAt:null, actualAmount:null};
+    return {monthKey:monthKey, paymentId:p.id, name:p.name, amount:p.amount, dueDay:p.dueDay, type:p.type, kind:kindOf(p), category:p.category || 'outros', paid:false, paidAt:null, actualAmount:null, spaceId: spaceIdOf(p)};
   }
 
   function loadPayments(){
     return db.collection('payments').get().then(function(snap){
       var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      state.payments = all.filter(function(p){ return !p.archived; });
+      // Um payment sem spaceId (dados anteriores a Espaços) pertence ao Espaço
+      // por omissão — ver defaultSpaceId(). Só entram os do Espaço ativo.
+      state.payments = all.filter(function(p){ return !p.archived; }).filter(function(p){ return spaceIdOf(p) === state.activeSpaceId; });
       return state.payments;
     });
   }
@@ -2236,7 +2430,10 @@
     if (state.editingPaymentId){
       var oldPayment = state.payments.find(function(p){ return p.id === state.editingPaymentId; });
       var typeChanged = !!oldPayment && oldPayment.type !== data.type;
-      var changes = {name:data.name, amount:data.amount, dueDay:data.dueDay, kind:data.kind, category:data.category, type:data.type};
+      // Backfill "preguiçoso": um payment antigo sem spaceId (antes de existirem
+      // Espaços) fica com o Espaço por omissão gravado explicitamente assim que
+      // é editado — nunca uma reescrita em lote, só ao natural ritmo de uso.
+      var changes = {name:data.name, amount:data.amount, dueDay:data.dueDay, kind:data.kind, category:data.category, type:data.type, spaceId: spaceIdOf(oldPayment)};
       if (data.type === 'pontual'){
         changes.monthKey = pontualMonthKey;
         changes.startMonth = null;
@@ -2275,7 +2472,8 @@
       monthKey: pontualMonthKey,
       startMonth: data.type === 'pontual' ? null : state.monthKey,
       endMonth: data.type === 'pontual' ? null : (data.endMonth || null),
-      archived:false, createdAt:new Date().toISOString()
+      archived:false, createdAt:new Date().toISOString(),
+      spaceId: state.activeSpaceId
     };
     return db.collection('payments').add(payload).then(function(ref){
       return loadMonth(state.monthKey).then(function(){
@@ -2297,23 +2495,38 @@
     });
   }
 
-  function loadSettings(){
-    return db.collection('settings').doc('categories').get().then(function(doc){
+  // Doc de categorias de um Espaço: o Espaço por omissão (id === familyId)
+  // continua a usar exatamente 'settings/categories' (o documento de sempre —
+  // zero migração); qualquer outro Espaço tem o seu próprio documento.
+  function categoriesDocIdFor(spaceId){
+    return (spaceId === defaultSpaceId()) ? 'categories' : ('categories_' + spaceId);
+  }
+  function loadSettingsForSpace(spaceId){
+    return db.collection('settings').doc(categoriesDocIdFor(spaceId)).get().then(function(doc){
+      var cfg = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
       if (doc.exists){
         var data = doc.data() || {};
-        settingsCategoryConfig = {
+        cfg = {
           despesaExtra: data.despesaExtra || [],
           despesaRemoved: data.despesaRemoved || [],
           receitaExtra: data.receitaExtra || [],
           receitaRemoved: data.receitaRemoved || []
         };
       }
+      settingsCategoryConfigBySpace[spaceId] = cfg;
       render();
-    }).catch(function(err){ console.error('loadSettings failed', err); });
+    }).catch(function(err){ console.error('loadSettingsForSpace failed', err); });
+  }
+  // Mantido por compatibilidade com o resto do código: carrega sempre as
+  // categorias do Espaço atualmente ativo.
+  function loadSettings(){
+    return loadSettingsForSpace(state.activeSpaceId);
   }
 
   function saveSettingsCategories(){
-    return db.collection('settings').doc('categories').set(settingsCategoryConfig).catch(function(err){
+    var spaceId = state.activeSpaceId;
+    var cfg = categoryConfigFor(spaceId);
+    return db.collection('settings').doc(categoriesDocIdFor(spaceId)).set(cfg).catch(function(err){
       console.error('saveSettingsCategories failed', err);
     });
   }
@@ -2523,17 +2736,219 @@
     });
   }
 
+  // ================= Espaços Financeiros =================
+  // Um Espaço é um contexto financeiro independente (Família, pessoal,
+  // férias, obras, ...). Vive em families/{familyId}/spaces/{spaceId} — a
+  // mesma coleção já usada para tudo o resto desta família, através do
+  // adapter db.collection() existente (nenhuma mudança ao adapter).
+  //
+  // O Espaço por omissão (o orçamento que já existia antes desta funcionalidade)
+  // usa deliberadamente spaceId === familyId: assim, qualquer payment/entry/
+  // categoryBudget ANTIGO que não tenha campo spaceId é tratado, em toda a
+  // app, como pertencendo a esse Espaço por omissão — sem reescrever nenhum
+  // documento antigo. É a mesma ideia que o pedido descreveu como
+  // "assumir defaultFamilySpaceId" quando spaceId não existe.
+  function defaultSpaceId(){ return state.familyId; }
+  function spaceIdOf(doc){ return doc && doc.spaceId ? doc.spaceId : defaultSpaceId(); }
+  function activeSpace(){
+    return (state.spaces||[]).concat(state.archivedSpaces||[]).filter(function(s){ return s.id === state.activeSpaceId; })[0] || null;
+  }
+  function isDefaultSpace(spaceId){ return spaceId === defaultSpaceId(); }
+  function spaceIconOf(s){
+    if (!s) return 'wallet';
+    if (s.icon) return s.icon;
+    if (s.visibility === 'privado') return 'user';
+    if (s.type === 'temporario') return 'plane';
+    return 'users';
+  }
+  // memberUids é sempre um array plano de strings (uid), mantido em paralelo
+  // a 'members' (que guarda também o "role", preparado para um futuro
+  // viewer/editor) — as regras do Firestore só conseguem verificar
+  // pertença com "in" sobre uma lista simples, daí este campo existir.
+  function memberUidsOf(s){
+    return s && s.memberUids ? s.memberUids : (s && s.members ? s.members.map(function(m){ return m.uid || m; }) : []);
+  }
+  function amIMemberOfSpace(s){
+    if (!s) return false;
+    if (s.ownerUserId && s.ownerUserId === state.myUid) return true;
+    if (s.visibility === 'privado') return false;
+    var uids = memberUidsOf(s);
+    if (!uids.length) return true; // partilhado sem lista = toda a família (o Espaço por omissão)
+    return uids.indexOf(state.myUid) !== -1;
+  }
+  function activeSpaceMonthly(){ var s = activeSpace(); return !s || s.type !== 'temporario'; }
+
+  var ACTIVE_SPACE_KEY = 'contasActiveSpaceId';
+  function loadActiveSpaceIdFromStorage(){
+    try { return localStorage.getItem(ACTIVE_SPACE_KEY) || null; } catch(e){ return null; }
+  }
+  function saveActiveSpaceIdToStorage(id){
+    try { localStorage.setItem(ACTIVE_SPACE_KEY, id); } catch(e){}
+  }
+
+  // Carrega os Espaços desta família. Se ainda não existir NENHUM (primeira
+  // vez que esta funcionalidade corre para esta família), cria automaticamente
+  // o Espaço por omissão — sem tocar em payments/entries/categoryBudgets já
+  // existentes, que passam a pertencer a ele só por omissão (ver defaultSpaceId).
+  function loadSpaces(){
+    state.spacesLoading = true;
+    return db.collection('spaces').get().then(function(snap){
+      var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      if (all.length === 0){
+        var seed = {
+          name: 'Família',
+          type: 'mensal',
+          visibility: 'partilhado',
+          ownerUserId: null,
+          // Lista de membros vazia de propósito: um Espaço partilhado sem lista
+          // explícita é visível a TODA a família (ver amIMemberOfSpace) — exatamente
+          // o comportamento que já existia antes de existirem Espaços, em que
+          // qualquer membro da família via sempre os mesmos dados partilhados.
+          members: [],
+          memberUids: [],
+          icon: 'users',
+          startDate: null, endDate: null, totalBudget: null,
+          archived: false, isDefault: true,
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        };
+        return db.collection('spaces').doc(defaultSpaceId()).set(seed).then(function(){
+          all = [Object.assign({id: defaultSpaceId()}, seed)];
+          return all;
+        });
+      }
+      return all;
+    }).then(function(all){
+      state.spaces = all.filter(function(s){ return !s.archived; }).filter(amIMemberOfSpace);
+      state.archivedSpaces = all.filter(function(s){ return s.archived; }).filter(amIMemberOfSpace);
+      var stored = loadActiveSpaceIdFromStorage();
+      var validIds = state.spaces.map(function(s){ return s.id; });
+      state.activeSpaceId = (stored && validIds.indexOf(stored) !== -1) ? stored
+        : (validIds.indexOf(defaultSpaceId()) !== -1 ? defaultSpaceId() : (validIds[0] || defaultSpaceId()));
+      state.spacesLoading = false;
+      render();
+    }).catch(function(err){
+      console.error('loadSpaces failed', err);
+      state.spacesLoading = false;
+      // Falha a carregar Espaços não deve impedir a app de mostrar o Espaço
+      // por omissão com os dados que já existiam antes desta funcionalidade.
+      state.spaces = [{id: defaultSpaceId(), name:'Família', type:'mensal', visibility:'partilhado', members:[], icon:'users', archived:false}];
+      state.activeSpaceId = defaultSpaceId();
+      render();
+    });
+  }
+
+  // Um Espaço Temporário não navega por mês civil (pode atravessar dois
+  // meses, ex.: 28 jul–3 ago) — por isso carrega TODAS as entries desse
+  // Espaço de uma vez (não só o mês em curso), em vez de usar loadMonth().
+  function loadTemporarySpaceEntries(spaceId){
+    state.loading = true;
+    render();
+    return loadPayments().then(function(){
+      return db.collection('entries').get().then(function(esnap){
+        state.entries = esnap.docs
+          .map(function(d){ return Object.assign({id:d.id}, d.data()); })
+          .filter(function(e){ return spaceIdOf(e) === spaceId; });
+        state.loading = false;
+        render();
+      });
+    }).catch(function(err){
+      console.error('loadTemporarySpaceEntries failed', err);
+      state.loading = false;
+      state.dbAvailable = false;
+      render();
+    });
+  }
+
+  // Ponto único que carrega os dados certos consoante o TIPO do Espaço ativo
+  // — usado tanto no arranque como sempre que se muda de Espaço.
+  function loadDataForActiveSpace(){
+    var s = activeSpace();
+    var isTemp = s && s.type === 'temporario';
+    return Promise.all([
+      loadSettingsForSpace(state.activeSpaceId),
+      isTemp ? loadTemporarySpaceEntries(state.activeSpaceId) : loadMonth(state.monthKey),
+      loadCategoryBudgets()
+    ]);
+  }
+
+  function setActiveSpace(spaceId){
+    if (spaceId === state.activeSpaceId) return Promise.resolve();
+    state.activeSpaceId = spaceId;
+    saveActiveSpaceIdToStorage(spaceId);
+    state.monthKey = monthKeyOf(new Date());
+    return loadDataForActiveSpace().then(function(){ render(); });
+  }
+
+  function createSpace(data){
+    var payload = {
+      name: (data.name || '').trim() || 'Novo espaço',
+      type: data.type === 'temporario' ? 'temporario' : (data.type === 'anual' ? 'anual' : 'mensal'),
+      visibility: data.visibility === 'privado' ? 'privado' : 'partilhado',
+      ownerUserId: data.visibility === 'privado' ? state.myUid : null,
+      members: data.visibility === 'privado' ? [{uid:state.myUid, role:'editor'}] : (function(){
+        var uids = (data.memberUids||[]).slice();
+        if (state.myUid && uids.indexOf(state.myUid) === -1) uids.push(state.myUid);
+        return uids.map(function(uid){ return {uid:uid, role:'editor'}; });
+      })(),
+      memberUids: data.visibility === 'privado' ? [state.myUid] : (function(){
+        var uids = (data.memberUids||[]).slice();
+        if (state.myUid && uids.indexOf(state.myUid) === -1) uids.push(state.myUid);
+        return uids;
+      })(),
+      icon: (SPACE_TEMPLATES[data.template]||SPACE_TEMPLATES.branco).icon,
+      startDate: data.type === 'temporario' ? (data.startDate||null) : null,
+      endDate: data.type === 'temporario' ? (data.endDate||null) : null,
+      totalBudget: data.type === 'temporario' ? (typeof data.totalBudget === 'number' ? data.totalBudget : null) : null,
+      archived: false, isDefault: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    return db.collection('spaces').add(payload).then(function(ref){
+      var patch = spaceTemplateCategoryPatch(data.template);
+      settingsCategoryConfigBySpace[ref.id] = patch;
+      return db.collection('settings').doc(categoriesDocIdFor(ref.id)).set(patch).then(function(){ return ref.id; });
+    }).then(function(newId){
+      return loadSpaces().then(function(){ return setActiveSpace(newId); });
+    });
+  }
+
+  function updateSpace(spaceId, changes){
+    changes = Object.assign({}, changes, {updatedAt: new Date().toISOString()});
+    return db.collection('spaces').doc(spaceId).update(changes).then(function(){ return loadSpaces(); });
+  }
+
+  function archiveSpace(spaceId){
+    return updateSpace(spaceId, {archived:true, archivedAt:new Date().toISOString()}).then(function(){
+      if (state.activeSpaceId === spaceId){
+        return setActiveSpace(defaultSpaceId());
+      }
+    });
+  }
+  function unarchiveSpace(spaceId){
+    return updateSpace(spaceId, {archived:false, archivedAt:null});
+  }
+
   // Orçamento-alvo por categoria de despesa — um valor fixo por categoria
   // (não varia por mês, tal como um pagamento recorrente), para se poder
   // definir p.ex. "Alimentação = 400€" e comparar o que se vai lançando
   // durante o mês contra esse valor, em vez de só se saber o total no fim.
+  // Um categoryBudget do Espaço por omissão continua a usar o id de sempre
+  // (ex.: "saude" — zero migração); qualquer outro Espaço usa "spaceId__chave",
+  // para não colidir quando dois Espaços têm uma categoria com a mesma chave.
+  function categoryBudgetDocId(spaceId, categoryKey){
+    return (spaceId === defaultSpaceId()) ? categoryKey : (spaceId + '__' + categoryKey);
+  }
   function loadCategoryBudgets(){
     state.categoryBudgetsLoading = true;
     return db.collection('categoryBudgets').get().then(function(snap){
       var map = {};
       snap.docs.forEach(function(d){
         var amt = d.data().amount;
-        if (typeof amt === 'number' && amt > 0) map[d.id] = amt;
+        if (typeof amt !== 'number' || amt <= 0) return;
+        var sep = d.id.indexOf('__');
+        var docSpaceId = sep === -1 ? defaultSpaceId() : d.id.slice(0, sep);
+        var catKey = sep === -1 ? d.id : d.id.slice(sep + 2);
+        if (docSpaceId !== state.activeSpaceId) return;
+        map[catKey] = amt;
       });
       state.categoryBudgets = map;
       state.categoryBudgetsLoading = false;
@@ -3110,7 +3525,123 @@
     '</div>';
   }
 
+  // ---------- Dashboard de Espaço Temporário ----------
+  function parseSpaceDate(s){ return s ? new Date(s + 'T00:00:00') : null; }
+  function spacePeriodLabel(s){
+    var a = parseSpaceDate(s.startDate), b = parseSpaceDate(s.endDate);
+    if (!a || !b) return '';
+    if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()){
+      return a.getDate() + '–' + b.getDate() + ' ' + MONTHS_PT[b.getMonth()];
+    }
+    return a.getDate() + ' ' + MONTHS_PT[a.getMonth()] + ' – ' + b.getDate() + ' ' + MONTHS_PT[b.getMonth()];
+  }
+  function temporarySpaceCategoryRows(s){
+    var totals = {}; var order = [];
+    state.entries.forEach(function(e){
+      if (kindOf(e) !== 'despesa') return;
+      var cat = categoryOf(e);
+      if (!totals[cat.key]){ totals[cat.key] = {def:cat, spent:0}; order.push(cat.key); }
+      totals[cat.key].spent += effectiveAmount(e);
+    });
+    // Inclui também categorias com orçamento definido mas ainda sem despesas lançadas.
+    Object.keys(state.categoryBudgets||{}).forEach(function(key){
+      if (!totals[key]){
+        var def = despesaCategoryDefByKey(key);
+        if (def){ totals[key] = {def:def, spent:0}; order.push(key); }
+      }
+    });
+    return order.map(function(k){ return totals[k]; }).sort(function(a,b){ return b.spent - a.spent; });
+  }
+  function renderTemporarySpaceHome(content, s){
+    if (state.loading || state.categoryBudgetsLoading){
+      content.innerHTML = '<div class="skeleton">A preparar o teu resumo…</div>';
+      return;
+    }
+    var spent = 0;
+    state.entries.forEach(function(e){ if (kindOf(e) === 'despesa') spent += effectiveAmount(e); });
+    var total = typeof s.totalBudget === 'number' ? s.totalBudget : null;
+    var remaining = total !== null ? (total - spent) : null;
+    var pct = total ? Math.max(0, Math.min(100, Math.round((spent/total)*100))) : 0;
+    var progressCls = pct >= 100 ? 'danger' : (pct >= 80 ? 'warning' : 'success');
+    // A cor 'danger'/'warning' aqui reaproveita as mesmas classes de estado
+    // usadas no resto da app, mas progress-fill só define success/accent/neutral —
+    // por isso mapeamos para as que já existem.
+    var fillCls = pct >= 100 ? 'accent' : (pct >= 80 ? 'accent' : 'success');
+
+    var html = '<div class="greeting-row"><h1>' + escapeHtml(s.name) + '</h1><div class="sub">' + spacePeriodLabel(s) + '</div></div>';
+
+    html += '<div class="hero-card">' +
+      '<div class="hero-label">' + (total !== null ? 'Orçamento' : 'Total gasto') + '</div>' +
+      '<div class="hero-value mono">' + euro(total !== null ? total : spent) + '</div>';
+    if (total !== null){
+      html += '<div class="trio-grid">' +
+        '<div class="trio-tile"><div class="trio-label">Orçamento</div><div class="trio-value mono">' + euro(total) + '</div></div>' +
+        '<div class="trio-tile"><div class="trio-label">Gasto</div><div class="trio-value mono">' + euro(spent) + '</div></div>' +
+        '<div class="trio-tile"><div class="trio-label">Restante</div><div class="trio-value mono">' + euro(remaining) + '</div></div>' +
+      '</div>' +
+      '<div class="budget-progress-row">' +
+        '<div class="budget-progress-label"><span>' + pct + '% utilizado</span></div>' +
+        '<div class="progress-track"><div class="progress-fill ' + fillCls + '" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+    }
+    html += '</div>';
+
+    // Dias restantes / orçamento diário disponível — só faz sentido enquanto
+    // o Espaço ainda decorre e há orçamento definido (remainingBudget/daysRemaining).
+    if (s.endDate && total !== null){
+      var daysRemaining = daysBetween(todayStr(), s.endDate);
+      if (daysRemaining > 0 && remaining !== null){
+        var daily = remaining / daysRemaining;
+        html += '<div class="alert-banner info">' + icon('calendar') +
+          '<div><strong>Faltam ' + daysRemaining + (daysRemaining === 1 ? ' dia' : ' dias') + '</strong><br>' +
+          'Ainda tens ' + euro(Math.max(0,remaining)) + ' — cerca de ' + euro(daily < 0 ? 0 : daily) + '/dia disponíveis.</div></div>';
+      } else if (daysRemaining <= 0 && !s.archived){
+        // Terminou — resumo de conclusão (ponto 23 do pedido): mostra e deixa
+        // arquivar ou manter ativo, sem apagar nada.
+        var rows = temporarySpaceCategoryRows(s);
+        var top = rows[0];
+        var poupaste = remaining;
+        html += '<div class="alert-banner ' + (poupaste >= 0 ? 'success' : 'danger') + '">' + icon(poupaste >= 0 ? 'check' : 'alert') +
+          '<div><strong>' + escapeHtml(s.name) + ' terminou</strong><br>' +
+          'Orçamento ' + euro(total) + ' · Gasto ' + euro(spent) + ' · ' + (poupaste >= 0 ? 'Poupaste ' + euro(poupaste) : 'Excedeste em ' + euro(-poupaste)) +
+          (top ? ' · Maior categoria: ' + escapeHtml(top.def.label) : '') + ' · ' + escapeHtml(spacePeriodLabel(s)) +
+          '<div class="btn-row" style="margin-top:10px; display:flex; gap:8px;">' +
+            '<button type="button" class="btn ghost" data-action="keep-space-active" data-id="' + s.id + '" style="flex:1;">Manter ativo</button>' +
+            '<button type="button" class="btn primary" data-action="archive-space" data-id="' + s.id + '" style="flex:1;">Arquivar</button>' +
+          '</div></div></div>';
+      }
+    }
+
+    var catRows = temporarySpaceCategoryRows(s);
+    if (catRows.length){
+      var maxTarget = catRows.reduce(function(m,r){ var t = state.categoryBudgets[r.def.key]; return Math.max(m, t || r.spent); }, 0) || 1;
+      html += '<div class="cat-card"><h3>Categorias</h3>' + catRows.map(function(r){
+        var target = state.categoryBudgets[r.def.key];
+        var pctRow = Math.max(4, Math.round((r.spent/(target||maxTarget))*100));
+        var amountLabel = target ? (euro(r.spent) + ' / ' + euro(target)) : euro(r.spent);
+        return '<div class="cat-bar-row">' +
+          '<span class="cat-bar-label"><span class="cat-dot" style="background:' + r.def.color + '"></span>' + escapeHtml(r.def.label) + '</span>' +
+          '<span class="cat-bar-track"><span class="cat-bar-fill" style="width:' + Math.min(100,pctRow) + '%; background:' + (target && r.spent > target ? 'var(--danger)' : r.def.color) + '"></span></span>' +
+          '<span class="cat-bar-amount mono">' + amountLabel + '</span>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    if (s.archived){
+      html += '<div class="alert-banner info">' + icon('bell') + '<div><strong>Espaço arquivado</strong><br>Continua acessível em Mais → Espaços → Arquivados.' +
+        '<div style="margin-top:10px;"><button type="button" class="btn ghost" data-action="keep-space-active" data-id="' + s.id + '">Reativar</button></div></div></div>';
+    }
+
+    html += extraAlertsHtml();
+    content.innerHTML = html;
+  }
+
   function renderHomeView(content){
+    var activeSp = activeSpace();
+    if (activeSp && activeSp.type === 'temporario'){
+      renderTemporarySpaceHome(content, activeSp);
+      return;
+    }
     if (state.loading){
       content.innerHTML = '<div class="skeleton">A preparar o teu resumo…</div>';
       return;
@@ -4194,6 +4725,7 @@
     document.getElementById('periodLabel').textContent = isYear ? String(state.year) : monthLabelOf(state.monthKey);
     var headerSubtitle = document.getElementById('headerSubtitle');
     if (headerSubtitle) headerSubtitle.textContent = VIEW_LABELS[state.view] || 'Orçamento';
+    renderSpaceSwitchLabels();
     Array.prototype.forEach.call(document.querySelectorAll('#bottomNav .nav-btn'), function(btn){
       var v = btn.dataset.nav;
       var active = v === state.view || (v === 'mais' && MORE_VIEWS.indexOf(state.view) !== -1);
@@ -4208,7 +4740,8 @@
     dot.className = 'sync-dot' + (state.dbAvailable === true ? ' online' : ((state.dbAvailable === false || state.dbAvailable === 'nofamily') ? ' error' : ''));
     dot.title = state.dbAvailable === true ? 'Sincronizado' : (state.dbAvailable === false ? 'Sem ligação' : (state.dbAvailable === 'nofamily' ? 'Conta sem família' : 'A ligar…'));
 
-    periodSwitchRow.hidden = !(isMonth || isYear || isMovimentos);
+    var activeSpaceIsTemp = !!(activeSpace() && activeSpace().type === 'temporario');
+    periodSwitchRow.hidden = !(isMonth || isYear || isMovimentos) || activeSpaceIsTemp;
     searchRow.hidden = !(isMonth || isMovimentos) || state.loading || state.dbAvailable !== true || state.entries.length === 0;
 
     if (state.dbAvailable === 'setup'){
@@ -4594,7 +5127,7 @@
       return;
     }
     var key = pendingCategoryBudgetKey;
-    db.collection('categoryBudgets').doc(key).set({amount: value, updatedAt: new Date().toISOString()}).then(function(){
+    db.collection('categoryBudgets').doc(categoryBudgetDocId(state.activeSpaceId, key)).set({amount: value, updatedAt: new Date().toISOString()}).then(function(){
       return loadCategoryBudgets();
     }).then(function(){
       closeCategoryBudgetSheet();
@@ -4608,7 +5141,7 @@
   document.getElementById('categoryBudgetRemove').addEventListener('click', function(){
     if (!pendingCategoryBudgetKey || !db) return;
     var key = pendingCategoryBudgetKey;
-    db.collection('categoryBudgets').doc(key).delete().then(function(){
+    db.collection('categoryBudgets').doc(categoryBudgetDocId(state.activeSpaceId, key)).delete().then(function(){
       return loadCategoryBudgets();
     }).then(function(){
       closeCategoryBudgetSheet();
@@ -5091,7 +5624,7 @@
   // Vai buscar TODAS as coleções da família (não só o mês atual) e junta
   // tudo num único ficheiro .json que o utilizador pode guardar como
   // backup — útil se algum dia precisar de recuperar dados manualmente.
-  var EXPORT_COLLECTIONS = ['payments', 'entries', 'loans', 'loanSnapshots', 'investments', 'investmentContributions', 'investmentSnapshots', 'savingsGoals', 'savingsMovements', 'familyMembers'];
+  var EXPORT_COLLECTIONS = ['spaces', 'payments', 'entries', 'loans', 'loanSnapshots', 'investments', 'investmentContributions', 'investmentSnapshots', 'savingsGoals', 'savingsMovements', 'familyMembers'];
   function exportAllFamilyData(){
     if (!db) return Promise.reject(new Error('Sem ligação à base de dados.'));
     return Promise.all(EXPORT_COLLECTIONS.map(function(name){
@@ -5197,12 +5730,13 @@
       var kindRem = actionEl.getAttribute('data-kind');
       var keyRem = actionEl.getAttribute('data-key');
       var isBuiltIn = (CATEGORIES[kindRem]||[]).some(function(c){ return c.key === keyRem; });
+      var cfgRem = ensureCategoryConfig(state.activeSpaceId);
       if (isBuiltIn){
-        var removedList = settingsCategoryConfig[kindRem+'Removed'] || [];
+        var removedList = cfgRem[kindRem+'Removed'] || [];
         if (removedList.indexOf(keyRem) === -1) removedList = removedList.concat([keyRem]);
-        settingsCategoryConfig[kindRem+'Removed'] = removedList;
+        cfgRem[kindRem+'Removed'] = removedList;
       } else {
-        settingsCategoryConfig[kindRem+'Extra'] = (settingsCategoryConfig[kindRem+'Extra']||[]).filter(function(c){ return c.key !== keyRem; });
+        cfgRem[kindRem+'Extra'] = (cfgRem[kindRem+'Extra']||[]).filter(function(c){ return c.key !== keyRem; });
       }
       saveSettingsCategories();
       renderCategoryChips();
@@ -5216,7 +5750,8 @@
       var slug = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,20);
       var key = 'c_' + (slug || 'cat') + '_' + Date.now().toString(36).slice(-4);
       var color = addCatColor[kindAdd] || 'var(--cat-1)';
-      settingsCategoryConfig[kindAdd+'Extra'] = (settingsCategoryConfig[kindAdd+'Extra']||[]).concat([{key:key, label:label, color:color}]);
+      var cfgAdd = ensureCategoryConfig(state.activeSpaceId);
+      cfgAdd[kindAdd+'Extra'] = (cfgAdd[kindAdd+'Extra']||[]).concat([{key:key, label:label, color:color}]);
       input.value = '';
       saveSettingsCategories();
       renderCategoryChips();
@@ -5470,6 +6005,12 @@
       confirmOverlay.classList.add('open');
     } else if (action === 'goto'){
       switchView(actionEl.getAttribute('data-view'));
+    } else if (action === 'archive-space'){
+      var idArch = actionEl.getAttribute('data-id');
+      archiveSpace(idArch).then(function(){ showToast('Espaço arquivado.', {icon:'check'}); });
+    } else if (action === 'keep-space-active'){
+      var idKeep = actionEl.getAttribute('data-id');
+      unarchiveSpace(idKeep).then(function(){ loadSpaces(); showToast('Espaço mantido ativo.', {icon:'check'}); });
     } else if (action === 'subview'){
       var subviewGroup = actionEl.getAttribute('data-group');
       var subviewVal = actionEl.getAttribute('data-subview');
@@ -5558,6 +6099,216 @@
     btn.setAttribute('aria-label', item.label);
   });
 
+  // ================= Espaços Financeiros — UI =================
+  var spaceSwitchOverlay = document.getElementById('spaceSwitchOverlay');
+  var editSpaceOverlay = document.getElementById('editSpaceOverlay');
+  var spaceFormOverlay = document.getElementById('spaceFormOverlay');
+
+  function renderSpaceSwitchLabels(){
+    var s = activeSpace();
+    var name = s ? s.name : '—';
+    var iconHtml = icon(spaceIconOf(s));
+    var elIcon = document.getElementById('spaceSwitchIcon'); if (elIcon) elIcon.innerHTML = iconHtml;
+    var elName = document.getElementById('spaceSwitchName'); if (elName) elName.textContent = name;
+    var elIcon2 = document.getElementById('sidebarSpaceSwitchIcon'); if (elIcon2) elIcon2.innerHTML = iconHtml;
+    var elName2 = document.getElementById('sidebarSpaceSwitchName'); if (elName2) elName2.textContent = name;
+  }
+
+  function renderSpaceSwitchList(){
+    var archivedMode = state.spacesView === 'archived';
+    document.getElementById('spaceSwitchTitle').textContent = archivedMode ? 'Espaços arquivados' : 'Meus Espaços';
+    document.getElementById('toggleArchivedSpaces').textContent = archivedMode ? '‹ Voltar aos espaços ativos' : 'Espaços arquivados';
+    document.getElementById('createSpaceBtn').hidden = archivedMode;
+    var list = archivedMode ? (state.archivedSpaces||[]) : (state.spaces||[]);
+    document.getElementById('spaceSwitchList').innerHTML = list.map(function(s){
+      var isActive = !archivedMode && s.id === state.activeSpaceId;
+      return '<div class="menu-sheet-item space-switch-item' + (isActive ? ' active' : '') + '" data-switch-space="' + s.id + '" data-archived="' + (archivedMode ? '1' : '0') + '">' +
+        '<span class="icon-badge sm">' + icon(spaceIconOf(s)) + '</span>' +
+        '<span class="space-switch-item-text"><span class="space-switch-item-name">' + escapeHtml(s.name) + '</span>' +
+        '<span class="space-switch-item-meta">' + (SPACE_TYPE_LABELS[s.type]||'Mensal') + (s.visibility === 'privado' ? ' · Privado' : '') + '</span></span>' +
+        (isActive ? icon('check','check-mark') : '') +
+        '<button type="button" class="space-switch-item-edit" data-edit-space="' + s.id + '" aria-label="Editar espaço">' + icon('more') + '</button>' +
+      '</div>';
+    }).join('') || '<div class="hint" style="padding:10px 4px;">' + (archivedMode ? 'Sem espaços arquivados.' : 'Sem espaços.') + '</div>';
+  }
+
+  function openSpaceSwitch(){
+    state.spacesView = 'active';
+    renderSpaceSwitchList();
+    spaceSwitchOverlay.classList.add('open');
+  }
+  function closeSpaceSwitch(){ spaceSwitchOverlay.classList.remove('open'); }
+  document.getElementById('spaceSwitchBtn').addEventListener('click', openSpaceSwitch);
+  document.getElementById('sidebarSpaceSwitchBtn').addEventListener('click', openSpaceSwitch);
+  document.getElementById('closeSpaceSwitch').addEventListener('click', closeSpaceSwitch);
+  spaceSwitchOverlay.addEventListener('click', function(ev){ if (ev.target === spaceSwitchOverlay) closeSpaceSwitch(); });
+  document.getElementById('toggleArchivedSpaces').addEventListener('click', function(){
+    state.spacesView = state.spacesView === 'archived' ? 'active' : 'archived';
+    renderSpaceSwitchList();
+  });
+  document.getElementById('spaceSwitchList').addEventListener('click', function(ev){
+    var editBtn = ev.target.closest('[data-edit-space]');
+    if (editBtn){ openEditSpace(editBtn.getAttribute('data-edit-space')); return; }
+    var row = ev.target.closest('[data-switch-space]');
+    if (!row) return;
+    var id = row.getAttribute('data-switch-space');
+    var archived = row.getAttribute('data-archived') === '1';
+    closeSpaceSwitch();
+    if (archived){
+      unarchiveSpace(id).then(function(){ return loadSpaces(); }).then(function(){ return setActiveSpace(id); });
+    } else {
+      setActiveSpace(id);
+    }
+  });
+
+  // ---------- Editar espaço (nome / arquivar) ----------
+  var pendingEditSpaceId = null;
+  function openEditSpace(id){
+    var s = (state.spaces||[]).concat(state.archivedSpaces||[]).filter(function(x){ return x.id === id; })[0];
+    if (!s) return;
+    pendingEditSpaceId = id;
+    document.getElementById('fSpaceEditName').value = s.name;
+    var archiveField = document.getElementById('editSpaceArchiveField');
+    archiveField.hidden = isDefaultSpace(id); // o Espaço por omissão (Família) não se arquiva
+    document.getElementById('editSpaceArchiveBtn').textContent = s.archived ? 'Reativar espaço' : 'Arquivar espaço';
+    closeSpaceSwitch();
+    editSpaceOverlay.classList.add('open');
+  }
+  document.getElementById('closeEditSpace').addEventListener('click', function(){ editSpaceOverlay.classList.remove('open'); });
+  editSpaceOverlay.addEventListener('click', function(ev){ if (ev.target === editSpaceOverlay) editSpaceOverlay.classList.remove('open'); });
+  document.getElementById('saveEditSpace').addEventListener('click', function(){
+    var name = document.getElementById('fSpaceEditName').value.trim();
+    if (!name || !pendingEditSpaceId) return;
+    updateSpace(pendingEditSpaceId, {name:name}).then(function(){
+      editSpaceOverlay.classList.remove('open');
+      showToast('Espaço atualizado.', {icon:'check'});
+    });
+  });
+  document.getElementById('editSpaceArchiveBtn').addEventListener('click', function(){
+    if (!pendingEditSpaceId) return;
+    var s = (state.spaces||[]).concat(state.archivedSpaces||[]).filter(function(x){ return x.id === pendingEditSpaceId; })[0];
+    var op = (s && s.archived) ? unarchiveSpace(pendingEditSpaceId) : archiveSpace(pendingEditSpaceId);
+    op.then(function(){
+      editSpaceOverlay.classList.remove('open');
+      showToast(s && s.archived ? 'Espaço reativado.' : 'Espaço arquivado.', {icon:'check'});
+    });
+  });
+
+  // ---------- Assistente de criação de espaço ----------
+  var selectedSpaceType = 'mensal';
+  var selectedSpaceVisibility = 'partilhado';
+  var selectedSpaceTemplate = 'branco';
+  var selectedSpaceMemberUids = [];
+
+  function renderSpaceMembersList(){
+    var wrap = document.getElementById('spaceMembersList');
+    var others = (state.familyMembers||[]).filter(function(m){ return m.id !== state.myUid; });
+    if (!others.length){
+      wrap.innerHTML = '<div class="hint">Ainda não há mais membros na família — este espaço fica só contigo por agora.</div>';
+      return;
+    }
+    wrap.innerHTML = others.map(function(m){
+      var selected = selectedSpaceMemberUids.indexOf(m.id) !== -1;
+      return '<button type="button" class="select-chip' + (selected ? ' active' : '') + '" data-member-uid="' + m.id + '">' + escapeHtml(m.name || m.email || 'Membro') + '</button>';
+    }).join('');
+  }
+  document.getElementById('spaceMembersList').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-member-uid]');
+    if (!btn) return;
+    var uid = btn.getAttribute('data-member-uid');
+    var idx = selectedSpaceMemberUids.indexOf(uid);
+    if (idx === -1) selectedSpaceMemberUids.push(uid); else selectedSpaceMemberUids.splice(idx,1);
+    renderSpaceMembersList();
+  });
+
+  function renderSpaceTemplateChips(){
+    document.getElementById('spaceTemplateChips').innerHTML = Object.keys(SPACE_TEMPLATES).map(function(key){
+      var t = SPACE_TEMPLATES[key];
+      return '<button type="button" class="select-chip' + (key === selectedSpaceTemplate ? ' active' : '') + '" data-template="' + key + '">' + icon(t.icon) + ' ' + escapeHtml(t.label) + '</button>';
+    }).join('');
+  }
+  document.getElementById('spaceTemplateChips').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-template]');
+    if (!btn) return;
+    selectedSpaceTemplate = btn.getAttribute('data-template');
+    renderSpaceTemplateChips();
+  });
+
+  function updateSpaceFormVisibility(){
+    document.getElementById('spaceDatesField').hidden = selectedSpaceType !== 'temporario';
+    document.getElementById('spaceBudgetField').hidden = selectedSpaceType !== 'temporario';
+    document.getElementById('spaceMembersField').hidden = selectedSpaceVisibility === 'privado';
+    document.getElementById('spaceVisibilityHint').textContent = selectedSpaceVisibility === 'privado'
+      ? 'Só tu vês este espaço — movimentos, orçamento e categorias ficam privados, mesmo dos outros membros da família.'
+      : 'Visível para os membros da família que escolheres abaixo.';
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#spaceTypeSeg button'), function(btn){
+    btn.addEventListener('click', function(){
+      selectedSpaceType = btn.getAttribute('data-space-type');
+      Array.prototype.forEach.call(document.querySelectorAll('#spaceTypeSeg button'), function(b){ b.classList.toggle('active', b === btn); });
+      updateSpaceFormVisibility();
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#spaceVisibilitySeg button'), function(btn){
+    btn.addEventListener('click', function(){
+      selectedSpaceVisibility = btn.getAttribute('data-space-visibility');
+      Array.prototype.forEach.call(document.querySelectorAll('#spaceVisibilitySeg button'), function(b){ b.classList.toggle('active', b === btn); });
+      updateSpaceFormVisibility();
+    });
+  });
+
+  function openCreateSpace(){
+    selectedSpaceType = 'mensal';
+    selectedSpaceVisibility = 'partilhado';
+    selectedSpaceTemplate = 'branco';
+    selectedSpaceMemberUids = [];
+    document.getElementById('fSpaceName').value = '';
+    document.getElementById('fSpaceStartDate').value = '';
+    document.getElementById('fSpaceEndDate').value = '';
+    document.getElementById('fSpaceBudget').value = '';
+    document.getElementById('formError').style.display = 'none';
+    Array.prototype.forEach.call(document.querySelectorAll('#spaceTypeSeg button'), function(b){ b.classList.toggle('active', b.getAttribute('data-space-type') === 'mensal'); });
+    Array.prototype.forEach.call(document.querySelectorAll('#spaceVisibilitySeg button'), function(b){ b.classList.toggle('active', b.getAttribute('data-space-visibility') === 'partilhado'); });
+    updateSpaceFormVisibility();
+    renderSpaceTemplateChips();
+    if (!state.familyMembers.length && !state.familyMembersLoading) loadFamilyMembers().then(renderSpaceMembersList);
+    else renderSpaceMembersList();
+    closeSpaceSwitch();
+    spaceFormOverlay.classList.add('open');
+  }
+  document.getElementById('createSpaceBtn').addEventListener('click', openCreateSpace);
+  document.getElementById('closeSpaceForm').addEventListener('click', function(){ spaceFormOverlay.classList.remove('open'); });
+  spaceFormOverlay.addEventListener('click', function(ev){ if (ev.target === spaceFormOverlay) spaceFormOverlay.classList.remove('open'); });
+  document.getElementById('submitSpaceForm').addEventListener('click', function(){
+    var name = document.getElementById('fSpaceName').value.trim();
+    var errorEl = document.getElementById('formError');
+    if (!name){
+      errorEl.textContent = 'Dá um nome ao espaço para continuar.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    var budgetRaw = document.getElementById('fSpaceBudget').value;
+    var data = {
+      name: name,
+      type: selectedSpaceType,
+      visibility: selectedSpaceVisibility,
+      memberUids: selectedSpaceMemberUids,
+      template: selectedSpaceTemplate,
+      startDate: document.getElementById('fSpaceStartDate').value || null,
+      endDate: document.getElementById('fSpaceEndDate').value || null,
+      totalBudget: budgetRaw !== '' ? parseFloat(budgetRaw) : null
+    };
+    errorEl.style.display = 'none';
+    createSpace(data).then(function(){
+      spaceFormOverlay.classList.remove('open');
+      showToast('Espaço criado.', {icon:'check'});
+    }).catch(function(err){
+      console.error('createSpace failed', err);
+      errorEl.textContent = 'Não foi possível criar o espaço. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+
   var moreSheetOverlay = document.getElementById('moreSheetOverlay');
   var quickAddOverlay = document.getElementById('quickAddOverlay');
 
@@ -5632,6 +6383,18 @@
   // Loads whatever data the target view needs, then renders — mirrors the
   // per-tab lazy loads the app already had, just reachable from the new nav.
   function loadForView(view){
+    // Um Espaço Temporário não é organizado por mês — o seu conjunto de
+    // movimentos (state.entries) tem de refletir SEMPRE o período completo
+    // do Espaço, nunca apenas o mês corrente. Sem este ramo, navegar para
+    // Início/Movimentos/Mês depois de ter usado as setas de mês (que chamam
+    // loadMonth diretamente) deixaria state.entries filtrado por mês,
+    // corrompendo os totais do dashboard do Espaço Temporário.
+    var isTempSpace = !!(activeSpace() && activeSpace().type === 'temporario');
+    if (isTempSpace && (view === 'home' || view === 'movimentos' || view === 'month')){
+      if (db) return Promise.all([loadTemporarySpaceEntries(state.activeSpaceId), loadCategoryBudgets(), loadLoans(), loadInvestments(), loadSavingsGoals()]);
+      render();
+      return;
+    }
     if (view === 'year'){ if (db) return loadYear(state.year); }
     else if (view === 'loan'){ if (db) return loadLoans(); }
     else if (view === 'investment'){ if (db) return loadInvestments(); }
@@ -5888,7 +6651,8 @@
     investmentFormOverlay:'cancelInvestmentForm', invContribOverlay:'invContribCancel', invSnapshotOverlay:'invSnapshotCancel',
     savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel',
     welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
-    moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd'
+    moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
+    spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace'
   };
   function topOpenOverlay(){
     var openOverlays = document.querySelectorAll('.overlay.open');
@@ -5974,8 +6738,14 @@
       state.familyId = familyId || null;
       state.myUid = (profile && profile.uid) || null;
       state.myEmail = (profile && profile.email) || null;
-      loadSettings();
-      loadMonth(state.monthKey);
+      // Placeholder seguro imediato (o Espaço por omissão tem sempre este id) —
+      // loadSpaces() confirma/substitui pelo Espaço realmente ativo (guardado
+      // neste telemóvel) assim que resolver, sem nunca deixar a app sem um
+      // activeSpaceId válido entretanto.
+      state.activeSpaceId = defaultSpaceId();
+      loadSpaces().then(function(){
+        return loadDataForActiveSpace();
+      });
       loadSavingsGoals();
       loadLoans();
       loadInvestments();
