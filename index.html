@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#16A36A">
+<meta name="theme-color" content="#138A5B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MAB360">
@@ -453,10 +453,26 @@
   .btn.primary{background:var(--accent); color:#241a04;}
   .btn.ghost{background:var(--surface-2); color:var(--text);}
   .btn.danger-solid{background:var(--danger); color:#fff;}
+  .btn.danger-outline{background:var(--surface); color:var(--danger); border:1px solid var(--danger);}
+  .danger-zone{border-top:1px solid var(--border); margin-top:6px; padding-top:18px;}
+  .danger-zone > label{color:var(--danger);}
   .field-error{font-size:12px; color:var(--danger); margin-top:5px; display:none;}
   .field-error.success{color:var(--success-ink);}
   .checkbox-row{display:flex; align-items:center; gap:10px; padding:12px; background:var(--surface-2); border-radius:10px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--text);}
   .checkbox-row input{width:18px; height:18px; accent-color:var(--accent); flex-shrink:0;}
+
+  /* ---------- Simuladores (Créditos / Investimentos) ---------- */
+  .sim-layout{display:flex; flex-direction:column; gap:20px; margin-top:14px;}
+  .sim-inputs{display:flex; flex-direction:column; gap:14px;}
+  .sim-results{display:flex; flex-direction:column; min-width:0;}
+  .sim-subhead{font-size:13px; font-weight:800; margin:18px 0 8px; color:var(--text);}
+  .empty-inline{padding:24px 12px; text-align:center; color:var(--text-faint); font-size:13px; background:var(--surface-2); border-radius:var(--radius-md);}
+  .sim-disclaimer{font-size:11.5px; color:var(--text-faint); line-height:1.5; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);}
+  @media (min-width:900px){
+    .sim-layout{flex-direction:row; align-items:flex-start;}
+    .sim-inputs{flex:0 0 320px;}
+    .sim-results{flex:1 1 auto;}
+  }
 
   .confirm-box p{font-size:13.5px; color:var(--text-muted); line-height:1.6; margin:0 0 18px;}
 
@@ -1037,6 +1053,11 @@
         <input type="number" id="fSavingsGoal" placeholder="Ex.: 1000" step="0.01" min="0">
         <div class="hint">Deixa em branco se ainda não tiveres um valor definido — a poupança fica sem meta, só a acumular.</div>
       </div>
+      <div class="field">
+        <label for="fSavingsTargetDate">Data alvo (opcional)</label>
+        <input type="month" id="fSavingsTargetDate">
+        <div class="hint">Se definires um objetivo e uma data alvo, mostramos quanto precisas de poupar por mês para lá chegar.</div>
+      </div>
       <div class="field" id="savingsInitialField">
         <label for="fSavingsInitial">Já tens guardado (€)</label>
         <input type="number" id="fSavingsInitial" placeholder="0.00" step="0.01" min="0">
@@ -1153,6 +1174,12 @@
       <button type="button" class="btn ghost" id="logoutBtn">Sair da conta</button>
     </div>
 
+    <div class="field danger-zone">
+      <label>Zona de risco</label>
+      <button type="button" class="btn danger-outline" id="deleteAccountBtn">Eliminar a minha conta</button>
+      <div class="hint">Remove o teu login e o teu perfil. Os dados financeiros da família não são apagados — continuam disponíveis para os outros membros.</div>
+    </div>
+
     <div class="sheet-actions">
       <button type="button" class="btn primary" id="closeSettings">Fechar</button>
     </div>
@@ -1227,6 +1254,8 @@
     loans: [],
     loanSnapshots: {},         // loanId -> [{id,date,value}] sorted by date
     loansLoading: true,
+    loanSubview: 'list',       // 'list' | 'simulator' — toggle on the Créditos page (simulator is never persisted)
+    investmentSubview: 'list', // 'list' | 'simulator' — toggle on the Investimentos page (simulator is never persisted)
     investments: [],
     investmentContributions: {}, // investmentId -> [{id,date,amount}] sorted by date
     investmentSnapshots: {},     // investmentId -> [{id,date,value}] sorted by date
@@ -1514,6 +1543,64 @@
     });
     return sum;
   }
+  // Número de meses inteiros entre duas chaves "YYYY-MM" (pode ser negativo).
+  function monthsBetweenKeys(fromKey, toKey){
+    var fp = String(fromKey).split('-'); var fy = parseInt(fp[0],10), fm = parseInt(fp[1],10);
+    var tp = String(toKey).split('-'); var ty = parseInt(tp[0],10), tm = parseInt(tp[1],10);
+    return (ty-fy)*12 + (tm-fm);
+  }
+  // Poupança por objetivo com data-alvo (targetDate, opcional, formato "YYYY-MM",
+  // backward-compatible: metas antigas sem o campo simplesmente não têm esta secção).
+  // Devolve null sempre que não há dados suficientes para um cálculo com sentido
+  // (sem data-alvo, ou sem objetivo definido) — nunca inventa valores.
+  function calculateSavingsTarget(goal, saved, refDate){
+    var goalAmount = Number(goal && goal.goalAmount) || 0;
+    var targetDate = goal && goal.targetDate;
+    if (!targetDate || !goalAmount) return null;
+    var remainingAmount = Math.max(0, goalAmount - (Number(saved)||0));
+    if (remainingAmount <= 0){
+      return {targetDate:targetDate, remainingAmount:0, monthsRemaining:0, requiredMonthlySaving:0, status:'completed'};
+    }
+    var curKey = monthKeyOf(refDate || new Date());
+    var monthsDiff = monthsBetweenKeys(curKey, targetDate);
+    if (monthsDiff < 0){
+      // A data-alvo já passou e a meta ainda não foi atingida.
+      return {targetDate:targetDate, remainingAmount:remainingAmount, monthsRemaining:monthsDiff, requiredMonthlySaving:remainingAmount, status:'overdue'};
+    }
+    // O mês corrente conta sempre como pelo menos 1 mês para não dividir por zero
+    // quando a data-alvo cai dentro do mês em curso (monthsDiff === 0).
+    var divisor = Math.max(1, monthsDiff);
+    return {
+      targetDate:targetDate, remainingAmount:remainingAmount, monthsRemaining:monthsDiff,
+      requiredMonthlySaving: remainingAmount/divisor,
+      status: monthsDiff === 0 ? 'dueThisMonth' : 'active'
+    };
+  }
+  // Ritmo real de poupança, com base no histórico de movimentos — só devolve
+  // um valor quando há histórico suficiente para ser fiável (pelo menos 2
+  // movimentos, com pelo menos 1 mês de distância entre o primeiro e hoje);
+  // caso contrário devolve null, para nunca inventar uma média sem dados.
+  function savingsHistoricalMonthlyAverage(goal){
+    var movs = state.savingsMovements[goal.id] || [];
+    if (movs.length < 2) return null;
+    var span = Math.max(1, monthsBetweenKeys(movs[0].date.slice(0,7), todayStr().slice(0,7)));
+    if (span < 1) return null;
+    var total = movs.reduce(function(sum, m){ return sum + (Number(m.amount)||0); }, 0);
+    return total/span;
+  }
+  // Compara o ritmo real de poupança com o ritmo necessário para chegar à
+  // meta a tempo. Só compara quando há histórico fiável — sem isso, mostra-se
+  // apenas o valor mensal necessário, sem qualquer comparação de ritmo.
+  function savingsPaceStatus(goal, target){
+    if (!target || (target.status !== 'active' && target.status !== 'dueThisMonth')) return null;
+    var avg = savingsHistoricalMonthlyAverage(goal);
+    if (avg === null) return {hasHistory:false};
+    var required = target.requiredMonthlySaving;
+    if (required <= 0) return {hasHistory:true, pace:'ahead', avg:avg};
+    var ratio = avg/required;
+    var pace = ratio >= 1.05 ? 'ahead' : (ratio <= 0.95 ? 'behind' : 'ontrack');
+    return {hasHistory:true, pace:pace, avg:avg};
+  }
 
   function patrimonySeries(){
     var loanMonths = state.loans.map(function(l){ return l.startMonth; }).filter(Boolean);
@@ -1573,6 +1660,100 @@
     return {assets:assetsTotal, liabilities:liabilitiesTotal, net:assetsTotal-liabilitiesTotal, savingsTotal:savingsTotal};
   }
 
+  // ---------- Simuladores (Créditos / Investimentos) ----------
+  // Funções puras, sem qualquer leitura/escrita no Firestore e sem tocar em
+  // `state` — usadas pelos simuladores em "Créditos → Simulador" e
+  // "Investimentos → Simulador". Nunca são chamadas pelo resto da app, para
+  // garantir que nada aqui pode alterar dados reais por engano.
+
+  // Amortização de um crédito por prestações constantes (sistema francês),
+  // com caso especial para taxa 0%. params: {amount, annualRatePct, termMonths}.
+  function calculateLoan(params){
+    var P = Math.max(0, Number(params.amount)||0);
+    var i = (Number(params.annualRatePct)||0)/100/12;
+    var n = Math.max(1, Math.round(Number(params.termMonths)||0));
+    var monthlyPayment = i === 0 ? P/n : P * i / (1 - Math.pow(1+i, -n));
+    var totalPaid = monthlyPayment * n;
+    var totalInterest = Math.max(0, totalPaid - P);
+    return {amount:P, monthlyRate:i, termMonths:n, monthlyPayment:monthlyPayment, totalPaid:totalPaid, totalInterest:totalInterest};
+  }
+
+  // Plano de amortização mês a mês, a partir do mesmo cálculo de calculateLoan().
+  // params: {amount, annualRatePct, termMonths, startDate ("YYYY-MM-DD", opcional)}.
+  function generateAmortizationSchedule(params){
+    var calc = calculateLoan(params);
+    var balance = calc.amount;
+    var payment = calc.monthlyPayment;
+    var start = params.startDate ? new Date(params.startDate + 'T00:00:00') : new Date();
+    var schedule = [];
+    for (var m=1; m<=calc.termMonths; m++){
+      var interestPortion = balance * calc.monthlyRate;
+      var principalPortion = payment - interestPortion;
+      if (m === calc.termMonths){
+        // Fecha o último mês exatamente em zero, absorvendo o erro de arredondamento acumulado.
+        principalPortion = balance;
+      }
+      balance = Math.max(0, balance - principalPortion);
+      var d = new Date(start.getFullYear(), start.getMonth()+m, start.getDate());
+      schedule.push({month:m, date:d, payment:interestPortion+principalPortion, interest:interestPortion, principal:principalPortion, balance:balance});
+    }
+    return schedule;
+  }
+
+  // Agrega o plano de amortização por ano civil, para a "vista anual".
+  function aggregateLoanScheduleByYear(schedule){
+    var byYear = {}, order = [];
+    schedule.forEach(function(row){
+      var y = row.date.getFullYear();
+      if (!byYear[y]){ byYear[y] = {year:y, principal:0, interest:0, endBalance:row.balance}; order.push(y); }
+      byYear[y].principal += row.principal;
+      byYear[y].interest += row.interest;
+      byYear[y].endBalance = row.balance;
+    });
+    return order.map(function(y){ return byYear[y]; });
+  }
+
+  // Projeção de um investimento com capitalização mensal composta: a
+  // rentabilidade anual introduzida é convertida numa taxa mensal
+  // (annualReturnPct/100/12) aplicada a cada mês sobre o saldo acumulado,
+  // antes de somar o aporte desse mês — convenção simples e documentada,
+  // sem qualquer suposição sobre volatilidade ou distribuição de retornos.
+  // params: {initialAmount, monthlyContribution, annualReturnPct, months}.
+  function calculateInvestmentProjection(params){
+    var initial = Math.max(0, Number(params.initialAmount)||0);
+    var monthly = Math.max(0, Number(params.monthlyContribution)||0);
+    var i = (Number(params.annualReturnPct)||0)/100/12;
+    var months = Math.max(1, Math.round(Number(params.months)||0));
+    var balance = initial;
+    var contributed = initial;
+    var series = [{month:0, contributed:contributed, balance:balance}];
+    for (var m=1; m<=months; m++){
+      balance = balance*(1+i) + monthly;
+      contributed += monthly;
+      series.push({month:m, contributed:contributed, balance:balance});
+    }
+    var totalContributed = initial + monthly*months;
+    var futureValue = balance;
+    return {
+      initialContribution:initial, monthlyContributions: monthly*months, totalContributed:totalContributed,
+      investmentGrowth: futureValue-totalContributed, futureValue:futureValue, months:months, series:series
+    };
+  }
+
+  // Agrega a série mensal de uma projeção por ano civil, a partir de uma data de início opcional.
+  function aggregateInvestmentSeriesByYear(series, startDate){
+    var byYear = {}, order = [];
+    var start = startDate ? new Date(startDate + 'T00:00:00') : new Date();
+    series.forEach(function(pt){
+      if (pt.month === 0) return;
+      var d = new Date(start.getFullYear(), start.getMonth()+pt.month, start.getDate());
+      var y = d.getFullYear();
+      if (!byYear[y]){ order.push(y); }
+      byYear[y] = {year:y, contributed:pt.contributed, balance:pt.balance};
+    });
+    return order.map(function(y){ return byYear[y]; });
+  }
+
   // Ordena por data e, em caso de empate (ex.: duas atualizações de valor no
   // mesmo dia), pelo instante de criação — sem isto, um sort só por "date"
   // (que só tem granularidade ao dia) podia deixar o registo mais recente
@@ -1606,6 +1787,19 @@
   function euro(n){
     var v = Number(n)||0;
     return v.toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+  }
+  // Nome explícito pedido para a formatação de moeda usada pelos novos
+  // simuladores e pela meta de poupança — mantém-se equivalente a euro(),
+  // que continua a ser usada em todo o resto da app sem alterações.
+  function formatCurrency(n){ return euro(n); }
+  // Formata uma chave de mês "YYYY-MM" (ex.: a data-alvo de uma poupança)
+  // como "junho 2027", reaproveitando o mesmo formato usado no resto da app.
+  function formatTargetDate(monthKey){
+    return monthKey ? monthLabelOf(monthKey) : '';
+  }
+  // Formata um objeto Date como "dd/mm/aaaa" (pt-PT) — usado pelas tabelas dos simuladores.
+  function formatDatePt(d){
+    return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
   }
   // Saudação do dashboard — nome vem do campo opcional das Definições
   // (guardado por dispositivo em localStorage), com fallback ao email.
@@ -2029,7 +2223,7 @@
   }
 
   function submitSavingsGoal(data, editingId){
-    var payload = {name:data.name, goalAmount: data.goalAmount || null, archived:false};
+    var payload = {name:data.name, goalAmount: data.goalAmount || null, targetDate: data.targetDate || null, archived:false};
     if (editingId){
       return db.collection('savingsGoals').doc(editingId).update(payload).then(function(){ return loadSavingsGoals(); });
     }
@@ -2542,6 +2736,41 @@
     return html;
   }
 
+  // ---------- Ritmo de gastos do mês (pura, sem UI) ----------
+  // Compara a % do orçamento planeado já gasta com a % do mês já decorrido,
+  // e devolve uma única mensagem em linguagem natural (nunca duas
+  // percentagens na mesma frase). "diferença" é o quanto a % gasta está
+  // acima (positivo) ou abaixo (negativo) da % do mês decorrido — os limiares
+  // abaixo são um ponto de partida razoável e podem ser afinados:
+  //   diferença > 15        → alerta ("já vais gastar depressa demais")
+  //   5 < diferença <= 15    → ligeiramente acima do ritmo
+  //  -5 <= diferença <= 5    → alinhado com o ponto do mês em que estamos
+  //   diferença < -5         → bom ritmo, abaixo do previsto
+  function paceMessageOf(sD, refDate){
+    var now = refDate || new Date();
+    var diasNoMes = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    var diaAtual = now.getDate();
+    var diasDecorridos = diaAtual;
+    var diasRestantes = Math.max(0, diasNoMes - diaAtual);
+    var percentagemMesDecorrido = (diaAtual/diasNoMes)*100;
+    var percentagemOrcamentoUtilizado = (sD.done/sD.total)*100;
+    var diferenca = percentagemOrcamentoUtilizado - percentagemMesDecorrido;
+    var pctUtilizado = Math.round(percentagemOrcamentoUtilizado);
+    var diasLabel = diasDecorridos === 1 ? '1 dia' : diasDecorridos + ' dias';
+
+    if (diferenca > 15){
+      return {type:'warning', icon:'trending', text:'Atenção ao ritmo de gastos. Já utilizaste ' + pctUtilizado + '% do orçamento nos primeiros ' + diasLabel + ' do mês. Se mantiveres este ritmo, poderás ultrapassar o orçamento mensal.'};
+    }
+    if (diferenca > 5){
+      return {type:'warning', icon:'trending', text:'Estás um pouco acima do ritmo previsto para esta altura do mês.'};
+    }
+    if (diferenca >= -5){
+      return {type:'info', icon:'trending', text:'Os teus gastos estão alinhados com o ponto do mês em que estás.'};
+    }
+    return {type:'success', icon:'trending', text:'Bom ritmo. Os teus gastos estão abaixo do previsto para esta altura do mês.'};
+    // diasRestantes fica calculado e disponível para uma futura mensagem que o refira explicitamente.
+  }
+
   // "Resumo do mês" — mensagens simples por regras (sem IA), a partir dos
   // valores já calculados no dashboard. No máximo 2, por ordem de prioridade:
   // categoria perto/acima do orçamento definido > ritmo de gastos vs dias já
@@ -2564,16 +2793,8 @@
     }
 
     if (isCurrentMonth && sD.total > 0){
-      var now = new Date();
-      var daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-      var expectedPct = (now.getDate()/daysInMonth)*100;
-      var actualPct = (sD.done/sD.total)*100;
-      var diff = expectedPct - actualPct;
-      if (diff >= 8){
-        msgs.push({type:'success', icon:'trending', text: monthLabelOf(state.monthKey).split(' ')[0] + ' está a correr bem. Gastaste ' + Math.round(diff) + '% menos do que seria de esperar a esta altura do mês.'});
-      } else if (diff <= -12){
-        msgs.push({type:'warning', icon:'trending', text:'Estás a gastar mais depressa do que o previsto: já vais em ' + Math.round(actualPct) + '% do orçamento, a meio do mês em ' + Math.round(expectedPct) + '%.'});
-      }
+      var paceMsg = paceMessageOf(sD, new Date());
+      if (paceMsg) msgs.push(paceMsg);
     }
 
     if (poupMes > 0 && state.savingsGoals.length){
@@ -3022,17 +3243,150 @@
     '</div>';
   }
 
+  // ---------- Simulador de crédito (UI) — não lê nem escreve em state.loans; usa só as funções puras acima ----------
+  function statTileHtml(label, value, cls){
+    return '<div class="stat-tile' + (cls ? (' '+cls) : '') + '"><div class="stat-label">' + label + '</div><div class="stat-value mono">' + value + '</div></div>';
+  }
+  function subviewToggleHtml(group, listLabel, activeSubview){
+    return '<div class="segmented" style="margin-bottom:16px;">' +
+      '<button type="button" data-action="subview" data-group="' + group + '" data-subview="list"' + (activeSubview !== 'simulator' ? ' class="active"' : '') + '>' + listLabel + '</button>' +
+      '<button type="button" data-action="subview" data-group="' + group + '" data-subview="simulator"' + (activeSubview === 'simulator' ? ' class="active"' : '') + '>Simulador</button>' +
+    '</div>';
+  }
+
+  var loanSimInputs = {amount:'', ratePct:'', durationValue:'', durationUnit:'years', startDate:todayStr(), error:null, lastResult:null};
+
+  function syncLoanSimInputsFromDom(){
+    var elAmount = document.getElementById('simLoanAmount');
+    var elRate = document.getElementById('simLoanRate');
+    var elDuration = document.getElementById('simLoanDuration');
+    var elStart = document.getElementById('simLoanStart');
+    if (elAmount) loanSimInputs.amount = elAmount.value;
+    if (elRate) loanSimInputs.ratePct = elRate.value;
+    if (elDuration) loanSimInputs.durationValue = elDuration.value;
+    if (elStart) loanSimInputs.startDate = elStart.value;
+  }
+
+  function buildSimLoanChart(schedule, principal){
+    var W = 520, H = 200, padTop = 22, padBottom = 28, padLeft = 6, padRight = 6;
+    var plotW = W - padLeft - padRight, plotH = H - padTop - padBottom;
+    var n = schedule.length;
+    var P = Math.max(1, principal);
+    function xOf(i){ return padLeft + (n<=0 ? 0 : (i/n))*plotW; }
+    function yOf(v){ return padTop + (1 - Math.max(0, Math.min(1, v/P)))*plotH; }
+    var pts = [{x:xOf(0), y:yOf(P)}].concat(schedule.map(function(r, idx){ return {x:xOf(idx+1), y:yOf(r.balance)}; }));
+    var path = pts.map(function(p, idx){ return (idx===0?'M':'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Evolução simulada do capital em dívida">' +
+      '<line x1="' + padLeft + '" y1="' + (H-padBottom) + '" x2="' + (W-padRight) + '" y2="' + (H-padBottom) + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<path d="' + path + '" fill="none" stroke="var(--cat-1)" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">' + formatCurrency(P) + ' inicial</text>' +
+      '<text x="' + (W-padRight) + '" y="' + (H-padBottom+18) + '" text-anchor="end" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">fim do prazo</text>' +
+    '</svg>';
+  }
+  function buildLoanSimYearlyTable(yearly){
+    var rows = yearly.map(function(y){
+      return '<tr><td class="m-name">' + y.year + '</td><td>' + formatCurrency(y.principal) + '</td><td>' + formatCurrency(y.interest) + '</td><td>' + formatCurrency(y.endBalance) + '</td></tr>';
+    }).join('');
+    return '<div class="table-wrap"><table class="month-table"><thead><tr><th>Ano</th><th>Capital pago</th><th>Juros pagos</th><th>Em dívida no fim</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  function buildLoanSimScheduleTable(schedule){
+    var rows = schedule.map(function(r){
+      return '<tr><td class="m-name">' + r.month + '</td><td>' + formatDatePt(r.date) + '</td><td>' + formatCurrency(r.payment) + '</td><td>' + formatCurrency(r.interest) + '</td><td>' + formatCurrency(r.principal) + '</td><td>' + formatCurrency(r.balance) + '</td></tr>';
+    }).join('');
+    return '<div class="table-wrap"><table class="month-table"><thead><tr><th>Mês</th><th>Data</th><th>Prestação</th><th>Juros</th><th>Capital</th><th>Em dívida</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  function loanSimResultsHtml(r){
+    var endDate = r.schedule.length ? r.schedule[r.schedule.length-1].date : null;
+    return '<div class="loan-stat-grid">' +
+        statTileHtml('Prestação mensal', formatCurrency(r.calc.monthlyPayment)) +
+        statTileHtml('Total pago', formatCurrency(r.calc.totalPaid)) +
+        statTileHtml('Total de juros', formatCurrency(r.calc.totalInterest)) +
+        statTileHtml('Data de fim', endDate ? formatDatePt(endDate) : '—') +
+      '</div>' +
+      '<div class="loan-chart-wrap">' + buildSimLoanChart(r.schedule, r.calc.amount) + '</div>' +
+      '<h4 class="sim-subhead">Resumo anual</h4>' +
+      buildLoanSimYearlyTable(r.yearly) +
+      '<details class="health-details"><summary>Ver plano de amortização mensal completo (' + r.schedule.length + ' meses)</summary>' +
+        buildLoanSimScheduleTable(r.schedule) +
+      '</details>' +
+      '<button type="button" class="btn ghost" data-action="sim-loan-save" style="width:100%; margin-top:14px;">Guardar como crédito</button>' +
+      '<div class="sim-disclaimer">Simulação indicativa com sistema de prestações constantes (francês). Não considera seguros, comissões bancárias, impostos (ex.: imposto de selo) nem alterações futuras à taxa de juro.</div>';
+  }
+  function loanSimulatorViewHtml(){
+    var s = loanSimInputs;
+    return '<div class="cat-card">' +
+      '<h3>Simulador de crédito</h3>' +
+      '<div class="hint">Este simulador é independente dos teus créditos reais — não altera nem guarda nada, a não ser que uses o botão "Guardar como crédito" no fim.</div>' +
+      '<div class="sim-layout">' +
+        '<div class="sim-inputs">' +
+          '<div class="field"><label for="simLoanAmount">Montante do crédito (€)</label><input type="number" id="simLoanAmount" min="0" step="0.01" placeholder="Ex.: 150000" value="' + escapeHtml(s.amount) + '"></div>' +
+          '<div class="field"><label for="simLoanRate">Taxa de juro anual (%)</label><input type="number" id="simLoanRate" min="0" step="0.01" placeholder="Ex.: 3.5" value="' + escapeHtml(s.ratePct) + '"></div>' +
+          '<div class="field"><label>Duração em</label><div class="segmented">' +
+            '<button type="button" data-action="sim-loan-duration-unit" data-unit="years"' + (s.durationUnit==='years'?' class="active"':'') + '>Anos</button>' +
+            '<button type="button" data-action="sim-loan-duration-unit" data-unit="months"' + (s.durationUnit==='months'?' class="active"':'') + '>Meses</button>' +
+          '</div></div>' +
+          '<div class="field"><label for="simLoanDuration">Duração (' + (s.durationUnit==='years'?'anos':'meses') + ')</label><input type="number" id="simLoanDuration" min="1" step="1" value="' + escapeHtml(s.durationValue) + '"></div>' +
+          '<div class="field"><label for="simLoanStart">Data de início</label><input type="date" id="simLoanStart" value="' + escapeHtml(s.startDate) + '"></div>' +
+          '<div class="field-error" id="simLoanError" style="display:' + (s.error ? 'block' : 'none') + ';">' + (s.error ? escapeHtml(s.error) : '') + '</div>' +
+          '<button type="button" class="btn primary" data-action="sim-loan-calc" style="width:100%;">Calcular</button>' +
+        '</div>' +
+        '<div class="sim-results" id="simLoanResults">' + (s.lastResult ? loanSimResultsHtml(s.lastResult) : '<div class="empty-inline">Preenche os dados e toca em "Calcular" para veres a prestação, o total de juros e o plano de amortização.</div>') + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  function runLoanSimulation(){
+    syncLoanSimInputsFromDom();
+    var amount = parseFloat(loanSimInputs.amount);
+    var ratePct = parseFloat(loanSimInputs.ratePct);
+    var durationValue = parseFloat(loanSimInputs.durationValue);
+    var termMonths = loanSimInputs.durationUnit === 'years' ? Math.round(durationValue*12) : Math.round(durationValue);
+    loanSimInputs.error = null;
+    if (isNaN(amount) || amount <= 0){
+      loanSimInputs.error = 'Introduz um montante válido, superior a 0.';
+    } else if (isNaN(ratePct) || ratePct < 0){
+      loanSimInputs.error = 'Introduz uma taxa de juro válida (0 ou superior).';
+    } else if (isNaN(termMonths) || termMonths <= 0){
+      loanSimInputs.error = 'Introduz uma duração válida, superior a 0.';
+    }
+    if (loanSimInputs.error){
+      loanSimInputs.lastResult = null;
+      render();
+      return;
+    }
+    var startDateStr = loanSimInputs.startDate || todayStr();
+    var calc = calculateLoan({amount:amount, annualRatePct:ratePct, termMonths:termMonths});
+    var schedule = generateAmortizationSchedule({amount:amount, annualRatePct:ratePct, termMonths:termMonths, startDate:startDateStr});
+    var yearly = aggregateLoanScheduleByYear(schedule);
+    loanSimInputs.lastResult = {calc:calc, schedule:schedule, yearly:yearly, startDate:startDateStr};
+    render();
+  }
+  function saveLoanSimAsLoan(){
+    var r = loanSimInputs.lastResult;
+    if (!r) return;
+    openLoanForm(null);
+    document.getElementById('fLoanName').value = 'Crédito simulado';
+    document.getElementById('fLoanPrincipal').value = r.calc.amount;
+    document.getElementById('fLoanStart').value = (r.startDate || todayStr()).slice(0,7);
+    document.getElementById('fLoanTermYears').value = Math.max(1, Math.round(r.calc.termMonths/12));
+    document.getElementById('fLoanRate').value = loanSimInputs.ratePct;
+  }
+
   function renderLoanView(content){
+    var toggle = subviewToggleHtml('loan', 'Os meus créditos', state.loanSubview);
+    if (state.loanSubview === 'simulator'){
+      content.innerHTML = toggle + loanSimulatorViewHtml();
+      return;
+    }
     if (state.loansLoading){
-      content.innerHTML = '<div class="skeleton">A carregar os créditos…</div>';
+      content.innerHTML = toggle + '<div class="skeleton">A carregar os créditos…</div>';
       return;
     }
     if (!state.loans.length){
-      content.innerHTML = '<div class="empty"><h3>Ainda não há créditos registados</h3>' +
+      content.innerHTML = toggle + '<div class="empty"><h3>Ainda não há créditos registados</h3>' +
         '<p>Toca no botão + para adicionares o crédito habitação (ou outro crédito) e acompanhares a evolução da dívida ao longo do tempo.</p></div>';
       return;
     }
-    content.innerHTML = state.loans.map(loanCardHtml).join('');
+    content.innerHTML = toggle + state.loans.map(loanCardHtml).join('');
   }
 
   // ---------- Investir (investment) view ----------
@@ -3146,13 +3500,165 @@
     '</div>';
   }
 
+  // ---------- Simulador de investimento (UI) — não lê nem escreve em state.investments; usa só as funções puras acima ----------
+  var investmentSimInputs = {
+    initial:'', monthly:'', annualReturn:'', years:'', startDate:todayStr(),
+    scenariosEnabled:false, rateConservador:'', rateEsperado:'', rateOtimista:'',
+    error:null, lastResult:null
+  };
+
+  function syncInvestmentSimInputsFromDom(){
+    var ids = {
+      initial:'simInvInitial', monthly:'simInvMonthly', annualReturn:'simInvReturn',
+      years:'simInvYears', startDate:'simInvStart',
+      rateConservador:'simInvRateCons', rateEsperado:'simInvRateEsp', rateOtimista:'simInvRateOtim'
+    };
+    Object.keys(ids).forEach(function(key){
+      var el = document.getElementById(ids[key]);
+      if (el) investmentSimInputs[key] = el.value;
+    });
+  }
+
+  function buildSimInvestmentChart(series){
+    var W = 520, H = 200, padTop = 22, padBottom = 28, padLeft = 6, padRight = 6;
+    var plotW = W - padLeft - padRight, plotH = H - padTop - padBottom;
+    var n = series.length - 1;
+    var maxVal = 1;
+    series.forEach(function(p){ maxVal = Math.max(maxVal, p.contributed, p.balance); });
+    maxVal *= 1.08;
+    function xOf(i){ return padLeft + (n<=0 ? 0 : (i/n))*plotW; }
+    function yOf(v){ return padTop + (1 - Math.max(0, Math.min(1, v/maxVal)))*plotH; }
+    var contribPath = series.map(function(p, idx){ return (idx===0?'M':'L') + xOf(idx).toFixed(1) + ',' + yOf(p.contributed).toFixed(1); }).join(' ');
+    var balancePath = series.map(function(p, idx){ return (idx===0?'M':'L') + xOf(idx).toFixed(1) + ',' + yOf(p.balance).toFixed(1); }).join(' ');
+    var last = series[series.length-1];
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Projeção simulada do investimento">' +
+      '<line x1="' + padLeft + '" y1="' + (H-padBottom) + '" x2="' + (W-padRight) + '" y2="' + (H-padBottom) + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<path d="' + contribPath + '" fill="none" stroke="var(--text-faint)" stroke-width="1.6" stroke-dasharray="4 3"/>' +
+      '<path d="' + balancePath + '" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">capital investido: ' + formatCurrency(last.contributed) + '</text>' +
+      '<text x="' + (W-padRight) + '" y="' + (padTop-8) + '" text-anchor="end" font-size="10.5" font-family="Manrope, sans-serif" font-weight="700" fill="var(--success-ink)">valor projetado: ' + formatCurrency(last.balance) + '</text>' +
+    '</svg>';
+  }
+  function buildInvestmentSimYearlyTable(yearly){
+    var rows = yearly.map(function(y){
+      return '<tr><td class="m-name">' + y.year + '</td><td>' + formatCurrency(y.contributed) + '</td><td>' + formatCurrency(y.balance) + '</td></tr>';
+    }).join('');
+    return '<div class="table-wrap"><table class="month-table"><thead><tr><th>Ano</th><th>Capital investido</th><th>Valor projetado</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  function buildScenarioTable(scenarios){
+    var rows = scenarios.map(function(s){
+      return '<tr><td class="m-name">' + escapeHtml(s.label) + ' (' + s.rate + '%)</td><td>' + formatCurrency(s.result.futureValue) + '</td><td>' + formatCurrency(s.result.investmentGrowth) + '</td></tr>';
+    }).join('');
+    return '<div class="table-wrap"><table class="month-table"><thead><tr><th>Cenário</th><th>Valor final</th><th>Ganho</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  function investmentSimResultsHtml(r){
+    var main = r.main;
+    var html = '<div class="loan-stat-grid">' +
+        statTileHtml('Capital investido', formatCurrency(main.totalContributed)) +
+        statTileHtml('Valor final projetado', formatCurrency(main.futureValue)) +
+        statTileHtml('Ganho projetado', formatCurrency(main.investmentGrowth), main.investmentGrowth >= 0 ? 'gain-pos' : 'gain-neg') +
+        statTileHtml('Duração', r.months + ' meses') +
+      '</div>' +
+      '<div class="legend-row">' +
+        '<div class="legend-item"><span class="legend-dot" style="background:var(--text-faint)"></span>Capital investido</div>' +
+        '<div class="legend-item"><span class="legend-dot" style="background:var(--success)"></span>Valor projetado</div>' +
+      '</div>' +
+      '<div class="loan-chart-wrap">' + buildSimInvestmentChart(main.series) + '</div>' +
+      '<h4 class="sim-subhead">Resumo anual</h4>' +
+      buildInvestmentSimYearlyTable(r.yearly);
+    if (r.scenarios && r.scenarios.length){
+      html += '<h4 class="sim-subhead">Comparação de cenários</h4>' + buildScenarioTable(r.scenarios);
+    }
+    html += '<div class="sim-disclaimer">Simulação meramente indicativa: assume uma rentabilidade anual constante, convertida em capitalização mensal, e não considera impostos, comissões nem inflação. Rentabilidades passadas não garantem rentabilidades futuras.</div>';
+    return html;
+  }
+  function investmentSimulatorViewHtml(){
+    var s = investmentSimInputs;
+    var scenarioFieldsHtml = s.scenariosEnabled ? (
+      '<div class="row-2">' +
+        '<div class="field"><label for="simInvRateCons">Conservador (%)</label><input type="number" id="simInvRateCons" step="0.01" value="' + escapeHtml(s.rateConservador) + '"></div>' +
+        '<div class="field"><label for="simInvRateEsp">Esperado (%)</label><input type="number" id="simInvRateEsp" step="0.01" value="' + escapeHtml(s.rateEsperado) + '"></div>' +
+      '</div>' +
+      '<div class="field"><label for="simInvRateOtim">Otimista (%)</label><input type="number" id="simInvRateOtim" step="0.01" value="' + escapeHtml(s.rateOtimista) + '"></div>' +
+      '<div class="hint">As três taxas partem em branco (ou da rentabilidade esperada já indicada) — ajusta-as livremente; não assumimos nenhum cenário por ti.</div>'
+    ) : '';
+    return '<div class="cat-card">' +
+      '<h3>Simulador de investimento</h3>' +
+      '<div class="hint">Este simulador é independente dos teus investimentos reais — não altera nem guarda nada, serve só para simulares cenários.</div>' +
+      '<div class="sim-layout">' +
+        '<div class="sim-inputs">' +
+          '<div class="field"><label for="simInvInitial">Valor inicial (€)</label><input type="number" id="simInvInitial" min="0" step="0.01" placeholder="Ex.: 5000" value="' + escapeHtml(s.initial) + '"></div>' +
+          '<div class="field"><label for="simInvMonthly">Aporte mensal (€)</label><input type="number" id="simInvMonthly" min="0" step="0.01" placeholder="Ex.: 200" value="' + escapeHtml(s.monthly) + '"></div>' +
+          '<div class="field"><label for="simInvReturn">Rentabilidade anual esperada (%)</label><input type="number" id="simInvReturn" step="0.01" placeholder="Ex.: 6" value="' + escapeHtml(s.annualReturn) + '"></div>' +
+          '<div class="field"><label for="simInvYears">Duração (anos)</label><input type="number" id="simInvYears" min="1" step="1" placeholder="Ex.: 15" value="' + escapeHtml(s.years) + '"></div>' +
+          '<div class="field"><label for="simInvStart">Data de início (opcional)</label><input type="date" id="simInvStart" value="' + escapeHtml(s.startDate) + '"></div>' +
+          '<div class="field"><label class="checkbox-row"><input type="checkbox" id="simInvScenariosToggle" data-action="sim-invest-scenarios-toggle"' + (s.scenariosEnabled?' checked':'') + '><span>Comparar 3 cenários (conservador / esperado / otimista)</span></label></div>' +
+          scenarioFieldsHtml +
+          '<div class="field-error" id="simInvError" style="display:' + (s.error ? 'block' : 'none') + ';">' + (s.error ? escapeHtml(s.error) : '') + '</div>' +
+          '<button type="button" class="btn primary" data-action="sim-invest-calc" style="width:100%;">Calcular</button>' +
+        '</div>' +
+        '<div class="sim-results" id="simInvResults">' + (s.lastResult ? investmentSimResultsHtml(s.lastResult) : '<div class="empty-inline">Preenche os dados e toca em "Calcular" para veres a projeção.</div>') + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  function runInvestmentSimulation(){
+    syncInvestmentSimInputsFromDom();
+    var initial = parseFloat(investmentSimInputs.initial);
+    var monthly = parseFloat(investmentSimInputs.monthly);
+    var annualReturn = parseFloat(investmentSimInputs.annualReturn);
+    var years = parseFloat(investmentSimInputs.years);
+    investmentSimInputs.error = null;
+    if (isNaN(initial) || initial < 0){
+      investmentSimInputs.error = 'Introduz um valor inicial válido (0 ou superior).';
+    } else if (isNaN(monthly) || monthly < 0){
+      investmentSimInputs.error = 'Introduz um aporte mensal válido (0 ou superior).';
+    } else if ((Number(initial)||0) <= 0 && (Number(monthly)||0) <= 0){
+      investmentSimInputs.error = 'Introduz pelo menos um valor inicial ou um aporte mensal superior a 0.';
+    } else if (isNaN(annualReturn)){
+      investmentSimInputs.error = 'Introduz uma rentabilidade anual esperada.';
+    } else if (isNaN(years) || years <= 0){
+      investmentSimInputs.error = 'Introduz uma duração válida, superior a 0 anos.';
+    }
+    if (investmentSimInputs.error){
+      investmentSimInputs.lastResult = null;
+      render();
+      return;
+    }
+    var months = Math.round(years*12);
+    var startDateStr = investmentSimInputs.startDate || todayStr();
+    var mainProjection = calculateInvestmentProjection({initialAmount:initial, monthlyContribution:monthly, annualReturnPct:annualReturn, months:months});
+    var yearly = aggregateInvestmentSeriesByYear(mainProjection.series, startDateStr);
+    var scenarios = null;
+    if (investmentSimInputs.scenariosEnabled){
+      scenarios = [];
+      var scenarioDefs = [
+        {key:'rateConservador', label:'Conservador'},
+        {key:'rateEsperado', label:'Esperado'},
+        {key:'rateOtimista', label:'Otimista'}
+      ];
+      scenarioDefs.forEach(function(def){
+        var rate = parseFloat(investmentSimInputs[def.key]);
+        if (!isNaN(rate)){
+          scenarios.push({label:def.label, rate:rate, result:calculateInvestmentProjection({initialAmount:initial, monthlyContribution:monthly, annualReturnPct:rate, months:months})});
+        }
+      });
+    }
+    investmentSimInputs.lastResult = {main:mainProjection, yearly:yearly, startDate:startDateStr, scenarios:scenarios, months:months};
+    render();
+  }
+
   function renderInvestmentView(content){
+    var toggle = subviewToggleHtml('investment', 'Portefólio', state.investmentSubview);
+    if (state.investmentSubview === 'simulator'){
+      content.innerHTML = toggle + investmentSimulatorViewHtml();
+      return;
+    }
     if (state.investmentsLoading){
-      content.innerHTML = '<div class="skeleton">A carregar os investimentos…</div>';
+      content.innerHTML = toggle + '<div class="skeleton">A carregar os investimentos…</div>';
       return;
     }
     if (!state.investments.length){
-      content.innerHTML = '<div class="empty"><h3>Ainda não há investimentos registados</h3>' +
+      content.innerHTML = toggle + '<div class="empty"><h3>Ainda não há investimentos registados</h3>' +
         '<p>Toca no botão + para adicionares o primeiro investimento (PPR, ETFs, depósitos…) e acompanhares a evolução ao longo do tempo.</p></div>';
       return;
     }
@@ -3164,10 +3670,37 @@
         '<div class="stat-tile ' + (totals.gain>=0?'gain-pos':'gain-neg') + '"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">' + (totals.gain>=0?'+':'') + euro(totals.gain) + '</div><div class="stat-note mono">' + (totals.gain>=0?'+':'') + totals.pct.toFixed(1) + '%</div></div>' +
       '</div>' +
     '</div>';
-    content.innerHTML = summaryHtml + investmentAllocationHtml() + state.investments.map(investmentCardHtml).join('');
+    content.innerHTML = toggle + summaryHtml + investmentAllocationHtml() + state.investments.map(investmentCardHtml).join('');
   }
 
   // ---------- Poupanças por objetivo (sinking funds) view ----------
+  // Meta com data-alvo — bloco de texto separado da mecânica de cálculo
+  // (calculateSavingsTarget / savingsPaceStatus), para manter a UI aqui e o
+  // cálculo puro na secção de "math" acima.
+  function savingsTargetHtml(goal, saved){
+    var target = calculateSavingsTarget(goal, saved);
+    if (!target) return '';
+    var html = '<div class="loan-review-chip">Meta: ' + escapeHtml(formatTargetDate(target.targetDate)) + '</div>';
+    if (target.status === 'completed'){
+      html += '<div class="budget-status-pill success" style="margin-left:0;">Meta atingida</div>';
+      return html;
+    }
+    if (target.status === 'overdue'){
+      html += '<div class="loan-review-chip">A data-alvo já passou — faltam ' + formatCurrency(target.remainingAmount) + '.</div>';
+      return html;
+    }
+    var when = target.status === 'dueThisMonth' ? ' (a meta é já este mês)' : '';
+    html += '<div class="loan-review-chip">' + formatCurrency(target.requiredMonthlySaving) + '/mês necessários' + when + '</div>';
+    var pace = savingsPaceStatus(goal, target);
+    if (pace && pace.hasHistory){
+      var paceText = pace.pace === 'ahead' ? 'Ritmo atual acima do necessário — a tua média de poupança recente ultrapassa o valor mensal preciso.' :
+        pace.pace === 'behind' ? 'Ritmo atual abaixo do necessário — a tua média de poupança recente fica aquém do valor mensal preciso.' :
+        'Ritmo atual alinhado com o necessário para chegares à meta a tempo.';
+      var paceCls = pace.pace === 'behind' ? 'warning' : 'success';
+      html += '<div class="budget-status-pill ' + paceCls + '" style="margin-left:0; display:block; margin-top:8px; white-space:normal; text-transform:none; letter-spacing:normal; font-size:11.5px; padding:6px 10px;">' + paceText + '</div>';
+    }
+    return html;
+  }
   function savingsGoalCardHtml(goal){
     var saved = savingsSavedOf(goal.id);
     var goalHtml = '';
@@ -3176,6 +3709,7 @@
       goalHtml = '<div class="loan-progress-label"><span>' + pct + '% do objetivo</span><span>' + euro(goal.goalAmount) + '</span></div>' +
         '<div class="progress-track"><div class="progress-fill accent" style="width:' + pct + '%"></div></div>';
     }
+    goalHtml += savingsTargetHtml(goal, saved);
     var movs = state.savingsMovements[goal.id] || [];
     var lastMov = movs.length ? movs[movs.length-1] : null;
     var lastHtml = lastMov ? '<div class="loan-review-chip">Último movimento: ' + (lastMov.amount>=0?'+':'') + euro(lastMov.amount) + ' em ' + lastMov.date.split('-').reverse().join('/') + '</div>' : '';
@@ -3472,7 +4006,8 @@
       return;
     }
 
-    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia;
+    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia ||
+      (isLoan && state.loanSubview === 'simulator') || (isInvestment && state.investmentSubview === 'simulator');
 
     if (isHome){
       renderHomeView(content);
@@ -3688,6 +4223,7 @@
     if (kind === 'loan'){ deleteLoan(id); showToast('Crédito removido', {icon:'x'}); }
     else if (kind === 'investment'){ deleteInvestment(id); showToast('Investimento removido', {icon:'x'}); }
     else if (kind === 'savings'){ deleteSavingsGoal(id); showToast('Poupança removida', {icon:'x'}); }
+    else if (kind === 'account'){ document.getElementById('confirmTitle').textContent = 'Eliminar'; deleteMyAccount(); }
     else { deletePayment(id); showToast('Eliminado', {icon:'x'}); }
   });
 
@@ -4076,10 +4612,12 @@
       document.getElementById('savingsFormTitle').textContent = 'Editar poupança';
       document.getElementById('fSavingsName').value = editGoal.name;
       document.getElementById('fSavingsGoal').value = editGoal.goalAmount || '';
+      document.getElementById('fSavingsTargetDate').value = editGoal.targetDate || '';
       initialField.hidden = true;
     } else {
       editingSavingsId = null;
       document.getElementById('savingsFormTitle').textContent = 'Nova poupança';
+      document.getElementById('fSavingsTargetDate').value = '';
       initialField.hidden = false;
     }
     savingsFormOverlay.classList.add('open');
@@ -4094,6 +4632,8 @@
     var name = document.getElementById('fSavingsName').value.trim();
     var goalRaw = document.getElementById('fSavingsGoal').value;
     var goalAmount = goalRaw === '' ? null : parseFloat(goalRaw);
+    var targetDateRaw = document.getElementById('fSavingsTargetDate').value;
+    var targetDate = targetDateRaw || null;
     var errorEl = document.getElementById('savingsFormError');
     if (!name){
       errorEl.textContent = 'Confirma o nome da poupança.';
@@ -4105,7 +4645,7 @@
       errorEl.style.display = 'block';
       return;
     }
-    var data = {name:name, goalAmount:goalAmount};
+    var data = {name:name, goalAmount:goalAmount, targetDate:targetDate};
     if (!editingSavingsId){
       var initialRaw = document.getElementById('fSavingsInitial').value;
       var initial = initialRaw === '' ? 0 : parseFloat(initialRaw);
@@ -4311,6 +4851,44 @@
       window.location.reload();
     }
   });
+  document.getElementById('deleteAccountBtn').addEventListener('click', function(){
+    settingsOverlay.classList.remove('open');
+    pendingDelete = 'account';
+    pendingDeleteKind = 'account';
+    document.getElementById('confirmTitle').textContent = 'Eliminar conta';
+    document.getElementById('confirmText').textContent = 'Vai deixar de conseguir entrar com esta conta. Os dados financeiros da família (pagamentos, movimentos, créditos, investimentos, património) não são apagados — continuam disponíveis para os outros membros. Esta ação não pode ser desfeita. Continuar?';
+    confirmOverlay.classList.add('open');
+  });
+  // Elimina só a CONTA (login) de quem está a usar a app agora — nunca os
+  // dados financeiros partilhados da família, que pertencem à família toda
+  // e não a uma pessoa. Corresponde ao que a Apple e a Google exigem para
+  // apps com criação de conta (têm de deixar eliminar a conta a partir de
+  // dentro da app).
+  function deleteMyAccount(){
+    if (!window.__ContasApp || !window.__ContasApp.deleteAccount){
+      showToast('Não foi possível eliminar a conta', {icon:'x'});
+      return;
+    }
+    // Apaga primeiro o registo em familyMembers — enquanto a conta ainda
+    // está autenticada — e só DEPOIS a conta em si. Pela ordem inversa, uma
+    // vez apagada a conta a sessão deixa logo de ser válida e a escrita no
+    // Firestore seria recusada pelas regras de segurança, deixando o
+    // registo "fantasma" para sempre (mais ninguém tem permissão para o
+    // apagar, nem a própria pessoa, que já não consegue voltar a entrar).
+    var uid = state.myUid;
+    (db && uid ? db.collection('familyMembers').doc(uid).delete().catch(function(){}) : Promise.resolve()).then(function(){
+      return window.__ContasApp.deleteAccount();
+    }).then(function(){
+      window.location.reload();
+    }).catch(function(err){
+      console.error('deleteMyAccount failed', err);
+      if (err && err.code === 'auth/requires-recent-login'){
+        showToast('Por segurança, termina sessão, volta a entrar e tenta eliminar a conta logo de seguida.', {icon:'alert'});
+      } else {
+        showToast('Não foi possível eliminar a conta. Tenta novamente.', {icon:'x'});
+      }
+    });
+  }
   settingsOverlay.addEventListener('click', function(ev){
     if (ev.target === settingsOverlay){ settingsOverlay.classList.remove('open'); return; }
     var actionEl = ev.target.closest('[data-action]');
@@ -4593,6 +5171,38 @@
       confirmOverlay.classList.add('open');
     } else if (action === 'goto'){
       switchView(actionEl.getAttribute('data-view'));
+    } else if (action === 'subview'){
+      var subviewGroup = actionEl.getAttribute('data-group');
+      var subviewVal = actionEl.getAttribute('data-subview');
+      if (subviewGroup === 'loan') state.loanSubview = subviewVal;
+      else if (subviewGroup === 'investment') state.investmentSubview = subviewVal;
+      render();
+    } else if (action === 'sim-loan-duration-unit'){
+      syncLoanSimInputsFromDom();
+      var newUnit = actionEl.getAttribute('data-unit');
+      // Converte o valor já escrito, para não deixar um número que fazia
+      // sentido em anos (ex.: 30) a passar despercebido a significar meses.
+      if (newUnit !== loanSimInputs.durationUnit){
+        var curVal = parseFloat(loanSimInputs.durationValue);
+        if (!isNaN(curVal)){
+          loanSimInputs.durationValue = String(newUnit === 'months' ? Math.round(curVal*12) : Math.round((curVal/12)*100)/100);
+        }
+      }
+      loanSimInputs.durationUnit = newUnit;
+      render();
+    } else if (action === 'sim-loan-calc'){
+      runLoanSimulation();
+    } else if (action === 'sim-loan-save'){
+      saveLoanSimAsLoan();
+    } else if (action === 'sim-invest-calc'){
+      runInvestmentSimulation();
+    } else if (action === 'sim-invest-scenarios-toggle'){
+      syncInvestmentSimInputsFromDom();
+      investmentSimInputs.scenariosEnabled = actionEl.checked;
+      if (investmentSimInputs.scenariosEnabled && !investmentSimInputs.rateEsperado){
+        investmentSimInputs.rateEsperado = investmentSimInputs.annualReturn;
+      }
+      render();
     } else if (action === 'set-budget-metric'){
       state.budgetMetric = actionEl.getAttribute('data-metric');
       render();
@@ -5095,7 +5705,7 @@
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail
+    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
   // ======= CONFIGURA AQUI OS DADOS DO TEU PROJETO FIREBASE =======
@@ -5210,6 +5820,15 @@
       };
       window.__ContasApp.resetPassword = function(email){
         return sendPasswordResetEmail(auth, email);
+      };
+      // Elimina a CONTA (login) desta pessoa — não os dados financeiros da
+      // família, que são partilhados e continuam a existir para os outros
+      // membros. Exige sessão "recente"; se a Firebase recusar por causa
+      // disso (auth/requires-recent-login), quem chama trata o erro e pede
+      // para terminar sessão e voltar a entrar antes de tentar outra vez.
+      window.__ContasApp.deleteAccount = function(){
+        if (!auth.currentUser) return Promise.reject({code:'auth/no-current-user'});
+        return deleteUser(auth.currentUser);
       };
 
       function expireIfNeeded(){
