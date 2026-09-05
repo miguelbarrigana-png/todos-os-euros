@@ -8,7 +8,7 @@
 // Without it, phones can keep showing an old version indefinitely.
 // (The cache key name itself is an internal identifier, left as-is for
 // upgrade compatibility with installs already running v5.)
-var CACHE_NAME = 'contas-em-dia-v17';
+var CACHE_NAME = 'contas-em-dia-v19';
 var SHELL_FILES = [
   './',
   './index.html',
@@ -16,7 +16,7 @@ var SHELL_FILES = [
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
-
+ 
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
@@ -24,7 +24,7 @@ self.addEventListener('install', function (event) {
     }).then(function () { return self.skipWaiting(); })
   );
 });
-
+ 
 self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys().then(function (names) {
@@ -35,7 +35,7 @@ self.addEventListener('activate', function (event) {
     }).then(function () { return self.clients.claim(); })
   );
 });
-
+ 
 // Page navigations and index.html: network-first, so a phone that's online
 // always gets the latest version instead of being stuck on a cached one.
 // Falls back to cache only when offline. Other shell files (icons,
@@ -44,9 +44,9 @@ self.addEventListener('activate', function (event) {
 self.addEventListener('fetch', function (event) {
   var req = event.request;
   if (req.method !== 'GET') return;
-
+ 
   var isNavigation = req.mode === 'navigate' || req.url.indexOf('index.html') !== -1;
-
+ 
   if (isNavigation) {
     event.respondWith(
       fetch(req, { cache: 'no-store' }).then(function (res) {
@@ -61,11 +61,11 @@ self.addEventListener('fetch', function (event) {
     );
     return;
   }
-
+ 
   var isShellFile = SHELL_FILES.some(function (f) {
     return req.url.indexOf(f.replace('./', '')) !== -1;
   }) || new URL(req.url).origin === self.location.origin;
-
+ 
   if (isShellFile) {
     event.respondWith(
       caches.match(req).then(function (cached) {
