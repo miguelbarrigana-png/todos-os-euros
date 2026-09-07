@@ -2920,12 +2920,48 @@
   // no mock local), a resposta do loadSpaces() do arranque pode chegar DEPOIS
   // da resposta do loadSpaces() chamado por createSpace(), apagando o Espaço
   // que acabou de aparecer (ver ponto 16 do pedido de correção do orçamento).
+  //
+  // ATENÇÃO — CAUSA RAIZ REAL do "Espaço desaparece" (confirmada em produção,
+  // ver ESPACOS_FINANCEIROS.md secção 14): NUNCA se pode fazer
+  // db.collection('spaces').get() SEM filtro nenhum. As regras do Firestore
+  // negam corretamente o acesso a um Espaço privado de OUTRO membro da
+  // família — mas para uma *query de lista* (get()/where() sobre a coleção
+  // inteira, ao contrário de um get() a um documento concreto), o Firestore
+  // só aceita o pedido se conseguir GARANTIR, só a partir dos filtros da
+  // própria query, que TODOS os documentos que ela poderia devolver cumprem
+  // a regra — não filtra documento a documento. Assim que existe QUALQUER
+  // Espaço privado de outro membro da família na coleção 'spaces' (o que
+  // acontece em qualquer família com mais de uma pessoa a usar Espaços
+  // privados), uma query sem filtro deixa de ter essa garantia e o Firestore
+  // nega o pedido INTEIRO com permission-denied — nunca "quase todos menos
+  // esse". Isto fazia este loadSpaces() cair SEMPRE no .catch() mais abaixo,
+  // que mostra só o Espaço "Família" fixo em memória (nunca gravado no
+  // Firestore) — apagando da vista qualquer Espaço recém-criado, mesmo que a
+  // escrita em si tivesse sido bem sucedida (dados confirmados intactos na
+  // Firebase Console). Por isso aqui não se faz UMA query sem filtro, fazem-se
+  // TRÊS, cada uma construída para que a regra seja estruturalmente sempre
+  // verdadeira nos documentos que pode devolver — o Firestore consegue provar
+  // cada uma isoladamente, por isso nenhuma é negada:
+  //   1) os Espaços que eu próprio possuo (ownerUserId == eu) — cobre os
+  //      meus Espaços privados;
+  //   2) os Espaços partilhados sem lista de membros — cobre o Espaço
+  //      "Família" (visível a toda a gente por omissão);
+  //   3) os Espaços partilhados onde estou explicitamente na lista.
+  // Os resultados são combinados e sem duplicados no cliente.
   var spacesLoadToken = 0;
   function loadSpaces(){
     var myLoadToken = ++spacesLoadToken;
     state.spacesLoading = true;
-    return db.collection('spaces').get().then(function(snap){
-      var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    var myUid = state.myUid;
+    var qOwnedByMe = db.collection('spaces').where('ownerUserId', '==', myUid).get();
+    var qSharedToAll = db.collection('spaces').where('visibility', '==', 'partilhado').where('memberUids', '==', []).get();
+    var qSharedWithMe = db.collection('spaces').where('visibility', '==', 'partilhado').where('memberUids', 'array-contains', myUid).get();
+    return Promise.all([qOwnedByMe, qSharedToAll, qSharedWithMe]).then(function(snaps){
+      var byId = {};
+      snaps.forEach(function(snap){
+        snap.docs.forEach(function(d){ byId[d.id] = Object.assign({id:d.id}, d.data()); });
+      });
+      var all = Object.keys(byId).map(function(id){ return byId[id]; });
       if (all.length === 0){
         var seed = {
           name: 'Família',
