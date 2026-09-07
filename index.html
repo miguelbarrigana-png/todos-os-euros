@@ -1017,6 +1017,10 @@
       <button type="button" class="btn ghost" id="editSpaceArchiveBtn">Arquivar espaço</button>
       <div class="hint">Deixa de aparecer no seletor principal, mas os dados continuam guardados e acessíveis em Espaços arquivados.</div>
     </div>
+    <div class="field" id="editSpaceDeleteField">
+      <button type="button" class="btn danger-outline" id="editSpaceDeleteBtn">Eliminar espaço definitivamente</button>
+      <div class="hint">Só é possível para um Espaço sem movimentos nenhuns. Se já tiver dados, arquiva em vez disso.</div>
+    </div>
     <div class="field-error" id="editSpaceFormError" style="display:none;"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="closeEditSpace">Cancelar</button>
@@ -2360,6 +2364,54 @@
   // ---------- DB helpers ----------
   function entryDocId(monthKey, paymentId){ return monthKey + '_' + paymentId; }
 
+  // Migração aditiva, não destrutiva, corrida uma única vez por telemóvel:
+  // grava spaceId = defaultSpaceId() em qualquer payment/entry ANTIGO
+  // (anterior a existirem Espaços) que ainda não tenha esse campo. Não
+  // apaga nem muda mais nenhum valor — só preenche um campo em falta.
+  //
+  // Porque é preciso: loadPayments()/loadMonth()/loadTemporarySpaceEntries()/
+  // propagateTemplateChanges() passaram a pedir sempre com
+  // `where('spaceId','==', ...)` explícito, nunca a coleção inteira sem
+  // filtro (ver a nota junto a loadPayments() — é a mesma causa raiz do
+  // "Espaço desaparece" documentada em ESPACOS_FINANCEIROS.md secção 14,
+  // só que nas coleções payments/entries em vez de spaces). Um documento
+  // antigo sem spaceId nunca é devolvido por essas queries com filtro — por
+  // isso esta migração corre uma vez, no arranque, antes de qualquer leitura
+  // de payments/entries, para que os dados antigos continuem visíveis.
+  //
+  // É best-effort e falha em silêncio: se a LEITURA sem filtro que esta
+  // migração precisa fazer (só desta vez) já estiver a ser negada pelo
+  // Firestore — porque esta família já tem, nalgum sítio, dados de um
+  // Espaço a que este utilizador não tem acesso — a migração não consegue
+  // correr, mas isso não impede o resto da app de funcionar: só significa
+  // que documentos antigos ainda por editar (sem spaceId) podem não
+  // aparecer até serem editados manualmente (o que já lhes grava o spaceId
+  // — ver o comentário "Backfill preguiçoso" em submitPayment()) ou até
+  // esta migração ser corrida à parte, fora do browser.
+  var SPACE_ID_BACKFILL_FLAG = 'contasSpaceIdBackfillDone_v1';
+  function backfillMissingSpaceIds(){
+    var jaFeito = false;
+    try { jaFeito = localStorage.getItem(SPACE_ID_BACKFILL_FLAG) === '1'; } catch(e){}
+    if (jaFeito) return Promise.resolve();
+    return db.collection('payments').get().then(function(snap){
+      var semSpaceId = snap.docs.filter(function(d){ return d.data().spaceId === undefined; });
+      return Promise.all(semSpaceId.map(function(d){
+        return db.collection('payments').doc(d.id).update({spaceId: defaultSpaceId()});
+      }));
+    }).then(function(){
+      return db.collection('entries').get();
+    }).then(function(snap){
+      var semSpaceId = snap.docs.filter(function(d){ return d.data().spaceId === undefined; });
+      return Promise.all(semSpaceId.map(function(d){
+        return db.collection('entries').doc(d.id).update({spaceId: defaultSpaceId()});
+      }));
+    }).then(function(){
+      try { localStorage.setItem(SPACE_ID_BACKFILL_FLAG, '1'); } catch(e){}
+    }).catch(function(err){
+      console.error('backfillMissingSpaceIds falhou (não crítico — ver comentário acima):', err);
+    });
+  }
+
   function computeApplicable(payments, monthKey){
     return payments.filter(function(p){
       if (p.type === 'pontual') return p.monthKey === monthKey;
@@ -2373,12 +2425,22 @@
     return {monthKey:monthKey, paymentId:p.id, name:p.name, amount:p.amount, dueDay:p.dueDay, type:p.type, kind:kindOf(p), category:p.category || 'outros', paid:false, paidAt:null, actualAmount:null, spaceId: spaceIdOf(p)};
   }
 
+  // ATENÇÃO — mesma causa raiz documentada em loadSpaces() (ver
+  // ESPACOS_FINANCEIROS.md secção 14): NUNCA um db.collection('payments').get()
+  // ou db.collection('entries').get() sem filtro. Assim que existir, na
+  // coleção, um documento de um Espaço a que este utilizador não tem acesso
+  // (ex.: um payment dentro do Espaço privado de outro membro), o Firestore
+  // nega o pedido INTEIRO — não filtra, recusa tudo — e a app deixava de
+  // conseguir abrir Início/Movimentos até para o Espaço por omissão
+  // partilhado. Por isso pede-se sempre com `where('spaceId','==', ...)`
+  // explícito, nunca a coleção inteira. Para isto funcionar mesmo com
+  // payments/entries antigos (anteriores a existirem Espaços, sem campo
+  // spaceId nenhum), backfillMissingSpaceIds() grava esse campo em falta
+  // uma única vez, no arranque — ver essa função.
   function loadPayments(){
-    return db.collection('payments').get().then(function(snap){
+    return db.collection('payments').where('spaceId', '==', state.activeSpaceId).get().then(function(snap){
       var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      // Um payment sem spaceId (dados anteriores a Espaços) pertence ao Espaço
-      // por omissão — ver defaultSpaceId(). Só entram os do Espaço ativo.
-      state.payments = all.filter(function(p){ return !p.archived; }).filter(function(p){ return spaceIdOf(p) === state.activeSpaceId; });
+      state.payments = all.filter(function(p){ return !p.archived; });
       return state.payments;
     });
   }
@@ -2388,7 +2450,7 @@
     render();
     return loadPayments().then(function(payments){
       var applicable = computeApplicable(payments, monthKey);
-      return db.collection('entries').where('monthKey','==',monthKey).get().then(function(esnap){
+      return db.collection('entries').where('monthKey','==',monthKey).where('spaceId','==',state.activeSpaceId).get().then(function(esnap){
         var byPaymentId = {};
         esnap.docs.forEach(function(d){ var data = d.data(); byPaymentId[data.paymentId] = Object.assign({id:d.id}, data); });
 
@@ -2424,7 +2486,8 @@
         months.push({monthKey:mk, applicable:computeApplicable(payments, mk)});
       }
       var yearStart = year + '-01', yearEnd = year + '-12';
-      return db.collection('entries').where('monthKey','>=',yearStart).where('monthKey','<=',yearEnd).get().then(function(esnap){
+      // Ver nota junto a loadPayments(): spaceId tem de vir sempre explícito.
+      return db.collection('entries').where('monthKey','>=',yearStart).where('monthKey','<=',yearEnd).where('spaceId','==',state.activeSpaceId).get().then(function(esnap){
         var byMonth = {};
         esnap.docs.forEach(function(d){
           var data = d.data();
@@ -2507,8 +2570,13 @@
   // so an edit to a recorrente payment (e.g. a new category) is reflected in months already
   // materialized (by loadYear, or by having visited them before) — not just the one being viewed.
   // Past months (before fromMonthKey) are left untouched, preserving their historical snapshot.
-  function propagateTemplateChanges(paymentId, fromMonthKey, changes){
-    return db.collection('entries').where('paymentId','==',paymentId).get().then(function(snap){
+  function propagateTemplateChanges(paymentId, fromMonthKey, changes, spaceId){
+    // Ver nota junto a loadPayments(): um where() só por paymentId não é
+    // suficiente — o Firestore só aceita a query como segura se TODOS os
+    // filtros necessários à regra estiverem explícitos nela, por isso o
+    // spaceId (do payment a que estas entries pertencem) tem de vir sempre
+    // como segundo filtro, nunca só paymentId sozinho.
+    return db.collection('entries').where('paymentId','==',paymentId).where('spaceId','==',spaceId).get().then(function(snap){
       var ops = [];
       snap.docs.forEach(function(d){
         var data = d.data();
@@ -2552,11 +2620,12 @@
         ? oldPayment.monthKey
         : state.monthKey;
       return db.collection('payments').doc(state.editingPaymentId).update(changes)
-        .then(function(){ return propagateTemplateChanges(state.editingPaymentId, fromMonthKey, changes); })
+        .then(function(){ return propagateTemplateChanges(state.editingPaymentId, fromMonthKey, changes, changes.spaceId); })
         .then(function(){
           if (typeChanged && data.type === 'pontual'){
             // A one-off shouldn't keep recurring — drop any already-materialized future entries.
-            return db.collection('entries').where('paymentId','==',state.editingPaymentId).get().then(function(snap){
+            // Ver nota junto a loadPayments(): spaceId tem de vir sempre explícito.
+            return db.collection('entries').where('paymentId','==',state.editingPaymentId).where('spaceId','==',changes.spaceId).get().then(function(snap){
               var ops = [];
               snap.docs.forEach(function(d){
                 var ed = d.data();
@@ -2962,7 +3031,21 @@
         snap.docs.forEach(function(d){ byId[d.id] = Object.assign({id:d.id}, d.data()); });
       });
       var all = Object.keys(byId).map(function(id){ return byId[id]; });
-      if (all.length === 0){
+      // ATENÇÃO: verificar se o Espaço por omissão em concreto existe (pelo
+      // seu ID fixo, defaultSpaceId()) — NUNCA "if (all.length === 0)".
+      // Antes da correção da nota acima (3 queries em vez de uma sem
+      // filtro), o loadSpaces() antigo caía sempre no .catch() sem nunca
+      // chegar aqui, por isso este seed nunca tinha corrido de verdade para
+      // esta família — o "Família" que aparecia sempre na app era só o
+      // objeto fixo do .catch(), nunca gravado no Firestore. Assim que a
+      // leitura passou a funcionar, "all" já não estava vazio (esta família
+      // já tinha outros Espaços criados durante os testes), e "all.length
+      // === 0" nunca mais seria verdade — o Espaço "Família" nunca seria
+      // criado, mesmo continuando ausente. Por isso a condição certa é
+      // sempre "falta o Espaço por omissão em concreto", não "a coleção
+      // está vazia".
+      var jaTemEspacoPorOmissao = all.some(function(s){ return s.id === defaultSpaceId(); });
+      if (!jaTemEspacoPorOmissao){
         var seed = {
           name: 'Família',
           type: 'mensal',
@@ -2980,7 +3063,7 @@
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
         };
         return db.collection('spaces').doc(defaultSpaceId()).set(seed).then(function(){
-          all = [Object.assign({id: defaultSpaceId()}, seed)];
+          all = all.concat([Object.assign({id: defaultSpaceId()}, seed)]);
           return all;
         });
       }
@@ -3019,10 +3102,9 @@
     state.loading = true;
     render();
     return loadPayments().then(function(){
-      return db.collection('entries').get().then(function(esnap){
-        state.entries = esnap.docs
-          .map(function(d){ return Object.assign({id:d.id}, d.data()); })
-          .filter(function(e){ return spaceIdOf(e) === spaceId; });
+      // Ver nota junto a loadPayments(): nunca sem filtro.
+      return db.collection('entries').where('spaceId','==',spaceId).get().then(function(esnap){
+        state.entries = esnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
         state.loading = false;
         render();
       });
@@ -3107,6 +3189,37 @@
     return updateSpace(spaceId, {archived:false, archivedAt:null});
   }
 
+  // Elimina definitivamente um Espaço (ao contrário de archiveSpace, que só
+  // o esconde — os dados continuam lá). Só é permitido quando o Espaço não
+  // tem NENHUM movimento (payments/entries) associado — nunca apaga dados
+  // financeiros em silêncio; se tiver movimentos, a única opção continua a
+  // ser arquivar. O Espaço por omissão da família nunca pode ser apagado
+  // (bloqueado aqui E nas regras do Firestore, a dobrar — ver
+  // firestore.rules, bloco /spaces/{spaceId}, "allow delete").
+  function deleteSpaceHard(spaceId){
+    if (isDefaultSpace(spaceId)){
+      return Promise.reject(Object.assign(new Error('O Espaço por omissão não pode ser apagado — só arquivado.'), {code:'default-space'}));
+    }
+    var wasActive = (state.activeSpaceId === spaceId);
+    var qPayments = db.collection('payments').where('spaceId', '==', spaceId).get();
+    var qEntries = db.collection('entries').where('spaceId', '==', spaceId).get();
+    return Promise.all([qPayments, qEntries]).then(function(results){
+      if (results[0].size > 0 || results[1].size > 0){
+        return Promise.reject(Object.assign(new Error('Este Espaço tem movimentos — não pode ser apagado, só arquivado.'), {code:'space-has-data'}));
+      }
+      var catSettingsId = categoriesDocIdFor(spaceId);
+      return db.collection('spaces').doc(spaceId).delete()
+        // As categorias deste Espaço (settings/categories_<spaceId>) são só
+        // configuração, não histórico — apagadas em conjunto. Um categoryBudget
+        // eventualmente deixado para trás (settings/categoryBudgets com o
+        // prefixo "<spaceId>__") fica órfão mas inofensivo: nunca é lido sem
+        // um Espaço ativo com esse id, que deixou de poder existir.
+        .then(function(){ return db.collection('settings').doc(catSettingsId).delete().catch(function(){}); })
+        .then(function(){ return loadSpaces(); })
+        .then(function(){ if (wasActive) return setActiveSpace(defaultSpaceId()); });
+    });
+  }
+
   // Orçamento-alvo por categoria de despesa — um valor fixo por categoria
   // (não varia por mês, tal como um pagamento recorrente), para se poder
   // definir p.ex. "Alimentação = 400€" e comparar o que se vai lançando
@@ -3161,7 +3274,8 @@
     var endKey = monthKeyAdd(nowKey, -1); // último mês completo (o corrente fica de fora)
     var forSpaceId = state.activeSpaceId;
     state.emergencyFundHistoryLoading = true;
-    return db.collection('entries').where('monthKey','>=',startKey).where('monthKey','<=',endKey).get().then(function(snap){
+    // Ver nota junto a loadPayments(): spaceId tem de vir sempre explícito.
+    return db.collection('entries').where('monthKey','>=',startKey).where('monthKey','<=',endKey).where('spaceId','==',forSpaceId).get().then(function(snap){
       if (forSpaceId !== state.activeSpaceId) return; // o Espaço mudou entretanto — descarta esta resposta
       var byMonth = {};
       snap.docs.forEach(function(d){
@@ -5436,6 +5550,21 @@
     else if (kind === 'investment'){ deleteInvestment(id); showToast('Investimento removido', {icon:'x'}); }
     else if (kind === 'savings'){ deleteSavingsGoal(id); showToast('Poupança removida', {icon:'x'}); }
     else if (kind === 'account'){ document.getElementById('confirmTitle').textContent = 'Eliminar'; deleteMyAccount(); }
+    else if (kind === 'space'){
+      // Ao contrário dos outros "kind" aqui (apagar local, otimista), apagar
+      // um Espaço tem um modo de falha real e esperado (tem movimentos) que
+      // tem de chegar ao utilizador como erro, não como sucesso silencioso.
+      deleteSpaceHard(id).then(function(){
+        editSpaceOverlay.classList.remove('open');
+        showToast('Espaço eliminado.', {icon:'x'});
+      }).catch(function(err){
+        console.error('deleteSpaceHard failed', err);
+        var msg = (err && err.code === 'space-has-data')
+          ? 'Este Espaço tem movimentos — não pode ser apagado, só arquivado.'
+          : 'Não foi possível eliminar o Espaço. Tenta novamente.';
+        showToast(msg, {icon:'x'});
+      });
+    }
     else { deletePayment(id); showToast('Eliminado', {icon:'x'}); }
   });
 
@@ -6169,8 +6298,9 @@
   });
 
   function loadArchivedPayments(){
-    return db.collection('payments').get().then(function(snap){
-      return snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(p){ return p.archived; });
+    // Ver nota junto a loadPayments(): spaceId tem de vir sempre explícito.
+    return db.collection('payments').where('spaceId','==',state.activeSpaceId).where('archived','==',true).get().then(function(snap){
+      return snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
     });
   }
 
@@ -6598,6 +6728,9 @@
     var archiveField = document.getElementById('editSpaceArchiveField');
     archiveField.hidden = isDefaultSpace(id); // o Espaço por omissão (Família) não se arquiva
     document.getElementById('editSpaceArchiveBtn').textContent = s.archived ? 'Reativar espaço' : 'Arquivar espaço';
+    // Eliminar (definitivo, só para Espaços vazios): nunca disponível para o
+    // Espaço por omissão (nem as regras do Firestore o permitiriam).
+    document.getElementById('editSpaceDeleteField').hidden = isDefaultSpace(id);
     var errEl = document.getElementById('editSpaceFormError');
     errEl.style.display = 'none';
     closeSpaceSwitch();
@@ -6650,6 +6783,15 @@
       editSpaceOverlay.classList.remove('open');
       showToast(s && s.archived ? 'Espaço reativado.' : 'Espaço arquivado.', {icon:'check'});
     });
+  });
+  document.getElementById('editSpaceDeleteBtn').addEventListener('click', function(){
+    if (!pendingEditSpaceId) return;
+    var s = (state.spaces||[]).concat(state.archivedSpaces||[]).filter(function(x){ return x.id === pendingEditSpaceId; })[0];
+    pendingDelete = pendingEditSpaceId;
+    pendingDeleteKind = 'space';
+    document.getElementById('confirmTitle').textContent = 'Eliminar espaço';
+    document.getElementById('confirmText').textContent = 'Vai apagar definitivamente "' + (s ? s.name : '') + '". Só é possível se não tiver movimentos — esta ação não pode ser desfeita. Continuar?';
+    confirmOverlay.classList.add('open');
   });
 
   // ---------- Assistente de criação de espaço ----------
@@ -7210,6 +7352,8 @@
       // activeSpaceId válido entretanto.
       state.activeSpaceId = defaultSpaceId();
       loadSpaces().then(function(){
+        return backfillMissingSpaceIds();
+      }).then(function(){
         return loadDataForActiveSpace();
       });
       loadSavingsGoals();
