@@ -1001,10 +1001,23 @@
       <label for="fSpaceEditName">Nome</label>
       <input type="text" id="fSpaceEditName" maxlength="40">
     </div>
+    <div class="field" id="editSpaceDatesField" hidden>
+      <label>Período</label>
+      <div class="date-range-row" style="display:flex; gap:8px;">
+        <input type="date" id="fSpaceEditStartDate" style="flex:1;">
+        <input type="date" id="fSpaceEditEndDate" style="flex:1;">
+      </div>
+    </div>
+    <div class="field" id="editSpaceBudgetField" hidden>
+      <label for="fSpaceEditBudget">Orçamento geral</label>
+      <input type="number" id="fSpaceEditBudget" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+      <div class="hint">Deixa em branco para ficar sem orçamento geral definido.</div>
+    </div>
     <div class="field" id="editSpaceArchiveField">
       <button type="button" class="btn ghost" id="editSpaceArchiveBtn">Arquivar espaço</button>
       <div class="hint">Deixa de aparecer no seletor principal, mas os dados continuam guardados e acessíveis em Espaços arquivados.</div>
     </div>
+    <div class="field-error" id="editSpaceFormError" style="display:none;"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="closeEditSpace">Cancelar</button>
       <button type="button" class="btn primary" id="saveEditSpace">Guardar</button>
@@ -2204,6 +2217,26 @@
     var v = Number(n)||0;
     return v.toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
   }
+  // Interpreta o valor de um <input type="number"> (orçamento geral do
+  // Espaço, entre outros) de forma explícita — nunca deixa passar um valor
+  // inválido silenciosamente. Um <input type="number"> já garante que
+  // '.value' só pode ser '' ou um número em formato "1234.56" (nunca com
+  // separador de milhares), mas se ainda assim vier algo não numérico
+  // (ex.: um valor colado ou um bug de outro código a mexer no campo),
+  // parseFloat() devolveria NaN — e como "typeof NaN === 'number'", isso
+  // passaria despercebido por uma verificação de tipo e seria gravado no
+  // Firestore como NaN, mostrando depois "0,00 €" em vez do valor real
+  // (Number(NaN)||0 em euro()) — parecendo que o orçamento "desapareceu".
+  // Esta função existe para nunca deixar esse caminho silencioso acontecer:
+  // devolve {ok:true, value:number|null} ou {ok:false} para o chamador
+  // mostrar sempre um erro real (ver ponto 8/10/11 do pedido).
+  function parseGeneralBudgetInput(raw){
+    var trimmed = (raw == null ? '' : String(raw)).trim();
+    if (trimmed === '') return {ok:true, value:null};
+    var n = parseFloat(trimmed);
+    if (!isFinite(n) || n < 0) return {ok:false};
+    return {ok:true, value:n};
+  }
   // Nome explícito pedido para a formatação de moeda usada pelos novos
   // simuladores e pela meta de poupança — mantém-se equivalente a euro(),
   // que continua a ser usada em todo o resto da app sem alterações.
@@ -2987,7 +3020,11 @@
       icon: (SPACE_TEMPLATES[data.template]||SPACE_TEMPLATES.branco).icon,
       startDate: data.type === 'temporario' ? (data.startDate||null) : null,
       endDate: data.type === 'temporario' ? (data.endDate||null) : null,
-      totalBudget: data.type === 'temporario' ? (typeof data.totalBudget === 'number' ? data.totalBudget : null) : null,
+      // 'typeof === number' sozinho deixaria passar NaN (typeof NaN é
+      // 'number') — isFinite() é a defesa extra que garante que nunca se
+      // grava um valor inválido, mesmo que o chamador não tenha validado
+      // com parseGeneralBudgetInput() (ver comentário nessa função).
+      totalBudget: data.type === 'temporario' ? (typeof data.totalBudget === 'number' && isFinite(data.totalBudget) ? data.totalBudget : null) : null,
       archived: false, isDefault: false,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     };
@@ -6485,27 +6522,70 @@
     }
   });
 
-  // ---------- Editar espaço (nome / arquivar) ----------
+  // ---------- Editar espaço (nome / período+orçamento geral / arquivar) ----------
+  // Período e orçamento geral só se aplicam a Espaços Temporários — mesma
+  // regra já usada na criação (ver updateSpaceFormVisibility) — por isso só
+  // aparecem aqui para esse tipo. Os campos vêm sempre PRÉ-PREENCHIDOS com o
+  // valor atual (nunca em branco), precisamente para que abrir e gravar sem
+  // tocar em nada mantenha o valor original (ponto 11 do pedido) — só fica
+  // sem orçamento se o utilizador limpar o campo de propósito.
   var pendingEditSpaceId = null;
   function openEditSpace(id){
     var s = (state.spaces||[]).concat(state.archivedSpaces||[]).filter(function(x){ return x.id === id; })[0];
     if (!s) return;
     pendingEditSpaceId = id;
     document.getElementById('fSpaceEditName').value = s.name;
+    var isTemp = s.type === 'temporario';
+    document.getElementById('editSpaceDatesField').hidden = !isTemp;
+    document.getElementById('editSpaceBudgetField').hidden = !isTemp;
+    document.getElementById('fSpaceEditStartDate').value = s.startDate || '';
+    document.getElementById('fSpaceEditEndDate').value = s.endDate || '';
+    document.getElementById('fSpaceEditBudget').value = (typeof s.totalBudget === 'number' && isFinite(s.totalBudget)) ? s.totalBudget : '';
     var archiveField = document.getElementById('editSpaceArchiveField');
     archiveField.hidden = isDefaultSpace(id); // o Espaço por omissão (Família) não se arquiva
     document.getElementById('editSpaceArchiveBtn').textContent = s.archived ? 'Reativar espaço' : 'Arquivar espaço';
+    var errEl = document.getElementById('editSpaceFormError');
+    errEl.style.display = 'none';
     closeSpaceSwitch();
     editSpaceOverlay.classList.add('open');
   }
   document.getElementById('closeEditSpace').addEventListener('click', function(){ editSpaceOverlay.classList.remove('open'); });
   editSpaceOverlay.addEventListener('click', function(ev){ if (ev.target === editSpaceOverlay) editSpaceOverlay.classList.remove('open'); });
   document.getElementById('saveEditSpace').addEventListener('click', function(){
+    var errEl = document.getElementById('editSpaceFormError');
+    errEl.style.display = 'none';
     var name = document.getElementById('fSpaceEditName').value.trim();
     if (!name || !pendingEditSpaceId) return;
-    updateSpace(pendingEditSpaceId, {name:name}).then(function(){
+    var changes = {name:name};
+    // Período/orçamento geral só se aplicam quando o campo está visível
+    // (Espaço Temporário — ver openEditSpace). Nunca escrever estes campos
+    // para outros tipos de Espaço, para não misturar conceitos.
+    if (!document.getElementById('editSpaceBudgetField').hidden){
+      var budgetRaw = document.getElementById('fSpaceEditBudget').value;
+      var budgetParsed = parseGeneralBudgetInput(budgetRaw);
+      if (!budgetParsed.ok){
+        errEl.textContent = 'O orçamento geral tem de ser um valor válido.';
+        errEl.style.display = 'block';
+        return;
+      }
+      changes.startDate = document.getElementById('fSpaceEditStartDate').value || null;
+      changes.endDate = document.getElementById('fSpaceEditEndDate').value || null;
+      changes.totalBudget = budgetParsed.value;
+    }
+    var saveBtn = document.getElementById('saveEditSpace');
+    saveBtn.disabled = true;
+    // Só fecha o formulário e mostra "guardado" DEPOIS da escrita no
+    // Firestore ter mesmo sucedido — nunca antes (ver ponto 8 do pedido:
+    // o sucesso visual na UI não pode ser confundido com persistência real).
+    updateSpace(pendingEditSpaceId, changes).then(function(){
+      saveBtn.disabled = false;
       editSpaceOverlay.classList.remove('open');
       showToast('Espaço atualizado.', {icon:'check'});
+    }).catch(function(err){
+      console.error('updateSpace failed', err);
+      saveBtn.disabled = false;
+      errEl.textContent = 'Não foi possível guardar o orçamento. Tenta novamente.';
+      errEl.style.display = 'block';
     });
   });
   document.getElementById('editSpaceArchiveBtn').addEventListener('click', function(){
@@ -6612,6 +6692,12 @@
       return;
     }
     var budgetRaw = document.getElementById('fSpaceBudget').value;
+    var budgetParsed = parseGeneralBudgetInput(budgetRaw);
+    if (!budgetParsed.ok){
+      errorEl.textContent = 'O orçamento geral tem de ser um valor válido.';
+      errorEl.style.display = 'block';
+      return;
+    }
     var data = {
       name: name,
       type: selectedSpaceType,
@@ -6620,7 +6706,7 @@
       template: selectedSpaceTemplate,
       startDate: document.getElementById('fSpaceStartDate').value || null,
       endDate: document.getElementById('fSpaceEndDate').value || null,
-      totalBudget: budgetRaw !== '' ? parseFloat(budgetRaw) : null
+      totalBudget: budgetParsed.value
     };
     errorEl.style.display = 'none';
     createSpace(data).then(function(){
