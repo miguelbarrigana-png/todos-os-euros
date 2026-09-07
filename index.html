@@ -52,6 +52,9 @@
     --cat-6:#008300;
     --cat-7:#4a3aa7;
     --cat-8:#e34948;
+    --cat-9:#0e8f7e;
+    --cat-10:#9c6b2f;
+    --cat-11:#9c3f8e;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
@@ -86,6 +89,9 @@
       --cat-6:#3fca6a;
       --cat-7:#9085e9;
       --cat-8:#e66767;
+      --cat-9:#2bbfa8;
+      --cat-10:#c99248;
+      --cat-11:#c467b3;
     }
   }
   :root[data-theme="dark"]{
@@ -119,6 +125,9 @@
     --cat-6:#3fca6a;
     --cat-7:#9085e9;
     --cat-8:#e66767;
+    --cat-9:#2bbfa8;
+    --cat-10:#c99248;
+    --cat-11:#c467b3;
   }
 
   *{box-sizing:border-box;}
@@ -288,6 +297,13 @@
   .loan-review-chip{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; color:var(--accent-ink); background:var(--accent-soft); padding:4px 10px; border-radius:999px; margin-top:12px;}
   .loan-actions-row{display:flex; gap:10px; margin-top:16px;}
   .loan-actions-row .btn{padding:10px; font-size:12.5px; flex:1;}
+  .source-history{margin-top:14px; padding-top:12px; border-top:1px solid var(--border);}
+  .source-history-label{font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em; margin-bottom:8px;}
+  .source-hist-row{display:flex; align-items:center; gap:8px; padding:8px 4px; border-radius:8px; cursor:pointer; font-size:13px;}
+  .source-hist-row:hover{background:var(--surface-2);}
+  .source-hist-date{color:var(--text-muted); min-width:52px;}
+  .source-hist-amount{font-weight:700; flex:1;}
+  .source-hist-note{color:var(--text-faint); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
   .sim-block{margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);}
   .sim-row{display:flex; gap:8px; margin-top:10px;}
   .sim-row input{flex:1; min-width:0; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-family:'Manrope',sans-serif; font-size:13.5px;}
@@ -1282,6 +1298,32 @@
   </div>
 </div>
 
+<div class="overlay" id="loanExtraOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Pagamento extra / amortização</h2>
+    <p class="hint" id="loanExtraHint" style="margin-bottom:14px;"></p>
+    <div class="field">
+      <label for="fLoanExtraValue">Valor (€)</label>
+      <input type="number" id="fLoanExtraValue" step="0.01" min="0">
+    </div>
+    <div class="field">
+      <label for="fLoanExtraDate">Data</label>
+      <input type="date" id="fLoanExtraDate">
+      <div class="hint">Uma data futura fica como pagamento previsto — o capital em dívida só é reduzido quando confirmares como pago em Movimentos.</div>
+    </div>
+    <div class="field">
+      <label for="fLoanExtraNote">Nota (opcional)</label>
+      <input type="text" id="fLoanExtraNote" maxlength="80">
+    </div>
+    <div class="field-error" id="loanExtraError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="loanExtraCancel">Cancelar</button>
+      <button type="button" class="btn primary" id="loanExtraSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="investmentFormOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -1342,6 +1384,15 @@
     <div class="field">
       <label for="fInvContribValue">Valor investido agora (€)</label>
       <input type="number" id="fInvContribValue" step="0.01" min="0">
+    </div>
+    <div class="field">
+      <label for="fInvContribDate">Data</label>
+      <input type="date" id="fInvContribDate">
+      <div class="hint">Uma data futura fica como aporte previsto — só passa a contar para o total investido quando confirmares como pago em Movimentos.</div>
+    </div>
+    <div class="field">
+      <label for="fInvContribNote">Nota (opcional)</label>
+      <input type="text" id="fInvContribNote" maxlength="80">
     </div>
     <div class="field-error" id="invContribError"></div>
     <div class="sheet-actions">
@@ -1423,11 +1474,48 @@
       <label for="fSavingsMoveValue">Valor (€)</label>
       <input type="number" id="fSavingsMoveValue" step="0.01" min="0">
     </div>
+    <div id="savingsMoveAddFields">
+      <div class="field">
+        <label for="fSavingsMoveDate">Data</label>
+        <input type="date" id="fSavingsMoveDate">
+        <div class="hint">Um aporte cria também um Movimento em "Poupança". Uma data futura fica previsto até confirmares como pago em Movimentos.</div>
+      </div>
+      <div class="field">
+        <label for="fSavingsMoveNote">Nota (opcional)</label>
+        <input type="text" id="fSavingsMoveNote" maxlength="80">
+      </div>
+    </div>
     <div class="field-error" id="savingsMoveError"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="savingsMoveCancel">Cancelar</button>
       <button type="button" class="btn primary" id="savingsMoveSave">Guardar</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="sourceMoveEditOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="sourceMoveEditTitle">Editar movimento</h2>
+    <p class="hint" id="sourceMoveEditHint" style="margin-bottom:14px;"></p>
+    <div class="field">
+      <label for="fSourceMoveValue">Valor (€)</label>
+      <input type="number" id="fSourceMoveValue" step="0.01" min="0">
+    </div>
+    <div class="field">
+      <label for="fSourceMoveDate">Data</label>
+      <input type="date" id="fSourceMoveDate">
+    </div>
+    <div class="field">
+      <label for="fSourceMoveNote">Nota (opcional)</label>
+      <input type="text" id="fSourceMoveNote" maxlength="80">
+    </div>
+    <div class="field-error" id="sourceMoveEditError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn danger-outline" id="sourceMoveEditDelete">Eliminar</button>
+      <button type="button" class="btn primary" id="sourceMoveEditSave">Guardar</button>
+    </div>
+    <button type="button" class="link-btn" id="sourceMoveEditCancel" style="margin-top:10px;">Cancelar</button>
   </div>
 </div>
 
@@ -1635,7 +1723,19 @@
     // (paid:true) do Espaço ativo, só meses ANTERIORES ao mês em análise
     // (forMonthKey) — ver loadSavingsRateHistory().
     savingsRateHistory: {ready:false, monthly:{}, forMonthKey:null},
-    savingsRateHistoryLoading: true
+    savingsRateHistoryLoading: true,
+
+    // ---------- Modelo comum de Movimentos (Poupanças/Créditos/Investimentos) ----------
+    // Aportes/pagamentos extraordinários AINDA por confirmar como pagos
+    // ("previstos") — Património é global à família, mas o Movimento que
+    // cada aporte gera vive em 'entries', que é por Espaço; por isso só é
+    // seguro pedir isto filtrado pelo Espaço ATIVO (ver
+    // loadPendingSourceEntries()). Um aporte previsto criado noutro Espaço
+    // só aparece aqui quando se voltar a esse Espaço — limitação conhecida,
+    // documentada no relatório final, nunca aplicada ao valor já EFETIVADO
+    // (esse já não depende disto, só da soma dos próprios registos).
+    // Chave: sourceType ('savings'|'credit'|'investment') + ':' + sourceId.
+    pendingSourceEntries: {}
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -1700,7 +1800,16 @@
       {key:'lazer', label:'Lazer', color:'var(--cat-5)'},
       {key:'subscricoes', label:'Subscrições', color:'var(--cat-6)'},
       {key:'educacao', label:'Educação', color:'var(--cat-7)'},
-      {key:'outros', label:'Outros', color:'var(--cat-8)'}
+      {key:'outros', label:'Outros', color:'var(--cat-8)'},
+      // Categorias adicionadas para o modelo comum de Movimentos ligados a
+      // Poupanças/Créditos/Investimentos (ver "Modelo comum de Movimentos"
+      // mais abaixo) — não existia nenhuma categoria equivalente antes
+      // disto, por isso são categorias novas, não um mapeamento para uma
+      // já existente (ponto 21 do pedido: "se já existirem, reutilizar" —
+      // não existiam).
+      {key:'poupanca', label:'Poupança', color:'var(--cat-9)'},
+      {key:'creditos', label:'Créditos', color:'var(--cat-10)'},
+      {key:'investimentos', label:'Investimentos', color:'var(--cat-11)'}
     ],
     receita: [
       {key:'salario', label:'Salário', color:'var(--cat-1)'},
@@ -2564,7 +2673,18 @@
     entry.paid = paidValue;
     entry.paidAt = paidValue ? new Date().toISOString() : null;
     render();
-    return db.collection('entries').doc(entry.id).update({paid:paidValue, paidAt:entry.paidAt}).catch(function(err){
+    return db.collection('entries').doc(entry.id).update({paid:paidValue, paidAt:entry.paidAt}).then(function(){
+      // Gancho do "Modelo comum de Movimentos" (Poupanças/Créditos/
+      // Investimentos, ver secção própria mais abaixo): confirmar/desmarcar
+      // como pago uma entry ligada a uma dessas três áreas é o que cria ou
+      // remove o registo que efetiva o aporte/pagamento no saldo/capital de
+      // destino. Para qualquer entry normal (sem sourceType, a esmagadora
+      // maioria) isto é sempre um no-op imediato — comportamento inalterado.
+      if (!entry.sourceType) return;
+      return applySourceEffect(entry, paidValue).then(function(){ render(); }).catch(function(err){
+        console.error('applySourceEffect failed', err);
+      });
+    }).catch(function(err){
       console.error('setPaid failed', err);
       entry.paid = !paidValue;
       entry.paidAt = !paidValue ? new Date().toISOString() : null;
@@ -2943,6 +3063,396 @@
       return loadPayments();
     }).then(function(){ render(); });
   }
+
+  // =====================================================================
+  // ---------- Modelo comum de Movimentos: Poupanças/Créditos/ ----------
+  // ---------- Investimentos → Movimentos + Orçamento           ----------
+  // =====================================================================
+  //
+  // Princípio (ver pedido "lógica comum e consistente"): sempre que existe
+  // um NOVO aporte/pagamento (nunca o saldo inicial de quando a Poupança/
+  // Crédito/Investimento foi criado), isso cria automaticamente o MESMO
+  // par payments(pontual)+entries que qualquer despesa pontual normal já
+  // usa (ver submitPayment()) — não se inventou nenhum mecanismo novo de
+  // materialização, reutilizou-se o que já existe e já está testado.
+  //
+  // Distinção "saldo inicial" vs "novo aporte": o valor "Já tens guardado"
+  // (Poupanças) e o "Valor investido agora" ao criar um Investimento
+  // continuam a gravar diretamente em savingsMovements/investmentContributions
+  // (ver submitSavingsGoal/submitInvestment, código já existente e NÃO
+  // alterado) — nunca passam por aqui, por isso nunca criam Movimento nem
+  // tocam no orçamento. Só os aportes/pagamentos feitos DEPOIS, através das
+  // ações "Adicionar aporte"/"Adicionar pagamento extra", passam por
+  // createSourceMovement().
+  //
+  // Planeado vs Efetivado: se a data escolhida for hoje ou passado, o
+  // Movimento nasce já pago (paid:true) e o efeito no saldo/capital de
+  // destino é aplicado imediatamente. Se for futura, nasce por pagar
+  // (paid:false) — conta para o Orçamento do mês como "planeado" (o mesmo
+  // que qualquer despesa pontual futura já faz), mas NÃO altera ainda
+  // savingsSavedOf()/totalContributedOf()/currentBalance(), porque nenhum
+  // desses valores é um campo guardado: são sempre a soma dos próprios
+  // registos (savingsMovements/investmentContributions) ou o último
+  // loanSnapshot. Não criar esse registo ainda é, por construção, o mesmo
+  // que "não aumentar o saldo até ser efetivado" — não foi preciso
+  // nenhuma lógica condicional extra nas funções que já leem esses saldos.
+  // Confirmar como pago (o mesmo botão/toque que já existe em Movimentos
+  // para qualquer despesa — togglePaid()) é o que cria esse registo — ver
+  // o gancho em togglePaid() mais abaixo. Editar/apagar um aporte já
+  // efetivado atualiza/remove esse mesmo registo (nunca cria um segundo).
+  //
+  // Ligação única (evitar duplicações, ponto 17): o registo de origem
+  // (savingsMovements/investmentContributions/loanSnapshots) guarda
+  // 'entryId'; a entry guarda 'sourceRecordId' de volta assim que o
+  // registo é criado. Antes de criar um novo registo ao confirmar como
+  // pago, applySourceEffect() verifica se 'sourceRecordId' já existe — só
+  // nesse caso é que já foi aplicado, e não repete.
+  //
+  // Atomicidade (ponto 30): o adaptador Firestore desta app (ver
+  // makeAdapter/wrapColl) nunca usou transaction()/batch() em lado nenhum
+  // — todas as escritas multi-documento existentes (submitPayment,
+  // backfillMissingSpaceIds, etc.) já são sequências de Promises
+  // independentes, não uma transação atómica. Seguiu-se exatamente o
+  // mesmo padrão aqui, para não introduzir uma peça de infraestrutura nova
+  // (e um novo tipo de mock a manter) só para esta funcionalidade — o
+  // risco prático (escrita a meio, com uma falha de rede exatamente entre
+  // dois passos) é o mesmo que já existe em todo o resto da app.
+  var SOURCE_META = {
+    savings: {category:'poupanca', label:'Aporte', collection:'savingsMovements', idField:'goalId'},
+    investment: {category:'investimentos', label:'Aporte', collection:'investmentContributions', idField:'investmentId'},
+    credit: {category:'creditos', label:'Amortização extra', collection:'loanSnapshots', idField:'loanId'}
+  };
+  var SOURCE_ACTION = {savings:'contribution', credit:'extra_payment', investment:'investment_contribution'};
+
+  function sourceMovementName(sourceType, targetName){
+    return SOURCE_META[sourceType].label + ' — ' + targetName;
+  }
+
+  // Cria o par payments(pontual)+entries de um aporte/pagamento novo.
+  // Devolve {paymentId, entryId, paid, monthKey}.
+  function createSourceMovement(sourceType, sourceId, targetName, amount, dateStr, note, categoryOverride){
+    var d = parseInputDateLocal(dateStr) || new Date();
+    var monthKey = monthKeyOf(d);
+    var paidNow = dateStr <= todayStr();
+    var spaceId = state.activeSpaceId;
+    var payload = {
+      name: sourceMovementName(sourceType, targetName),
+      amount: amount, dueDay: d.getDate(), type: 'pontual', kind: 'despesa',
+      category: categoryOverride || SOURCE_META[sourceType].category,
+      monthKey: monthKey, startMonth: null, endMonth: null,
+      archived: false, createdAt: new Date().toISOString(), spaceId: spaceId,
+      sourceType: sourceType, sourceId: sourceId, sourceAction: SOURCE_ACTION[sourceType]
+    };
+    if (note) payload.note = note;
+    return db.collection('payments').add(payload).then(function(ref){
+      var entryId = entryDocId(monthKey, ref.id);
+      var snap = entrySnapshot(monthKey, Object.assign({id:ref.id}, payload));
+      snap.sourceType = sourceType; snap.sourceId = sourceId; snap.sourceAction = payload.sourceAction;
+      if (note) snap.note = note;
+      if (paidNow){ snap.paid = true; snap.paidAt = new Date().toISOString(); }
+      return db.collection('entries').doc(entryId).set(snap).then(function(){
+        var entryForEffect = Object.assign({id:entryId, paymentId:ref.id}, snap);
+        var effect = paidNow ? applySourceEffect(entryForEffect, true) : Promise.resolve();
+        return effect.then(function(){ return {paymentId:ref.id, entryId:entryId, paid:paidNow, monthKey:monthKey}; });
+      });
+    });
+  }
+
+  // Cria (paidValue=true) ou remove (paidValue=false) o registo no
+  // "livro" de destino (savingsMovements/investmentContributions/
+  // loanSnapshots) — nunca escreve um saldo/total diretamente, porque
+  // nenhum é um campo guardado (ver nota grande acima). Idempotente:
+  // criar já com sourceRecordId presente não faz nada; remover sem
+  // sourceRecordId não faz nada.
+  function applySourceEffect(entry, paidValue){
+    if (!entry.sourceType) return Promise.resolve();
+    if (paidValue){
+      if (entry.sourceRecordId) return Promise.resolve();
+      return createSourceLedgerRecord(entry).then(function(recordId){
+        entry.sourceRecordId = recordId;
+        return db.collection('entries').doc(entry.id).update({sourceRecordId: recordId});
+      });
+    }
+    if (!entry.sourceRecordId) return Promise.resolve();
+    var oldId = entry.sourceRecordId;
+    return deleteSourceLedgerRecord(entry.sourceType, oldId).then(function(){
+      entry.sourceRecordId = null;
+      return db.collection('entries').doc(entry.id).update({sourceRecordId: null});
+    });
+  }
+
+  function creditLedgerDateStr(entry){
+    if (entry.monthKey && entry.dueDay) return entry.monthKey + '-' + String(entry.dueDay).padStart(2,'0');
+    return todayStr();
+  }
+
+  // Mesmo cálculo que currentBalance(loan), mas nunca depende de o
+  // Crédito/os seus loanSnapshots já estarem carregados em `state` — quem
+  // confirma um pagamento extra como pago pode estar na página Movimentos
+  // (que nunca carrega Créditos), não em Créditos. Vai buscar o que
+  // faltar diretamente ao Firestore antes de calcular, para o resultado
+  // estar sempre correto independentemente de onde foi confirmado.
+  function getCurrentBalanceFresh(loanId){
+    var cachedLoan = state.loans.find(function(l){ return l.id === loanId; });
+    var loanPromise = cachedLoan ? Promise.resolve(cachedLoan) : db.collection('loans').doc(loanId).get().then(function(d){ return Object.assign({id:d.id}, d.data()); });
+    return loanPromise.then(function(loan){
+      var cachedSnaps = state.loanSnapshots[loanId];
+      var snapsPromise = cachedSnaps ? Promise.resolve(cachedSnaps) : db.collection('loanSnapshots').where('loanId','==',loanId).get().then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        list.sort(sortByDateThenCreated);
+        return list;
+      });
+      return snapsPromise.then(function(snaps){
+        if (snaps.length) return Number(snaps[snaps.length-1].value)||0;
+        return theoreticalBalance(loan, monthsElapsed(loan));
+      });
+    });
+  }
+
+  function createSourceLedgerRecord(entry){
+    var dateStr = creditLedgerDateStr(entry);
+    var amount = Number(entry.amount)||0;
+    if (entry.sourceType === 'savings'){
+      return db.collection('savingsMovements').add({goalId:entry.sourceId, date:dateStr, amount:amount, entryId:entry.id, createdAt:new Date().toISOString()}).then(function(ref){ return ref.id; });
+    }
+    if (entry.sourceType === 'investment'){
+      return db.collection('investmentContributions').add({investmentId:entry.sourceId, date:dateStr, amount:amount, entryId:entry.id, createdAt:new Date().toISOString()}).then(function(ref){ return ref.id; });
+    }
+    if (entry.sourceType === 'credit'){
+      return getCurrentBalanceFresh(entry.sourceId).then(function(baseline){
+        var newValue = Math.max(0, baseline - amount);
+        return db.collection('loanSnapshots').add({loanId:entry.sourceId, date:dateStr, value:newValue, type:'extra_payment', amount:amount, entryId:entry.id, createdAt:new Date().toISOString()}).then(function(ref){ return ref.id; });
+      });
+    }
+    return Promise.resolve(null);
+  }
+
+  function deleteSourceLedgerRecord(sourceType, recordId){
+    var coll = SOURCE_META[sourceType].collection;
+    return db.collection(coll).doc(recordId).delete();
+  }
+
+  // Recarrega os DOIS lados de um aporte/pagamento (Património + Movimentos)
+  // depois de qualquer alteração — cada ecrã só atualiza a sua própria
+  // parte do state, exatamente como já acontecia antes desta funcionalidade.
+  function reloadAfterSourceChange(sourceType){
+    var ops = [];
+    if (sourceType === 'savings') ops.push(loadSavingsGoals());
+    if (sourceType === 'investment') ops.push(loadInvestments());
+    if (sourceType === 'credit') ops.push(loadLoans());
+    ops.push(loadPendingSourceEntries(sourceType));
+    if (state.view === 'month' || state.view === 'movimentos') ops.push(loadMonth(state.monthKey));
+    return Promise.all(ops);
+  }
+
+  // Aportes/pagamentos AINDA por confirmar como pagos (ver nota grande no
+  // topo desta secção sobre o âmbito — só o Espaço ativo). Uma só query,
+  // reaproveitada para todos os itens desse tipo (loans/investments/
+  // savingsGoals), agrupada por sourceId no fim.
+  function loadPendingSourceEntries(sourceType){
+    if (!db) return Promise.resolve();
+    return db.collection('entries').where('spaceId','==',state.activeSpaceId).where('sourceType','==',sourceType).where('paid','==',false).get().then(function(snap){
+      var bySource = {};
+      snap.docs.forEach(function(d){
+        var e = Object.assign({id:d.id}, d.data());
+        if (!bySource[e.sourceId]) bySource[e.sourceId] = [];
+        bySource[e.sourceId].push(e);
+      });
+      Object.keys(bySource).forEach(function(sid){
+        bySource[sid].sort(function(a,b){ return a.monthKey === b.monthKey ? (a.dueDay - b.dueDay) : (a.monthKey < b.monthKey ? -1 : 1); });
+        state.pendingSourceEntries[sourceType + ':' + sid] = bySource[sid];
+      });
+    }).catch(function(err){
+      console.error('loadPendingSourceEntries(' + sourceType + ') failed', err);
+    });
+  }
+  function pendingSourceEntriesFor(sourceType, sourceId){
+    return state.pendingSourceEntries[sourceType + ':' + sourceId] || [];
+  }
+
+  // Histórico curto (pontos 25-27): junta os pagamentos/aportes previstos
+  // (de state.pendingSourceEntries, já filtrados por Espaço — ver nota
+  // grande no topo desta secção) com os já efetivados (do "livro" de
+  // destino, só os que têm 'entryId' — isto exclui deliberadamente
+  // qualquer movimento antigo/manual anterior a esta funcionalidade, que
+  // nunca teve Movimento associado). Cada linha é clicável e abre a
+  // mesma sheet de editar/eliminar partilhada (ver openSourceMoveEditSheet).
+  function sourceHistoryRows(sourceType, sourceId, ledgerList){
+    var confirmed = (ledgerList || []).filter(function(r){ return !!r.entryId; })
+      .slice(-4).reverse()
+      .map(function(r){ return {date:r.date, amount:Number(r.amount)||0, entryId:r.entryId, pending:false}; });
+    var pending = pendingSourceEntriesFor(sourceType, sourceId)
+      .map(function(e){ return {date:creditLedgerDateStr(e), amount:Number(e.amount)||0, entryId:e.id, pending:true}; });
+    return pending.concat(confirmed);
+  }
+  function sourceHistoryHtml(sourceType, sourceId, ledgerList, label){
+    var rows = sourceHistoryRows(sourceType, sourceId, ledgerList);
+    if (!rows.length) return '';
+    var itemsHtml = rows.map(function(r){
+      var dateLabel = r.date.split('-').reverse().join('/');
+      var pill = r.pending ? ' <span class="budget-status-pill warning">Previsto</span>' : '';
+      return '<div class="source-hist-row" data-action="source-hist-edit" data-entry-id="' + r.entryId + '" data-pending="' + (r.pending?'1':'0') + '" data-source-type="' + sourceType + '" data-source-id="' + sourceId + '">' +
+        '<span class="source-hist-date mono">' + dateLabel + '</span>' +
+        '<span class="source-hist-amount mono">' + euro(r.amount) + '</span>' + pill +
+      '</div>';
+    }).join('');
+    return '<div class="source-history"><div class="source-history-label">' + escapeHtml(label || 'Histórico') + '</div>' + itemsHtml + '</div>';
+  }
+  // Reabre a sheet partilhada de editar/eliminar a partir de um registo já
+  // efetivado no histórico — só temos o 'entryId', não a entry completa
+  // (esta não vem carregada em state fora da página Movimentos), por isso
+  // vai sempre buscá-la ao Firestore antes de abrir a sheet.
+  function openSourceMoveEditByEntryId(entryId){
+    if (!db || !entryId) return;
+    db.collection('entries').doc(entryId).get().then(function(doc){
+      if (!doc || !doc.exists){ showToast('Não foi possível encontrar o movimento.', {icon:'x'}); return; }
+      openSourceMoveEditSheet(Object.assign({id:doc.id}, doc.data()));
+    }).catch(function(err){
+      console.error('openSourceMoveEditByEntryId failed', err);
+      showToast('Não foi possível abrir o movimento.', {icon:'x'});
+    });
+  }
+
+  // Edita um aporte/pagamento já existente (identificado pela entry). Um
+  // único Movimento é sempre atualizado, nunca criado um segundo (ponto
+  // 18/35). Se já estiver efetivado (tem sourceRecordId), o registo do
+  // "livro" de destino correspondente é atualizado também — para um
+  // pagamento extra de crédito, o novo valor da prestação em dívida é
+  // recalculado a partir do saldo just antes deste pagamento (o saldo do
+  // crédito ANTES de aplicar este valor era o saldo depois + o valor
+  // antigo deste pagamento).
+  function updateSourceMovement(entry, newAmount, newDateStr, newNote){
+    var d = parseInputDateLocal(newDateStr) || new Date();
+    var newMonthKey = monthKeyOf(d);
+    var newDueDay = d.getDate();
+    var monthChanged = newMonthKey !== entry.monthKey;
+    var newEntryId = monthChanged ? entryDocId(newMonthKey, entry.paymentId) : entry.id;
+    var entryChanges = {amount:newAmount, dueDay:newDueDay, monthKey:newMonthKey, note: newNote || null};
+
+    function baseOps(){
+      var ops = [];
+      if (monthChanged){
+        var moved = Object.assign({}, entry, entryChanges, {id:newEntryId});
+        delete moved.id; // o id não é um campo do documento, só da cópia em memória
+        ops.push(db.collection('entries').doc(newEntryId).set(moved).then(function(){
+          return db.collection('entries').doc(entry.id).delete();
+        }));
+      } else {
+        ops.push(db.collection('entries').doc(entry.id).update(entryChanges));
+      }
+      ops.push(db.collection('payments').doc(entry.paymentId).update({amount:newAmount, dueDay:newDueDay, monthKey:newMonthKey}));
+      return ops;
+    }
+
+    if (!(entry.paid && entry.sourceRecordId)){
+      return Promise.all(baseOps()).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+    }
+    if (entry.sourceType === 'savings' || entry.sourceType === 'investment'){
+      var ops = baseOps();
+      ops.push(db.collection(SOURCE_META[entry.sourceType].collection).doc(entry.sourceRecordId).update({amount:newAmount, date:newDateStr, entryId:newEntryId}));
+      return Promise.all(ops).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+    }
+    // Crédito: vai sempre buscar o registo atual diretamente ao Firestore
+    // (nunca a state.loanSnapshots) — editar pode acontecer a partir de
+    // Movimentos, onde os Créditos nunca estão carregados; o mesmo
+    // raciocínio de getCurrentBalanceFresh acima, para não zerar o capital
+    // em dívida por o cache estar vazio.
+    return db.collection('loanSnapshots').doc(entry.sourceRecordId).get().then(function(doc){
+      var oldRecord = (doc && doc.exists) ? Object.assign({id:doc.id}, doc.data()) : null;
+      var oldAmount = oldRecord ? (Number(oldRecord.amount)||0) : 0;
+      var oldValue = oldRecord ? (Number(oldRecord.value)||0) : 0;
+      var baselineBefore = oldValue + oldAmount;
+      var newValue = Math.max(0, baselineBefore - newAmount);
+      var ops = baseOps();
+      ops.push(db.collection('loanSnapshots').doc(entry.sourceRecordId).update({value:newValue, amount:newAmount, date:newDateStr, entryId:newEntryId}));
+      return Promise.all(ops).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+    });
+  }
+
+  // Apaga um aporte/pagamento: remove sempre o Movimento (payments+entries);
+  // se já estava efetivado, remove também o registo do "livro" de destino,
+  // revertendo o saldo/capital automaticamente (é sempre a soma dos
+  // registos restantes — ver nota grande no topo). Nunca deixa dados
+  // órfãos (ponto 18).
+  function deleteSourceMovement(entry){
+    var ops = [
+      db.collection('entries').doc(entry.id).delete(),
+      db.collection('payments').doc(entry.paymentId).delete()
+    ];
+    if (entry.paid && entry.sourceRecordId){
+      ops.push(deleteSourceLedgerRecord(entry.sourceType, entry.sourceRecordId));
+    }
+    return Promise.all(ops).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+  }
+
+  // Sheet única de editar/eliminar um Movimento ligado a uma origem
+  // (Poupança/Crédito/Investimento) — partilhada entre a página Movimentos
+  // (ação "Editar"/"Eliminar" num Movimento com sourceType) e o histórico
+  // curto de cada cartão em Património. Nunca reutiliza o formulário
+  // genérico de despesas (openForm) nem deletePayment() para estes
+  // Movimentos: ambos ignoram sourceRecordId e deixariam o registo em
+  // savingsMovements/investmentContributions/loanSnapshots órfão (dupla
+  // contabilização/dados órfãos — ponto 18).
+  var sourceMoveEditOverlay = document.getElementById('sourceMoveEditOverlay');
+  var pendingSourceMoveEntry = null;
+  var pendingSourceMoveDeleteEntry = null;
+  var sourceMoveEditSaving = false;
+
+  function openSourceMoveEditSheet(entry){
+    pendingSourceMoveEntry = entry;
+    document.getElementById('sourceMoveEditTitle').textContent = entry.name || 'Editar movimento';
+    document.getElementById('sourceMoveEditHint').textContent = entry.paid
+      ? 'Já confirmado como pago — editar atualiza também o valor em Património.'
+      : 'Ainda por confirmar — só atualiza o valor previsto no Orçamento.';
+    document.getElementById('fSourceMoveValue').value = Math.round((Number(entry.amount)||0)*100)/100;
+    document.getElementById('fSourceMoveDate').value = creditLedgerDateStr(entry);
+    document.getElementById('fSourceMoveNote').value = entry.note || '';
+    document.getElementById('sourceMoveEditError').style.display = 'none';
+    sourceMoveEditOverlay.classList.add('open');
+  }
+  function closeSourceMoveEditSheet(){ sourceMoveEditOverlay.classList.remove('open'); pendingSourceMoveEntry = null; }
+
+  document.getElementById('sourceMoveEditCancel').addEventListener('click', closeSourceMoveEditSheet);
+  sourceMoveEditOverlay.addEventListener('click', function(ev){ if (ev.target === sourceMoveEditOverlay) closeSourceMoveEditSheet(); });
+  document.getElementById('sourceMoveEditSave').addEventListener('click', function(){
+    if (!pendingSourceMoveEntry || sourceMoveEditSaving) return;
+    var raw = document.getElementById('fSourceMoveValue').value;
+    var dateStr = document.getElementById('fSourceMoveDate').value;
+    var noteVal = document.getElementById('fSourceMoveNote').value.trim();
+    var errorEl = document.getElementById('sourceMoveEditError');
+    var value = parseFloat(raw);
+    if (isNaN(value) || value <= 0 || !dateStr){
+      errorEl.textContent = 'Introduz um valor e uma data válidos.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
+    var entryToSave = pendingSourceMoveEntry;
+    sourceMoveEditSaving = true;
+    updateSourceMovement(entryToSave, value, dateStr, noteVal).then(function(){
+      sourceMoveEditSaving = false;
+      closeSourceMoveEditSheet();
+      showToast('Movimento atualizado', {icon:'check'});
+    }).catch(function(err){
+      sourceMoveEditSaving = false;
+      console.error('updateSourceMovement failed', err);
+      errorEl.textContent = 'Não foi possível guardar. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+  document.getElementById('sourceMoveEditDelete').addEventListener('click', function(){
+    if (!pendingSourceMoveEntry) return;
+    var entryForDelete = pendingSourceMoveEntry;
+    closeSourceMoveEditSheet();
+    pendingSourceMoveDeleteEntry = entryForDelete;
+    pendingDeleteKind = 'sourceMove';
+    pendingDelete = entryForDelete.id;
+    document.getElementById('confirmText').textContent = entryForDelete.paid
+      ? 'Vai remover este movimento e reverter o efeito correspondente (saldo/capital). Continuar?'
+      : 'Vai remover o pagamento previsto "' + (entryForDelete.name || '') + '".';
+    confirmOverlay.classList.add('open');
+    render();
+  });
 
   // ---------- Família (membros) ----------
   function loadFamilyMembers(){
@@ -3417,7 +3927,10 @@
         var mk = e.monthKey;
         if (!byMonth[mk]) byMonth[mk] = {receitas:0, despesas:0};
         if (kindOf(e) === 'receita') byMonth[mk].receitas += effectiveAmount(e);
-        else byMonth[mk].despesas += effectiveAmount(e);
+        // Mesma exclusão de sourceType que o mês atual usa (ver nota grande
+        // em savingsRateCardHtml) — sem isto, a média histórica compararia
+        // "maçãs com laranjas" contra a taxa do mês em análise.
+        else if (!e.sourceType) byMonth[mk].despesas += effectiveAmount(e);
       });
       state.savingsRateHistory = {ready:true, monthly:byMonth, forMonthKey:monthKey};
     }).catch(function(err){
@@ -3470,8 +3983,22 @@
   // Chamada só a partir de renderMonthView(), e só para Espaços não-
   // temporários (ponto 8) — usa sempre sR.done/sD.done (reais), nunca
   // sR.total/sD.total (planeado, já mostrado no cartão "Despesas" acima).
-  function savingsRateCardHtml(sR, sD){
-    var rate = calculateSavingsRate(sR.done, sD.done);
+  // sDSemSource (ponto 24 do pedido "Movimentos Comuns"): despesas reais
+  // SEM os movimentos ligados a Poupanças/Créditos/Investimentos
+  // (sourceType definido — ver createSourceMovement). Um aporte para uma
+  // Poupança, um pagamento extra de um Crédito ou um aporte a um
+  // Investimento é dinheiro que continua a construir património, não
+  // "gasto de vida" — contá-lo como despesa real aqui faria a Taxa de
+  // Poupança descer (ou até mostrar défice) exatamente quando a pessoa
+  // está a poupar/investir mais, o que seria o oposto do que esta métrica
+  // deve comunicar. Fora daqui, em todo o resto da app (sD.done normal,
+  // "Disponível para gastar", Margem após Essenciais, o cartão de
+  // Despesas), este dinheiro continua a contar como saída de caixa do mês,
+  // sem qualquer alteração — só a fórmula da Taxa de Poupança/Poupança do
+  // mês é que ignora especificamente estes movimentos.
+  function savingsRateCardHtml(sR, sD, sDSemSource){
+    var despesasReaisParaTaxa = (sDSemSource || sD).done;
+    var rate = calculateSavingsRate(sR.done, despesasReaisParaTaxa);
     var despesaEntries = state.entries.filter(function(e){ return kindOf(e) === 'despesa'; });
     var essentialTotal = calculateEssentialSpending(despesaEntries);
     var pctEssential = sR.done > 0 ? (essentialTotal / sR.done) * 100 : null;
@@ -3980,7 +4507,8 @@
     // restante/dias restantes — ver renderTemporarySpaceHome, ponto 8/26).
     var activeSpTV = activeSpace();
     if (!activeSpTV || activeSpTV.type !== 'temporario'){
-      html += savingsRateCardHtml(sR, sD);
+      var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
+      html += savingsRateCardHtml(sR, sD, summaryOf(despesasSemSource));
     }
 
     html += zeroBudgetBannerHtml(sR.total, sD.total);
@@ -4745,6 +5273,11 @@
     var snaps = state.loanSnapshots[loan.id] || [];
     var lastUpdate = snaps.length ? snaps[snaps.length-1].date : null;
     var balanceLabel = lastUpdate ? 'Capital em dívida (atualizado ' + lastUpdate.split('-').reverse().join('/') + ')' : 'Capital em dívida (estimado)';
+    var pendingExtra = pendingSourceEntriesFor('credit', loan.id);
+    var nextExtraHtml = pendingExtra.length
+      ? '<div class="loan-review-chip">Próximo: ' + euro(pendingExtra[0].amount) + ' — ' + creditLedgerDateStr(pendingExtra[0]).split('-').reverse().join('/') + '</div>'
+      : '';
+    var extraHistoryHtml = sourceHistoryHtml('credit', loan.id, snaps.filter(function(s){ return s.type === 'extra_payment'; }), 'Pagamentos extra / amortizações');
 
     return '<div class="loan-card" data-loan-id="' + loan.id + '">' +
       '<div class="loan-head-row"><span class="icon-badge" style="' + catTint('var(--info)') + '">' + icon('landmark') + '</span>' +
@@ -4753,14 +5286,17 @@
       '<div class="saldo-row"><div class="label">' + balanceLabel + '</div><div class="saldo-value mono">' + euro(balance) + '</div></div>' +
       '<div class="loan-progress-label"><span>' + paidPct + '% amortizado</span><span>' + euro(P) + ' inicial</span></div>' +
       '<div class="progress-track"><div class="progress-fill accent" style="width:' + paidPct + '%"></div></div>' +
+      nextExtraHtml +
       '<div class="loan-chart-wrap">' + buildLoanChart(loan) + '</div>' +
       '<div class="loan-stat-grid">' +
         '<div class="stat-tile"><div class="stat-label">Prestação mensal</div><div class="stat-value mono">' + euro(inst) + '</div></div>' +
         '<div class="stat-tile"><div class="stat-label">Juros pagos (estim.)</div><div class="stat-value mono">' + euro(interestPaidEst) + '</div></div>' +
       '</div>' +
+      extraHistoryHtml +
       reviewHtml + equityHtml +
       '<div class="loan-actions-row">' +
         '<button type="button" class="btn ghost" data-action="loan-snapshot" data-id="' + loan.id + '">Atualizar valor</button>' +
+        '<button type="button" class="btn ghost" data-action="loan-extra-payment" data-id="' + loan.id + '">Pagamento extra</button>' +
         '<button type="button" class="btn ghost" data-action="loan-edit" data-id="' + loan.id + '">Editar</button>' +
         '<button type="button" class="btn ghost" data-action="loan-delete" data-id="' + loan.id + '" data-name="' + escapeHtml(loan.name) + '">Eliminar</button>' +
       '</div>' +
@@ -5004,18 +5540,24 @@
       goalHtml = '<div class="loan-progress-label"><span>' + goalPct + '% do objetivo</span><span>' + euro(inv.goalAmount) + '</span></div>' +
         '<div class="progress-track"><div class="progress-fill accent" style="width:' + goalPct + '%"></div></div>';
     }
+    var contribs = state.investmentContributions[inv.id] || [];
+    var linkedContribs = contribs.filter(function(c){ return !!c.entryId; });
+    var lastLinked = linkedContribs.length ? linkedContribs[linkedContribs.length-1] : null;
+    var lastContribHtml = lastLinked ? '<div class="loan-review-chip">Último aporte: ' + euro(lastLinked.amount) + ' — ' + lastLinked.date.split('-').reverse().join('/') + '</div>' : '';
+    var contribHistoryHtml = sourceHistoryHtml('investment', inv.id, contribs, 'Histórico de aportes');
     return '<div class="loan-card" data-investment-id="' + inv.id + '">' +
       '<div class="loan-head-row"><span class="icon-badge" style="' + catTint(t.color) + '">' + icon(investmentTypeIconOf(inv)) + '</span>' +
       '<div class="loan-head"><h3>' + escapeHtml(inv.name) + '</h3>' +
         '<div class="sub">' + escapeHtml(metaParts.join(' · ')) + '</div></div></div>' +
       '<div class="saldo-row"><div class="label">Valor atual</div><div class="saldo-value mono">' + euro(g.current) + '</div></div>' +
-      goalHtml +
+      goalHtml + lastContribHtml +
       '<div class="loan-chart-wrap">' + buildInvestmentChart(inv) + '</div>' +
       '<div class="loan-stat-grid">' +
         '<div class="stat-tile"><div class="stat-label">Total investido</div><div class="stat-value mono">' + euro(g.contributed) + '</div></div>' +
         '<div class="stat-tile ' + gainClass + '"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">' + (g.gain>=0?'+':'') + euro(g.gain) + '</div><div class="stat-note mono">' + (g.gain>=0?'+':'') + g.pct.toFixed(1) + '%</div></div>' +
       '</div>' +
       staleHtml +
+      contribHistoryHtml +
       '<div class="inv-actions-row">' +
         '<button type="button" class="btn ghost" data-action="inv-contribute" data-id="' + inv.id + '">Registar aporte</button>' +
         '<button type="button" class="btn ghost" data-action="inv-snapshot" data-id="' + inv.id + '">Atualizar valor</button>' +
@@ -5238,12 +5780,14 @@
     var movs = state.savingsMovements[goal.id] || [];
     var lastMov = movs.length ? movs[movs.length-1] : null;
     var lastHtml = lastMov ? '<div class="loan-review-chip">Último movimento: ' + (lastMov.amount>=0?'+':'') + euro(lastMov.amount) + ' em ' + lastMov.date.split('-').reverse().join('/') + '</div>' : '';
+    var aporteHistoryHtml = sourceHistoryHtml('savings', goal.id, movs, 'Histórico de aportes');
     return '<div class="loan-card" data-savings-id="' + goal.id + '">' +
       '<div class="loan-head-row"><span class="icon-badge" style="' + catTint('var(--success)') + '">' + icon('piggy') + '</span>' +
       '<div class="loan-head"><h3>' + escapeHtml(goal.name) + '</h3>' +
         (goal.goalAmount ? '' : '<div class="sub">Sem objetivo definido — só a acumular</div>') + '</div></div>' +
       '<div class="saldo-row"><div class="label">Guardado até agora</div><div class="saldo-value mono positive">' + euro(saved) + '</div></div>' +
       goalHtml + lastHtml +
+      aporteHistoryHtml +
       '<div class="inv-actions-row">' +
         '<button type="button" class="btn ghost" data-action="savings-move" data-id="' + goal.id + '">Adicionar / retirar</button>' +
         '<button type="button" class="btn ghost" data-action="savings-edit" data-id="' + goal.id + '">Editar</button>' +
@@ -5814,6 +6358,10 @@
     else if (kind === 'investment'){ deleteInvestment(id); showToast('Investimento removido', {icon:'x'}); }
     else if (kind === 'savings'){ deleteSavingsGoal(id); showToast('Poupança removida', {icon:'x'}); }
     else if (kind === 'account'){ document.getElementById('confirmTitle').textContent = 'Eliminar'; deleteMyAccount(); }
+    else if (kind === 'sourceMove'){
+      var delEntry = pendingSourceMoveDeleteEntry; pendingSourceMoveDeleteEntry = null;
+      if (delEntry) deleteSourceMovement(delEntry).then(function(){ showToast('Eliminado', {icon:'x'}); });
+    }
     else if (kind === 'space'){
       // Ao contrário dos outros "kind" aqui (apagar local, otimista), apagar
       // um Espaço tem um modo de falha real e esperado (tem movimentos) que
@@ -6063,6 +6611,56 @@
     showToast('Valor atualizado', {icon:'check'});
   });
 
+  // ---------- Crédito: pagamento extra / amortização extraordinária ----------
+  var loanExtraOverlay = document.getElementById('loanExtraOverlay');
+  var pendingLoanExtraId = null;
+  var pendingLoanExtraName = '';
+  var loanExtraSaving = false;
+
+  function openLoanExtraSheet(loan){
+    pendingLoanExtraId = loan.id;
+    pendingLoanExtraName = loan.name;
+    document.getElementById('loanExtraHint').textContent = 'Vai reduzir o capital em dívida de "' + escapeHtml(loan.name) + '". Cria também um Movimento em "' + escapeHtml(despesaCategoryDefByKey('creditos') ? despesaCategoryDefByKey('creditos').label : 'Créditos') + '".';
+    document.getElementById('fLoanExtraValue').value = '';
+    document.getElementById('fLoanExtraDate').value = todayStr();
+    document.getElementById('fLoanExtraNote').value = '';
+    document.getElementById('loanExtraError').style.display = 'none';
+    loanExtraOverlay.classList.add('open');
+  }
+  function closeLoanExtraSheet(){ loanExtraOverlay.classList.remove('open'); pendingLoanExtraId = null; }
+
+  document.getElementById('loanExtraCancel').addEventListener('click', closeLoanExtraSheet);
+  loanExtraOverlay.addEventListener('click', function(ev){ if (ev.target === loanExtraOverlay) closeLoanExtraSheet(); });
+  document.getElementById('loanExtraSave').addEventListener('click', function(){
+    if (!pendingLoanExtraId || loanExtraSaving) return;
+    var raw = document.getElementById('fLoanExtraValue').value;
+    var dateStr = document.getElementById('fLoanExtraDate').value || todayStr();
+    var noteVal = document.getElementById('fLoanExtraNote').value.trim();
+    var errorEl = document.getElementById('loanExtraError');
+    var value = parseFloat(raw);
+    if (isNaN(value) || value <= 0){
+      errorEl.textContent = 'Introduz um valor válido.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
+    var loanId = pendingLoanExtraId;
+    var loanName = pendingLoanExtraName;
+    loanExtraSaving = true;
+    createSourceMovement('credit', loanId, loanName, value, dateStr, noteVal).then(function(result){
+      loanExtraSaving = false;
+      closeLoanExtraSheet();
+      return reloadAfterSourceChange('credit').then(function(){
+        showToast(result.paid ? 'Pagamento registado' : 'Pagamento previsto registado', {icon:'check'});
+      });
+    }).catch(function(err){
+      loanExtraSaving = false;
+      console.error('createSourceMovement(credit) failed', err);
+      errorEl.textContent = 'Não foi possível registar o pagamento. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+
   // ---------- Investir: formulário de investimento ----------
   var investmentFormOverlay = document.getElementById('investmentFormOverlay');
   var editingInvestmentId = null;
@@ -6156,11 +6754,16 @@
   // ---------- Investir: registar aporte ----------
   var invContribOverlay = document.getElementById('invContribOverlay');
   var pendingContribInvestmentId = null;
+  var pendingContribInvestmentName = '';
+  var invContribSaving = false;
 
   function openInvContribSheet(inv){
     pendingContribInvestmentId = inv.id;
-    document.getElementById('invContribHint').textContent = 'Vai somar ao total investido em "' + inv.name + '", com a data de hoje.';
+    pendingContribInvestmentName = inv.name;
+    document.getElementById('invContribHint').textContent = 'Vai somar ao total investido em "' + inv.name + '". Cria também um Movimento em "' + escapeHtml(despesaCategoryDefByKey('investimentos') ? despesaCategoryDefByKey('investimentos').label : 'Investimentos') + '".';
     document.getElementById('fInvContribValue').value = '';
+    document.getElementById('fInvContribDate').value = todayStr();
+    document.getElementById('fInvContribNote').value = '';
     document.getElementById('invContribError').style.display = 'none';
     invContribOverlay.classList.add('open');
   }
@@ -6169,8 +6772,10 @@
   document.getElementById('invContribCancel').addEventListener('click', closeInvContribSheet);
   invContribOverlay.addEventListener('click', function(ev){ if (ev.target === invContribOverlay) closeInvContribSheet(); });
   document.getElementById('invContribSave').addEventListener('click', function(){
-    if (!pendingContribInvestmentId) return;
+    if (!pendingContribInvestmentId || invContribSaving) return;
     var raw = document.getElementById('fInvContribValue').value;
+    var dateStr = document.getElementById('fInvContribDate').value || todayStr();
+    var noteVal = document.getElementById('fInvContribNote').value.trim();
     var errorEl = document.getElementById('invContribError');
     var value = parseFloat(raw);
     if (isNaN(value) || value <= 0){
@@ -6178,10 +6783,22 @@
       errorEl.style.display = 'block';
       return;
     }
+    errorEl.style.display = 'none';
     var investmentId = pendingContribInvestmentId;
-    closeInvContribSheet();
-    addInvestmentContribution(investmentId, value);
-    showToast('Aporte registado', {icon:'check'});
+    var investmentName = pendingContribInvestmentName;
+    invContribSaving = true;
+    createSourceMovement('investment', investmentId, investmentName, value, dateStr, noteVal).then(function(result){
+      invContribSaving = false;
+      closeInvContribSheet();
+      return reloadAfterSourceChange('investment').then(function(){
+        showToast(result.paid ? 'Aporte registado' : 'Aporte previsto registado', {icon:'check'});
+      });
+    }).catch(function(err){
+      invContribSaving = false;
+      console.error('createSourceMovement(investment) failed', err);
+      errorEl.textContent = 'Não foi possível registar o aporte. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
   });
 
   // ---------- Investir: atualizar valor atual ----------
@@ -6302,11 +6919,18 @@
   var pendingMoveGoalId = null;
   var selectedMoveType = 'add';
 
+  var pendingMoveGoalName = '';
+  var savingsMoveSaving = false;
+
   function setSavingsMoveType(type){
     selectedMoveType = type;
     Array.prototype.forEach.call(savingsMoveSeg.querySelectorAll('button'), function(btn){
       btn.classList.toggle('active', btn.dataset.moveType === type);
     });
+    // Só um "Adicionar" novo cria Movimento/afeta o Orçamento (ponto 3 do
+    // pedido de Movimentos Comuns) — "Retirar" continua exatamente como
+    // era antes desta funcionalidade: só ajusta o saldo da poupança.
+    document.getElementById('savingsMoveAddFields').hidden = (type !== 'add');
   }
   savingsMoveSeg.addEventListener('click', function(ev){
     var btn = ev.target.closest('button');
@@ -6316,9 +6940,12 @@
 
   function openSavingsMoveSheet(goal){
     pendingMoveGoalId = goal.id;
+    pendingMoveGoalName = goal.name;
     setSavingsMoveType('add');
-    document.getElementById('savingsMoveHint').textContent = 'Guardado até agora em "' + goal.name + '": ' + euro(savingsSavedOf(goal.id)) + '. Fica registado com a data de hoje.';
+    document.getElementById('savingsMoveHint').textContent = 'Guardado até agora em "' + goal.name + '": ' + euro(savingsSavedOf(goal.id)) + '.';
     document.getElementById('fSavingsMoveValue').value = '';
+    document.getElementById('fSavingsMoveDate').value = todayStr();
+    document.getElementById('fSavingsMoveNote').value = '';
     document.getElementById('savingsMoveError').style.display = 'none';
     savingsMoveOverlay.classList.add('open');
   }
@@ -6333,7 +6960,7 @@
   document.getElementById('closeEmergencyFundCalc').addEventListener('click', closeEmergencyFundCalc);
   emergencyFundCalcOverlay.addEventListener('click', function(ev){ if (ev.target === emergencyFundCalcOverlay) closeEmergencyFundCalc(); });
   document.getElementById('savingsMoveSave').addEventListener('click', function(){
-    if (!pendingMoveGoalId) return;
+    if (!pendingMoveGoalId || savingsMoveSaving) return;
     var raw = document.getElementById('fSavingsMoveValue').value;
     var errorEl = document.getElementById('savingsMoveError');
     var value = parseFloat(raw);
@@ -6342,11 +6969,32 @@
       errorEl.style.display = 'block';
       return;
     }
+    errorEl.style.display = 'none';
     var goalId = pendingMoveGoalId;
-    var signedAmount = selectedMoveType === 'withdraw' ? -value : value;
-    closeSavingsMoveSheet();
-    addSavingsMovement(goalId, signedAmount);
-    showToast(selectedMoveType === 'withdraw' ? 'Levantamento registado' : 'Adicionado à poupança', {icon:'piggy'});
+    var goalName = pendingMoveGoalName;
+    if (selectedMoveType === 'withdraw'){
+      // Retirar nunca cria Movimento nem afeta o Orçamento — comportamento
+      // inalterado desde antes desta funcionalidade.
+      closeSavingsMoveSheet();
+      addSavingsMovement(goalId, -value);
+      showToast('Levantamento registado', {icon:'piggy'});
+      return;
+    }
+    var dateStr = document.getElementById('fSavingsMoveDate').value || todayStr();
+    var noteVal = document.getElementById('fSavingsMoveNote').value.trim();
+    savingsMoveSaving = true;
+    createSourceMovement('savings', goalId, goalName, value, dateStr, noteVal).then(function(result){
+      savingsMoveSaving = false;
+      closeSavingsMoveSheet();
+      return reloadAfterSourceChange('savings').then(function(){
+        showToast(result.paid ? 'Adicionado à poupança' : 'Aporte previsto registado', {icon:'piggy'});
+      });
+    }).catch(function(err){
+      savingsMoveSaving = false;
+      console.error('createSourceMovement(savings) failed', err);
+      errorEl.textContent = 'Não foi possível registar o aporte. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
   });
 
   // ---------- Definições ----------
@@ -6717,7 +7365,8 @@
       var paymentId = actionEl.getAttribute('data-id');
       var e = state.entries.find(function(x){ return x.paymentId === paymentId; });
       state.openMenuId = null;
-      if (e) openForm(e);
+      if (e && e.sourceType) openSourceMoveEditSheet(e);
+      else if (e) openForm(e);
     } else if (action === 'adjust-amount'){
       var pidAdj = actionEl.getAttribute('data-id');
       var eAdj = state.entries.find(function(x){ return x.paymentId === pidAdj; });
@@ -6733,14 +7382,27 @@
     } else if (action === 'delete'){
       var name = actionEl.getAttribute('data-name');
       var type = actionEl.getAttribute('data-type');
-      pendingDelete = actionEl.getAttribute('data-id');
-      pendingDeleteKind = 'payment';
+      var pidDel = actionEl.getAttribute('data-id');
+      var eForDel = state.entries.find(function(x){ return x.paymentId === pidDel; });
       state.openMenuId = null;
-      document.getElementById('confirmText').textContent = type === 'recorrente'
-        ? 'Vai parar de aparecer a partir deste mês. Os meses anteriores mantêm o histórico. Continuar a eliminar "' + name + '"?'
-        : 'Vai remover definitivamente "' + name + '".';
-      confirmOverlay.classList.add('open');
-      render();
+      if (eForDel && eForDel.sourceType){
+        pendingSourceMoveDeleteEntry = eForDel;
+        pendingDeleteKind = 'sourceMove';
+        pendingDelete = eForDel.id;
+        document.getElementById('confirmText').textContent = eForDel.paid
+          ? 'Vai remover este movimento e reverter o efeito correspondente (saldo/capital) de "' + name + '". Continuar?'
+          : 'Vai remover o pagamento previsto "' + name + '".';
+        confirmOverlay.classList.add('open');
+        render();
+      } else {
+        pendingDelete = pidDel;
+        pendingDeleteKind = 'payment';
+        document.getElementById('confirmText').textContent = type === 'recorrente'
+          ? 'Vai parar de aparecer a partir deste mês. Os meses anteriores mantêm o histórico. Continuar a eliminar "' + name + '"?'
+          : 'Vai remover definitivamente "' + name + '".';
+        confirmOverlay.classList.add('open');
+        render();
+      }
     } else if (action === 'select-month'){
       state.selectedYearMonth = actionEl.getAttribute('data-month');
       render();
@@ -6753,6 +7415,21 @@
       var lIdSnap = actionEl.getAttribute('data-id');
       var loanForSnap = state.loans.find(function(l){ return l.id === lIdSnap; });
       if (loanForSnap) openSnapshotSheet(loanForSnap);
+    } else if (action === 'source-hist-edit'){
+      var histEntryId = actionEl.getAttribute('data-entry-id');
+      var histPending = actionEl.getAttribute('data-pending') === '1';
+      if (histPending){
+        var histKey = actionEl.getAttribute('data-source-type') + ':' + actionEl.getAttribute('data-source-id');
+        var histList = state.pendingSourceEntries[histKey] || [];
+        var histEntry = histList.find(function(x){ return x.id === histEntryId; });
+        if (histEntry) openSourceMoveEditSheet(histEntry);
+      } else {
+        openSourceMoveEditByEntryId(histEntryId);
+      }
+    } else if (action === 'loan-extra-payment'){
+      var lIdExtra = actionEl.getAttribute('data-id');
+      var loanForExtra = state.loans.find(function(l){ return l.id === lIdExtra; });
+      if (loanForExtra) openLoanExtraSheet(loanForExtra);
     } else if (action === 'loan-edit'){
       var lIdEdit = actionEl.getAttribute('data-id');
       var loanForEdit = state.loans.find(function(l){ return l.id === lIdEdit; });
@@ -7278,11 +7955,11 @@
       return;
     }
     if (view === 'year'){ if (db) return loadYear(state.year); }
-    else if (view === 'loan'){ if (db) return loadLoans(); }
-    else if (view === 'investment'){ if (db) return loadInvestments(); }
-    else if (view === 'poupancas'){ if (db) return loadSavingsGoals(); }
+    else if (view === 'loan'){ if (db) return Promise.all([loadLoans(), loadPendingSourceEntries('credit')]); }
+    else if (view === 'investment'){ if (db) return Promise.all([loadInvestments(), loadPendingSourceEntries('investment')]); }
+    else if (view === 'poupancas'){ if (db) return Promise.all([loadSavingsGoals(), loadPendingSourceEntries('savings')]); }
     else if (view === 'home'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals(), loadEmergencyFundHistory()]); }
-    else if (view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals()]); }
+    else if (view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals(), loadPendingSourceEntries('credit'), loadPendingSourceEntries('investment'), loadPendingSourceEntries('savings')]); }
     else if (view === 'month' || view === 'movimentos'){ if (db) return Promise.all([loadMonth(state.monthKey), loadCategoryBudgets()]); }
     else if (view === 'recorrencias'){
       if (db){
@@ -7530,9 +8207,9 @@
   var OVERLAY_CANCEL_BUTTONS = {
     formOverlay:'cancelForm', confirmOverlay:'confirmCancel', amountOverlay:'amountCancel',
     categoryBudgetOverlay:'categoryBudgetCancel',
-    loanFormOverlay:'cancelLoanForm', snapshotOverlay:'snapshotCancel',
+    loanFormOverlay:'cancelLoanForm', snapshotOverlay:'snapshotCancel', loanExtraOverlay:'loanExtraCancel',
     investmentFormOverlay:'cancelInvestmentForm', invContribOverlay:'invContribCancel', invSnapshotOverlay:'invSnapshotCancel',
-    savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel',
+    savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel', sourceMoveEditOverlay:'sourceMoveEditCancel',
     welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
