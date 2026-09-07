@@ -552,6 +552,14 @@
   .ef-current-row .mono{font-size:15px; font-weight:800; color:var(--text);}
   .emergency-fund-card .hint{margin-top:8px;}
   .emergency-fund-card .hint:first-of-type{margin-top:10px;}
+
+  /* Taxa de Poupança Mensal — mesmo padrão de cor já usado em .saldo-value/
+     .mini-card-value, só que aplicado ao valor de dentro de um trio-tile. */
+  .savings-rate-card{margin-top:10px;}
+  .savings-rate-card .trio-value.positive{color:var(--success);}
+  .savings-rate-card .trio-value.negative{color:var(--danger);}
+  .savings-rate-card .hint .positive{color:var(--success);}
+  .savings-rate-card .hint .negative{color:var(--danger);}
   .ef-empty{display:flex; gap:12px; align-items:flex-start; color:var(--text-muted); font-size:12.5px; line-height:1.55;}
   .ef-empty .icon{flex-shrink:0; color:var(--text-faint); margin-top:1px;}
   .ef-calc-row{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;}
@@ -1620,7 +1628,14 @@
     // monthly: { 'YYYY-MM' -> { categoriaKey -> totalGasto } }, só meses
     // COMPLETOS (anteriores ao corrente) com despesas do Espaço ativo.
     emergencyFundHistory: {ready:false, monthly:{}},
-    emergencyFundHistoryLoading: true
+    emergencyFundHistoryLoading: true,
+
+    // ---------- Taxa de Poupança Mensal ----------
+    // monthly: { 'YYYY-MM' -> {receitas, despesas} }, valores REAIS
+    // (paid:true) do Espaço ativo, só meses ANTERIORES ao mês em análise
+    // (forMonthKey) — ver loadSavingsRateHistory().
+    savingsRateHistory: {ready:false, monthly:{}, forMonthKey:null},
+    savingsRateHistoryLoading: true
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -2221,6 +2236,19 @@
     var v = Number(n)||0;
     return v.toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
   }
+  // Percentagem em pt-PT com 1 casa decimal (ex.: "28,8%", "-6,3%") — usada
+  // pela Taxa de Poupança Mensal. null/NaN devolve "—" em vez de "NaN%".
+  function fmtPercent(n){
+    if (n === null || n === undefined || !isFinite(n)) return '—';
+    return Number(n).toLocaleString('pt-PT', {minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
+  }
+  // Diferença em pontos percentuais, sempre com sinal explícito (ex.: "+4,5",
+  // "-2,1") — nunca confundir com uma percentagem normal (ver ponto 6 do
+  // pedido de Taxa de Poupança: "não dizer +18% se é uma diferença de p.p.").
+  function fmtPP(n){
+    var v = Number(n)||0;
+    return (v >= 0 ? '+' : '') + v.toLocaleString('pt-PT', {minimumFractionDigits:1, maximumFractionDigits:1});
+  }
   // Interpreta o valor de um <input type="number"> (orçamento geral do
   // Espaço, entre outros) de forma explícita — nunca deixa passar um valor
   // inválido silenciosamente. Um <input type="number"> já garante que
@@ -2448,6 +2476,12 @@
   function loadMonth(monthKey){
     state.loading = true;
     render();
+    // Independente da leitura principal abaixo (própria coleção/estado,
+    // próprio catch) — dispara sempre que o mês é (re)carregado, o que já
+    // cobre todos os gatilhos que a Taxa de Poupança precisa (troca de
+    // Espaço, navegação de mês, alterações de categorias) sem ter de repetir
+    // a chamada em cada um desses pontos. Ver loadSavingsRateHistory().
+    loadSavingsRateHistory(monthKey);
     return loadPayments().then(function(payments){
       var applicable = computeApplicable(payments, monthKey);
       return db.collection('entries').where('monthKey','==',monthKey).where('spaceId','==',state.activeSpaceId).get().then(function(esnap){
@@ -3314,6 +3348,166 @@
     });
   }
 
+  // ---------- Taxa de Poupança Mensal ----------
+  // Funções puras (calculateSavingsRate/calculateEssentialSpending) mais o
+  // carregamento do histórico de comparação — tudo o que a nova métrica da
+  // análise mensal (ver renderMonthView) precisa, sem tocar em nenhum
+  // cálculo já existente (poupMes/savingsMonthNet do "Orçamento a zero" e do
+  // cartão do Início continuam a significar "dinheiro movido para
+  // Poupanças por objetivo", um conceito diferente e que não é alterado).
+
+  // taxaPoupanca = (receitasReais - despesasReaisTotais) / receitasReais.
+  // 'reais' aqui é sempre paid:true (o mesmo critério que sR.done/sD.done já
+  // usam em summaryOf()) — nunca sR.total/sD.total (planeado). Sem receitas
+  // reais devolve rate:null em vez de dividir por zero (ponto 2 do pedido:
+  // mostrar "Sem receitas registadas").
+  function calculateSavingsRate(receitasReais, despesasReais){
+    var poupanca = receitasReais - despesasReais;
+    var rate = receitasReais > 0 ? (poupanca / receitasReais) * 100 : null;
+    return {receitas:receitasReais, despesas:despesasReais, poupanca:poupanca, rate:rate};
+  }
+
+  // Total das despesas REAIS (paid:true) do mês em categorias classificadas
+  // como essenciais para o Espaço ativo — reaproveita isEssentialCategory,
+  // já existente e usada pelo Fundo de Emergência, sem qualquer alteração
+  // (ponto 12 do pedido: "se existir, reutilizar").
+  function calculateEssentialSpending(despesaEntries){
+    var total = 0;
+    (despesaEntries || []).forEach(function(e){
+      if (!e.paid) return;
+      if (!isEssentialCategory(e.category || 'outros')) return;
+      total += effectiveAmount(e);
+    });
+    return total;
+  }
+
+  // ---------- Taxa de Poupança Mensal — histórico ----------
+  // Vai buscar receitas/despesas REAIS (paid:true) dos até 6 meses
+  // ANTERIORES ao mês em análise (monthKey) do Espaço ativo, para comparar a
+  // taxa de poupança desse mês com a média recente (ponto 6 do pedido).
+  // Mesmo padrão de query que loadYear()/loadEmergencyFundHistory() já
+  // usam, mas ancorado ao mês visualizado (monthKey), não a "hoje" — quem
+  // está a navegar por meses passados na página Orçamento deve ver sempre a
+  // comparação com os meses ANTERIORES a esse, nunca com os últimos 6 meses
+  // de calendário reais.
+  //
+  // Chamada a partir de loadMonth() (ver nota lá) — dispara sempre que os
+  // registos do mês são (re)carregados: troca de Espaço, navegação de mês,
+  // alterações de categorias, etc. Nunca precisa de ser chamada à parte.
+  function loadSavingsRateHistory(monthKey){
+    var sp = activeSpace();
+    if (!db || (sp && sp.type === 'temporario')){
+      // Não faz sentido num Espaço Temporário (ponto 8/26) — não gasta leitura.
+      state.savingsRateHistory = {ready:true, monthly:{}, forMonthKey:monthKey};
+      state.savingsRateHistoryLoading = false;
+      return Promise.resolve();
+    }
+    var endKey = monthKeyAdd(monthKey, -1);
+    var startKey = monthKeyAdd(monthKey, -6);
+    var forSpaceId = state.activeSpaceId;
+    state.savingsRateHistoryLoading = true;
+    // Ver nota junto a loadPayments(): spaceId tem de vir sempre explícito.
+    return db.collection('entries').where('monthKey','>=',startKey).where('monthKey','<=',endKey).where('spaceId','==',forSpaceId).get().then(function(snap){
+      if (forSpaceId !== state.activeSpaceId) return; // o Espaço mudou entretanto — descarta esta resposta
+      var byMonth = {};
+      snap.docs.forEach(function(d){
+        var e = d.data();
+        if (spaceIdOf(e) !== forSpaceId) return;
+        if (!e.paid) return; // só valores reais, nunca planeados (ponto 9)
+        var mk = e.monthKey;
+        if (!byMonth[mk]) byMonth[mk] = {receitas:0, despesas:0};
+        if (kindOf(e) === 'receita') byMonth[mk].receitas += effectiveAmount(e);
+        else byMonth[mk].despesas += effectiveAmount(e);
+      });
+      state.savingsRateHistory = {ready:true, monthly:byMonth, forMonthKey:monthKey};
+    }).catch(function(err){
+      console.error('loadSavingsRateHistory failed', err);
+      state.savingsRateHistory = {ready:true, monthly:{}, forMonthKey:monthKey};
+    }).then(function(){
+      state.savingsRateHistoryLoading = false;
+      render();
+    });
+  }
+
+  // Só considera meses com receita real > 0 (ponto 28: um mês sem dados não
+  // deve entrar como taxa 0%, o que desceria artificialmente a média) e só
+  // os do pedido mais recente (forMonthKey) — evita misturar a média de um
+  // mês diferente do que está a ser mostrado enquanto uma query anterior,
+  // de outro mês, ainda não tinha respondido.
+  function savingsRateHistoryStats(monthKey){
+    var hist = state.savingsRateHistory;
+    if (!hist || hist.forMonthKey !== monthKey) return {monthsCount:0, averageRate:null};
+    var keys = Object.keys(hist.monthly || {}).sort().slice(-6);
+    var rates = [];
+    keys.forEach(function(mk){
+      var m = hist.monthly[mk];
+      if (m.receitas > 0) rates.push(((m.receitas - m.despesas) / m.receitas) * 100);
+    });
+    if (!rates.length) return {monthsCount:0, averageRate:null};
+    var avg = rates.reduce(function(s,r){ return s+r; }, 0) / rates.length;
+    return {monthsCount:rates.length, averageRate:avg};
+  }
+
+  // Frase curta opcional (ponto 7) — nunca em tom moralista, nunca inventa
+  // números fora do que os cálculos acima já deram.
+  function savingsRateMessage(rate, stats){
+    if (rate === null) return null;
+    if (!stats || stats.monthsCount === 0){
+      return 'Terminaste o mês com uma taxa de poupança de ' + fmtPercent(rate) + '.';
+    }
+    var diffPP = rate - stats.averageRate;
+    var mesesLabel = stats.monthsCount === 1 ? '1 mês' : (stats.monthsCount + ' meses');
+    if (diffPP >= 0.5){
+      return 'A tua taxa de poupança está ' + fmtPP(diffPP) + ' p.p. acima da média dos últimos ' + mesesLabel + '.';
+    }
+    if (diffPP <= -0.5){
+      return 'Este mês estás a poupar menos do que a tua média recente.';
+    }
+    return 'A tua taxa de poupança está em linha com a média dos últimos ' + mesesLabel + '.';
+  }
+
+  // ---------- Taxa de Poupança Mensal — UI ----------
+  // Chamada só a partir de renderMonthView(), e só para Espaços não-
+  // temporários (ponto 8) — usa sempre sR.done/sD.done (reais), nunca
+  // sR.total/sD.total (planeado, já mostrado no cartão "Despesas" acima).
+  function savingsRateCardHtml(sR, sD){
+    var rate = calculateSavingsRate(sR.done, sD.done);
+    var despesaEntries = state.entries.filter(function(e){ return kindOf(e) === 'despesa'; });
+    var essentialTotal = calculateEssentialSpending(despesaEntries);
+    var pctEssential = sR.done > 0 ? (essentialTotal / sR.done) * 100 : null;
+    var margin = sR.done > 0 ? (100 - pctEssential) : null;
+    var stats = savingsRateHistoryStats(state.monthKey);
+
+    var poupancaLabel = rate.poupanca >= 0 ? 'Poupança do mês' : 'Défice do mês';
+    var poupancaCls = rate.poupanca >= 0 ? ' positive' : ' negative';
+    var rateCls = rate.rate === null ? '' : (rate.rate >= 0 ? ' positive' : ' negative');
+    var rateValue = rate.rate === null ? 'Sem receitas registadas' : fmtPercent(rate.rate);
+
+    var html = '<div class="cat-card savings-rate-card">' +
+      '<div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+        '<div class="trio-tile"><div class="trio-label">' + poupancaLabel + '</div><div class="trio-value mono' + poupancaCls + '">' + (rate.poupanca>=0?'+':'') + euro(rate.poupanca) + '</div></div>' +
+        '<div class="trio-tile"><div class="trio-label">Taxa de poupança</div><div class="trio-value mono' + rateCls + '">' + rateValue + '</div></div>' +
+      '</div>';
+    if (rate.rate !== null && stats.monthsCount > 0){
+      var diffPP = rate.rate - stats.averageRate;
+      html += '<div class="hint">Média ' + (stats.monthsCount===1?'1 mês':(stats.monthsCount+' meses')) + ': <span class="mono">' + fmtPercent(stats.averageRate) + '</span> · <span class="mono' + (diffPP>=0?' positive':' negative') + '">' + fmtPP(diffPP) + ' p.p.</span></div>';
+    }
+    var msg = savingsRateMessage(rate.rate, stats);
+    if (msg) html += '<div class="hint">' + escapeHtml(msg) + '</div>';
+    html += '</div>';
+
+    html += '<div class="cat-card savings-rate-card">' +
+      '<div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+        '<div class="trio-tile"><div class="trio-label">Essenciais</div><div class="trio-value mono">' + euro(essentialTotal) + '</div>' +
+          (pctEssential !== null ? '<div class="stat-note mono">' + fmtPercent(pctEssential) + ' do rendimento</div>' : '') +
+        '</div>' +
+        '<div class="trio-tile"><div class="trio-label">Margem após essenciais</div><div class="trio-value mono">' + (margin !== null ? fmtPercent(margin) : '—') + '</div></div>' +
+      '</div>' +
+    '</div>';
+
+    return html;
+  }
+
   // ---------- Fundo de Emergência — histórico ----------
   // Vai buscar as despesas dos últimos até 6 meses COMPLETOS (o mês corrente
   // nunca entra — está incompleto por definição, ver essentialMonthlyAverage)
@@ -3779,6 +3973,15 @@
       remainingCount: despesasPend.length, remainingTotal: remainingTotal, overdueCount: overdueList.length,
       note: 'Os registos recorrentes replicam-se sozinhos todos os meses — não precisam de os voltar a criar.'
     });
+
+    // Taxa de Poupança Mensal / Margem após essenciais — só faz sentido para
+    // Espaços recorrentes (Mensal/Anual); num Espaço Temporário o conceito
+    // não existe (o dashboard próprio dele já mostra orçamento/gasto/
+    // restante/dias restantes — ver renderTemporarySpaceHome, ponto 8/26).
+    var activeSpTV = activeSpace();
+    if (!activeSpTV || activeSpTV.type !== 'temporario'){
+      html += savingsRateCardHtml(sR, sD);
+    }
 
     html += zeroBudgetBannerHtml(sR.total, sD.total);
 
