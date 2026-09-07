@@ -3230,22 +3230,83 @@
   function categoryBudgetDocId(spaceId, categoryKey){
     return (spaceId === defaultSpaceId()) ? categoryKey : (spaceId + '__' + categoryKey);
   }
+  // CORREÇÃO (ver auditoria de segurança / espacos-financeiros.md): esta
+  // função fazia antes um único db.collection('categoryBudgets').get() SEM
+  // FILTRO — a coleção inteira da família, todos os Espaços misturados — e só
+  // separava por Espaço DEPOIS, em JavaScript, comparando o prefixo do ID do
+  // documento com state.activeSpaceId. É exatamente o mesmo padrão já
+  // corrigido para loadSpaces()/loadPayments()/loadMonth()/etc.: uma query de
+  // lista sem filtro só é aceite pelo Firestore se conseguir confirmar, a
+  // partir da própria query, que qualquer documento que possa devolver
+  // cumpre a regra de segurança — e a regra de categoryBudgets precisa de ir
+  // buscar o Espaço a que cada documento pertence (get() a spaces/{sid}).
+  // Bastava UM documento nessa coleção pertencer a um Espaço que o Firestore
+  // não pudesse confirmar como acessível (o Espaço privado doutro membro da
+  // família, ou um categoryBudget órfão deixado para trás por "Eliminar
+  // espaço definitivamente" a apontar para um Espaço já apagado — get() a um
+  // documento que já não existe é um ERRO de avaliação, não "false") para o
+  // pedido INTEIRO ser negado — e todos os orçamentos por categoria, de
+  // TODOS os Espaços, desapareciam de uma vez (state.categoryBudgets nunca é
+  // limpo no catch(), por isso ficava preso no último valor que tinha antes
+  // de começar a falhar, tipicamente {} logo desde o primeiro carregamento
+  // que apanhasse essa condição).
+  //
+  // Correção: nunca mais pedir a coleção inteira. Em vez disso, para o
+  // Espaço ativo, calcula-se o ID exato de cada categoria possível (a mesma
+  // função categoryBudgetDocId() já usada para gravar) e pede-se cada
+  // documento individualmente (get a um documento concreto, não uma query de
+  // lista — sempre seguro, nunca depende de "provar para qualquer resultado
+  // possível", só é avaliado contra ESSE documento). Isto nunca toca em
+  // documentos de outros Espaços nem em órfãos de Espaços apagados — só nos
+  // IDs que o Espaço ativo pode mesmo ter.
+  //
+  // Retrocompatibilidade automática, sem migração nenhuma: para o Espaço por
+  // omissão, categoryBudgetDocId() já devolve o ID antigo de sempre (só a
+  // chave da categoria, ex. "saude") — exatamente os documentos legacy já
+  // existentes, sem precisarem de nenhum campo novo.
   function loadCategoryBudgets(){
     state.categoryBudgetsLoading = true;
-    return db.collection('categoryBudgets').get().then(function(snap){
-      var map = {};
-      snap.docs.forEach(function(d){
-        var amt = d.data().amount;
-        if (typeof amt !== 'number' || amt <= 0) return;
-        var sep = d.id.indexOf('__');
-        var docSpaceId = sep === -1 ? defaultSpaceId() : d.id.slice(0, sep);
-        var catKey = sep === -1 ? d.id : d.id.slice(sep + 2);
-        if (docSpaceId !== state.activeSpaceId) return;
-        map[catKey] = amt;
+    var requestedSpaceId = state.activeSpaceId;
+    // effectiveCategories() depende da configuração de categorias do Espaço
+    // (settings/categories[_<spaceId>]) já estar carregada — normalmente já
+    // está (loadDataForActiveSpace() pede-a em paralelo), mas esta função
+    // garante isso por si mesma em vez de depender da ordem das chamadas.
+    var ensureSettings = settingsCategoryConfigBySpace[requestedSpaceId]
+      ? Promise.resolve()
+      : loadSettingsForSpace(requestedSpaceId);
+    return ensureSettings.then(function(){
+      // O Espaço pode ter mudado enquanto a configuração de categorias
+      // estava a carregar — não vale a pena continuar a pedir budgets de um
+      // Espaço que já não é o ativo.
+      if (state.activeSpaceId !== requestedSpaceId) return;
+      var keys = effectiveCategories('despesa').map(function(c){ return c.key; });
+      if (!keys.length){
+        state.categoryBudgets = {};
+        state.categoryBudgetsLoading = false;
+        render();
+        return;
+      }
+      return Promise.all(keys.map(function(key){
+        return db.collection('categoryBudgets').doc(categoryBudgetDocId(requestedSpaceId, key)).get().then(function(doc){
+          return {key: key, doc: doc};
+        });
+      })).then(function(results){
+        // Mesma proteção contra corrida: se entretanto se mudou de Espaço,
+        // esta resposta (agora desatualizada) é descartada em vez de
+        // sobrescrever os budgets do Espaço já atual — mesmo "bilhete" já
+        // usado em loadSpaces().
+        if (state.activeSpaceId !== requestedSpaceId) return;
+        var map = {};
+        results.forEach(function(r){
+          if (!r.doc.exists) return;
+          var amt = r.doc.data().amount;
+          if (typeof amt !== 'number' || amt <= 0) return;
+          map[r.key] = amt;
+        });
+        state.categoryBudgets = map;
+        state.categoryBudgetsLoading = false;
+        render();
       });
-      state.categoryBudgets = map;
-      state.categoryBudgetsLoading = false;
-      render();
     }).catch(function(err){
       console.error('loadCategoryBudgets failed', err);
       state.categoryBudgetsLoading = false;
@@ -5636,7 +5697,19 @@
       return;
     }
     var key = pendingCategoryBudgetKey;
-    db.collection('categoryBudgets').doc(categoryBudgetDocId(state.activeSpaceId, key)).set({amount: value, updatedAt: new Date().toISOString()}).then(function(){
+    var spaceId = state.activeSpaceId;
+    // spaceId e categoryKey gravados explicitamente no próprio documento
+    // (antes só existiam embutidos no ID, "spaceId__categoria") — o ID
+    // composto mantém-se (evita duplicados e continua a ser a forma como se
+    // lê o documento, ver loadCategoryBudgets()), mas os dados deixam de
+    // depender só do parsing do ID para quem precisar de os interpretar
+    // diretamente (ex.: uma futura exportação, ou depuração na consola).
+    db.collection('categoryBudgets').doc(categoryBudgetDocId(spaceId, key)).set({
+      spaceId: spaceId,
+      categoryKey: key,
+      amount: value,
+      updatedAt: new Date().toISOString()
+    }).then(function(){
       return loadCategoryBudgets();
     }).then(function(){
       closeCategoryBudgetSheet();
