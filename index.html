@@ -170,6 +170,8 @@
   .cat-chip{display:inline-flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; border-radius:999px; background:var(--surface-2); font-size:12.5px; font-weight:600;}
   .cat-chip .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
   .cat-chip button{border:none; background:none; color:var(--text-faint); font-size:15px; line-height:1; cursor:pointer; padding:0 0 0 2px;}
+  .cat-chip .ess-toggle{border:1px solid var(--border); background:var(--surface); color:var(--text-faint); font-size:10.5px; font-weight:700; line-height:1; cursor:pointer; padding:3px 7px; border-radius:999px; margin-left:2px;}
+  .cat-chip .ess-toggle.active{border-color:transparent; background:var(--success-soft); color:var(--success-ink);}
   .add-cat-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
   .add-cat-row input{flex:1; min-width:110px; padding:9px 11px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-family:'Manrope',sans-serif; font-size:13px;}
   .swatch-row{display:flex; gap:6px;}
@@ -540,6 +542,22 @@
   .budget-progress-row{margin-top:16px;}
   .budget-progress-label{display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:6px;}
   .progress-context{font-size:12px; color:var(--text-faint); margin-top:7px;}
+
+  /* Fundo de Emergência */
+  .trio-grid.ef-duo{grid-template-columns:repeat(2,1fr); margin-top:12px;}
+  .ef-row{display:flex; justify-content:space-between; align-items:baseline;}
+  .ef-label{font-size:12.5px; font-weight:700; color:var(--text-muted);}
+  .ef-value{font-size:16px; font-weight:800;}
+  .ef-current-row{display:flex; justify-content:space-between; align-items:baseline; margin-top:14px; margin-bottom:7px; font-size:12.5px; font-weight:700; color:var(--text-muted);}
+  .ef-current-row .mono{font-size:15px; font-weight:800; color:var(--text);}
+  .emergency-fund-card .hint{margin-top:8px;}
+  .emergency-fund-card .hint:first-of-type{margin-top:10px;}
+  .ef-empty{display:flex; gap:12px; align-items:flex-start; color:var(--text-muted); font-size:12.5px; line-height:1.55;}
+  .ef-empty .icon{flex-shrink:0; color:var(--text-faint); margin-top:1px;}
+  .ef-calc-row{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;}
+  .ef-calc-row:last-child{border-bottom:none;}
+  .ef-calc-row .ef-calc-cat{display:flex; align-items:center; gap:9px;}
+  .ef-calc-total{display:flex; justify-content:space-between; font-weight:800; padding-top:10px; margin-top:4px; font-size:14px;}
 
   /* ---------- Resumo do mês ---------- */
   .summary-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; box-shadow:var(--shadow); margin-bottom:12px;}
@@ -1340,6 +1358,13 @@
         <div class="hint">Deixa em branco se ainda não tiveres um valor definido — a poupança fica sem meta, só a acumular.</div>
       </div>
       <div class="field">
+        <label class="checkbox-row">
+          <input type="checkbox" id="fSavingsIsEmergencyFund">
+          <span>Marcar como Fundo de Emergência</span>
+        </label>
+        <div class="hint">Liga esta poupança ao cartão de Fundo de Emergência do Início. Só pode haver uma por família — marcar esta desmarca automaticamente outra, se existir.</div>
+      </div>
+      <div class="field">
         <label for="fSavingsTargetDate">Data alvo (opcional)</label>
         <input type="month" id="fSavingsTargetDate">
         <div class="hint">Se definires um objetivo e uma data alvo, mostramos quanto precisas de poupar por mês para lá chegar.</div>
@@ -1377,6 +1402,17 @@
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="savingsMoveCancel">Cancelar</button>
       <button type="button" class="btn primary" id="savingsMoveSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="emergencyFundCalcOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Como foi calculado</h2>
+    <div id="emergencyFundCalcBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="closeEmergencyFundCalc">Fechar</button>
     </div>
   </div>
 </div>
@@ -1561,7 +1597,13 @@
     archivedSpaces: [],
     spacesLoading: true,
     activeSpaceId: null,           // id do espaço atualmente ativo (por omissão = familyId)
-    spacesView: 'active'           // 'active' | 'archived' — dentro do ecrã "Espaços"
+    spacesView: 'active',          // 'active' | 'archived' — dentro do ecrã "Espaços"
+
+    // ---------- Fundo de Emergência ----------
+    // monthly: { 'YYYY-MM' -> { categoriaKey -> totalGasto } }, só meses
+    // COMPLETOS (anteriores ao corrente) com despesas do Espaço ativo.
+    emergencyFundHistory: {ready:false, monthly:{}},
+    emergencyFundHistoryLoading: true
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -1699,7 +1741,7 @@
   // ler/escrever exatamente o documento 'settings/categories' de sempre — retrocompatível,
   // sem qualquer migração de dados antigos.
   var settingsCategoryConfigBySpace = {};
-  var BLANK_CATEGORY_CONFIG = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+  var BLANK_CATEGORY_CONFIG = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[], essentialOverrides:{}};
   function categoryConfigFor(spaceId){
     return settingsCategoryConfigBySpace[spaceId] || BLANK_CATEGORY_CONFIG;
   }
@@ -1709,7 +1751,10 @@
   // escrever sem querer nesse objeto partilhado por omissão.
   function ensureCategoryConfig(spaceId){
     if (!settingsCategoryConfigBySpace[spaceId]){
-      settingsCategoryConfigBySpace[spaceId] = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+      settingsCategoryConfigBySpace[spaceId] = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[], essentialOverrides:{}};
+    }
+    if (!settingsCategoryConfigBySpace[spaceId].essentialOverrides){
+      settingsCategoryConfigBySpace[spaceId].essentialOverrides = {};
     }
     return settingsCategoryConfigBySpace[spaceId];
   }
@@ -1720,6 +1765,28 @@
     var extra = cfg[kind+'Extra'] || [];
     var kept = base.filter(function(c){ return removed.indexOf(c.key) === -1; });
     return kept.concat(extra);
+  }
+
+  // ---------- Fundo de Emergência — classificação de categorias essenciais ----------
+  // Reaproveita o MESMO documento/mecanismo já usado para categorias extra/
+  // removidas (settings/categories, por Espaço) — só acrescenta o campo
+  // 'essentialOverrides' ({chave: true|false}). Sem isto definido para uma
+  // categoria, usa-se um valor por omissão sensato (ponto 3 do pedido);
+  // permite sempre ao utilizador alterar depois (ver renderCategoryChips).
+  var DEFAULT_ESSENTIAL_DESPESA = {
+    casa:true, alimentacao:true, transportes:true, saude:true, educacao:true,
+    lazer:false, subscricoes:false, outros:false
+  };
+  function isEssentialCategory(catKey){
+    var overrides = categoryConfigFor(state.activeSpaceId).essentialOverrides || {};
+    if (Object.prototype.hasOwnProperty.call(overrides, catKey)) return !!overrides[catKey];
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_ESSENTIAL_DESPESA, catKey)) return DEFAULT_ESSENTIAL_DESPESA[catKey];
+    // Categoria desconhecida (ex.: criada só num Espaço de Viagem/Obras) —
+    // por omissão não essencial; o utilizador pode marcar como essencial se fizer sentido.
+    return false;
+  }
+  function essentialDespesaCategories(){
+    return effectiveCategories('despesa').filter(function(c){ return isEssentialCategory(c.key); });
   }
   function categoryOf(e){
     var list = effectiveCategories(kindOf(e));
@@ -2503,14 +2570,15 @@
   }
   function loadSettingsForSpace(spaceId){
     return db.collection('settings').doc(categoriesDocIdFor(spaceId)).get().then(function(doc){
-      var cfg = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[]};
+      var cfg = {despesaExtra:[], despesaRemoved:[], receitaExtra:[], receitaRemoved:[], essentialOverrides:{}};
       if (doc.exists){
         var data = doc.data() || {};
         cfg = {
           despesaExtra: data.despesaExtra || [],
           despesaRemoved: data.despesaRemoved || [],
           receitaExtra: data.receitaExtra || [],
-          receitaRemoved: data.receitaRemoved || []
+          receitaRemoved: data.receitaRemoved || [],
+          essentialOverrides: data.essentialOverrides || {}
         };
       }
       settingsCategoryConfigBySpace[spaceId] = cfg;
@@ -2667,11 +2735,31 @@
 
   function submitSavingsGoal(data, editingId){
     var payload = {name:data.name, goalAmount: data.goalAmount || null, targetDate: data.targetDate || null, archived:false};
+    // 'type' reflete sempre o estado explícito da checkbox "Marcar como Fundo
+    // de Emergência" (ver savingsFormOverlay) — é sempre gravado, incl. como
+    // null, porque update() faz merge: só escrever quando "truthy" nunca
+    // conseguiria LIMPAR o campo ao desmarcar a checkbox numa edição.
+    payload.type = data.type || null;
+    // Só pode haver uma poupança "Fundo de emergência" por família (ponto 10
+    // do pedido original) — ao marcar esta, desmarca-se automaticamente
+    // qualquer outra que já tivesse esse type (inclui o caso de
+    // retrocompatibilidade: uma poupança antiga, criada antes desta
+    // funcionalidade existir, sem campo 'type' nenhum, é reconhecida assim
+    // que o utilizador a marca manualmente aqui).
+    var unmarkOther = Promise.resolve();
+    if (payload.type === 'emergency_fund'){
+      var other = state.savingsGoals.find(function(g){ return g.type === 'emergency_fund' && g.id !== editingId; });
+      if (other) unmarkOther = db.collection('savingsGoals').doc(other.id).update({type:null});
+    }
     if (editingId){
-      return db.collection('savingsGoals').doc(editingId).update(payload).then(function(){ return loadSavingsGoals(); });
+      return unmarkOther.then(function(){
+        return db.collection('savingsGoals').doc(editingId).update(payload);
+      }).then(function(){ return loadSavingsGoals(); });
     }
     payload.createdAt = new Date().toISOString();
-    return db.collection('savingsGoals').add(payload).then(function(ref){
+    return unmarkOther.then(function(){
+      return db.collection('savingsGoals').add(payload);
+    }).then(function(ref){
       var initial = Number(data.initial)||0;
       if (initial > 0){
         return db.collection('savingsMovements').add({goalId:ref.id, date:todayStr(), amount:initial, createdAt:new Date().toISOString()});
@@ -2876,6 +2964,7 @@
     state.activeSpaceId = spaceId;
     saveActiveSpaceIdToStorage(spaceId);
     state.monthKey = monthKeyOf(new Date());
+    loadEmergencyFundHistory();
     return loadDataForActiveSpace().then(function(){ render(); });
   }
 
@@ -2958,6 +3047,136 @@
       state.categoryBudgetsLoading = false;
       render();
     });
+  }
+
+  // ---------- Fundo de Emergência — histórico ----------
+  // Vai buscar as despesas dos últimos até 6 meses COMPLETOS (o mês corrente
+  // nunca entra — está incompleto por definição, ver essentialMonthlyAverage)
+  // do Espaço ativo, agregadas por categoria. Não recalcula nada que já
+  // exista: usa a mesma leitura de 'entries' e os mesmos effectiveAmount()/
+  // kindOf()/spaceIdOf() já usados no resto da app, só que numa janela de
+  // meses em vez de um mês só (o mesmo padrão de query que loadYear() já usa).
+  // Nunca é chamada para um Espaço Temporário (o cartão não existe aí — ver
+  // renderHomeView / ponto 14 do pedido de Fundo de Emergência).
+  function loadEmergencyFundHistory(){
+    var sp = activeSpace();
+    if (!db || (sp && sp.type === 'temporario')){
+      state.emergencyFundHistory = {ready:true, monthly:{}};
+      state.emergencyFundHistoryLoading = false;
+      return Promise.resolve();
+    }
+    var nowKey = monthKeyOf(new Date());
+    var startKey = monthKeyAdd(nowKey, -6);
+    var endKey = monthKeyAdd(nowKey, -1); // último mês completo (o corrente fica de fora)
+    var forSpaceId = state.activeSpaceId;
+    state.emergencyFundHistoryLoading = true;
+    return db.collection('entries').where('monthKey','>=',startKey).where('monthKey','<=',endKey).get().then(function(snap){
+      if (forSpaceId !== state.activeSpaceId) return; // o Espaço mudou entretanto — descarta esta resposta
+      var byMonth = {};
+      snap.docs.forEach(function(d){
+        var e = d.data();
+        if (spaceIdOf(e) !== forSpaceId) return;
+        if (kindOf(e) !== 'despesa') return;
+        var mk = e.monthKey;
+        if (!byMonth[mk]) byMonth[mk] = {};
+        var catKey = e.category || 'outros';
+        byMonth[mk][catKey] = (byMonth[mk][catKey] || 0) + effectiveAmount(e);
+      });
+      state.emergencyFundHistory = {ready:true, monthly:byMonth};
+    }).catch(function(err){
+      console.error('loadEmergencyFundHistory failed', err);
+      state.emergencyFundHistory = {ready:true, monthly:{}};
+    }).then(function(){
+      state.emergencyFundHistoryLoading = false;
+      render();
+    });
+  }
+
+  // ---------- Fundo de Emergência — cálculo ----------
+  // Funções puras (não tocam no Firestore, só leem `state`), à parte de
+  // propósito da UI — ver getEssentialCategoryBreakdown()/render do cartão
+  // em renderHomeView() e do modal "Ver cálculo" mais abaixo.
+  //
+  // Referência mensal de cada categoria essencial = o maior entre a média
+  // real dos últimos meses completos disponíveis e o orçamento atualmente
+  // definido para essa categoria. Isto cobre em simultâneo dois pedidos:
+  // (a) ser prudente — não subestimar por causa de um mês anormalmente baixo
+  // quando já há orçamento a dizer mais; (b) uma categoria essencial COM
+  // orçamento mas AINDA sem despesa real lançada (comum nos primeiros
+  // meses) entra pelo orçamento em vez de ficar de fora ou a zero.
+  function essentialMonthlyAverage(){
+    var essentials = essentialDespesaCategories();
+    var hist = state.emergencyFundHistory || {monthly:{}};
+    var monthKeys = Object.keys(hist.monthly || {}).sort();
+    var completeMonths = monthKeys.slice(-6); // a query já limita a 6, isto é só uma salvaguarda
+    var monthsCount = completeMonths.length;
+
+    var perCategory = {};
+    var total = 0;
+    essentials.forEach(function(cat){
+      var realAvg = 0;
+      if (monthsCount > 0){
+        var sum = 0;
+        completeMonths.forEach(function(mk){
+          sum += (hist.monthly[mk] && hist.monthly[mk][cat.key]) || 0;
+        });
+        realAvg = sum / monthsCount;
+      }
+      var budget = Number(state.categoryBudgets && state.categoryBudgets[cat.key]) || 0;
+      var reference = Math.max(realAvg, budget);
+      if (reference > 0){
+        perCategory[cat.key] = {def:cat, amount:reference, realAvg:realAvg, budget:budget};
+        total += reference;
+      }
+    });
+
+    return {monthlyAverage: total, perCategory: perCategory, monthsCount: monthsCount};
+  }
+
+  function calculateEmergencyFundRecommendation(){
+    var avg = essentialMonthlyAverage();
+    return {
+      monthlyAverage: avg.monthlyAverage,
+      perCategory: avg.perCategory,
+      monthsCount: avg.monthsCount,
+      threeMonthFund: avg.monthlyAverage * 3,
+      sixMonthFund: avg.monthlyAverage * 6
+    };
+  }
+
+  // Poupança principal marcada como Fundo de Emergência (savings.type ===
+  // 'emergency_fund') — por desenho, só faz sentido existir uma por família
+  // (Património/Poupanças são sempre globais à família, não por Espaço —
+  // ver ponto 7 do pedido original de Espaços Financeiros).
+  function emergencyFundSavingsGoal(){
+    return state.savingsGoals.filter(function(g){ return g.type === 'emergency_fund'; })[0] || null;
+  }
+
+  function calculateEmergencyFundCoverage(rec){
+    var goal = emergencyFundSavingsGoal();
+    var current = goal ? savingsSavedOf(goal.id) : 0;
+    return {
+      goal: goal,
+      current: current,
+      monthsCovered: rec.monthlyAverage > 0 ? (current / rec.monthlyAverage) : null,
+      progressThree: rec.threeMonthFund > 0 ? (current / rec.threeMonthFund) : null,
+      progressSix: rec.sixMonthFund > 0 ? (current / rec.sixMonthFund) : null
+    };
+  }
+
+  // Três níveis pedidos (1 mês / 2-5 meses / 6+ meses), mais um quarto caso
+  // (zero meses completos — só orçamento) para o primeiro(s) dia(s) de
+  // utilização, em que ainda não há sequer um mês completo fechado.
+  function getEmergencyFundConfidence(monthsCount){
+    if (monthsCount <= 0) return {level:'orcamento', label:'Estimativa inicial', detail:'Estimativa inicial baseada no teu orçamento atual.'};
+    if (monthsCount === 1) return {level:'inicial', label:'Estimativa inicial', detail:'Baseado em 1 mês de dados. A recomendação ficará mais precisa à medida que utilizares a MAB360.'};
+    if (monthsCount < 6) return {level:'evolucao', label:'Estimativa em evolução', detail:'Baseado na média dos últimos ' + monthsCount + ' meses.'};
+    return {level:'solida', label:'Estimativa sólida', detail:'Baseado na média dos últimos 6 meses de despesas essenciais.'};
+  }
+
+  function getEssentialCategoryBreakdown(rec){
+    return Object.keys(rec.perCategory).map(function(k){ return rec.perCategory[k]; })
+      .sort(function(a,b){ return b.amount - a.amount; });
   }
 
   // Escreve/atualiza o registo desta conta em familyMembers (nome + email),
@@ -3525,6 +3744,75 @@
     '</div>';
   }
 
+  // ---------- Fundo de Emergência — UI ----------
+  // Nunca chamada para um Espaço Temporário (renderHomeView delega para
+  // renderTemporarySpaceHome antes de aqui chegar — ver ponto 14 do pedido).
+  function emergencyFundCardHtml(){
+    var rec = calculateEmergencyFundRecommendation();
+    var confidence = getEmergencyFundConfidence(rec.monthsCount);
+
+    if (rec.monthlyAverage <= 0){
+      return '<div class="section-head"><h2>Fundo de Emergência</h2></div>' +
+        '<div class="cat-card emergency-fund-card"><div class="ef-empty">' + icon('shield') +
+        '<div>Ainda não há dados suficientes sobre as tuas despesas essenciais. Define orçamentos para as categorias essenciais (em Orçamento, por categoria) ou regista algumas despesas para veres aqui uma recomendação.</div></div></div>';
+    }
+
+    var cov = calculateEmergencyFundCoverage(rec);
+    var currentHtml;
+    if (cov.goal){
+      var pctSix = cov.progressSix === null ? 0 : Math.round(cov.progressSix * 100);
+      var pctSixClamped = Math.max(0, Math.min(100, pctSix));
+      var progressCls = pctSix >= 100 ? 'success' : (pctSix >= 50 ? 'accent' : 'warning');
+      var coverageHint;
+      if (cov.current < rec.threeMonthFund){
+        coverageHint = 'Faltam ' + euro(rec.threeMonthFund - cov.current) + ' para atingires uma reserva equivalente a 3 meses.';
+      } else if (cov.current < rec.sixMonthFund){
+        coverageHint = 'Já atingiste a referência de 3 meses — faltam ' + euro(rec.sixMonthFund - cov.current) + ' para atingires 6 meses de cobertura.';
+      } else {
+        coverageHint = 'O teu fundo de emergência já cobre pelo menos 6 meses de despesas essenciais.';
+      }
+      currentHtml =
+        '<div class="ef-current-row"><span>O teu fundo</span><span class="mono">' + euro(cov.current) + '</span></div>' +
+        '<div class="progress-track"><div class="progress-fill ' + progressCls + '" style="width:' + pctSixClamped + '%"></div></div>' +
+        '<div class="progress-context">' + pctSixClamped + '% de 6 meses' + (cov.monthsCovered !== null ? ' · cobre ' + cov.monthsCovered.toFixed(1).replace('.', ',') + ' meses de despesas essenciais' : '') + '</div>' +
+        '<div class="hint">' + escapeHtml(coverageHint) + '</div>';
+    } else {
+      currentHtml =
+        '<div class="hint" style="margin-top:12px;">Ainda não estás a acompanhar um fundo de emergência.</div>' +
+        '<button type="button" class="btn ghost" data-action="create-emergency-fund" style="width:100%; margin-top:8px;">Criar fundo de emergência</button>';
+    }
+
+    return '<div class="section-head"><h2>Fundo de Emergência</h2><button type="button" class="link-btn" data-action="open-emergency-fund-calc">Ver cálculo</button></div>' +
+      '<div class="cat-card emergency-fund-card">' +
+        '<div class="ef-row"><span class="ef-label">Custo essencial médio</span><span class="ef-value mono">' + euro(rec.monthlyAverage) + '/mês</span></div>' +
+        '<div class="trio-grid ef-duo">' +
+          '<div class="trio-tile"><div class="trio-label">3 meses · base</div><div class="trio-value mono">' + euro(rec.threeMonthFund) + '</div></div>' +
+          '<div class="trio-tile"><div class="trio-label">6 meses · reforçada</div><div class="trio-value mono">' + euro(rec.sixMonthFund) + '</div></div>' +
+        '</div>' +
+        currentHtml +
+        '<div class="hint"><strong>' + confidence.label + '.</strong> ' + confidence.detail + '</div>' +
+        '<div class="hint">Esta estimativa baseia-se nos dados registados na MAB360 e serve como referência de planeamento financeiro.</div>' +
+      '</div>';
+  }
+
+  // Conteúdo do modal "Ver cálculo" — decomposição por categoria essencial,
+  // e os dois valores finais, com uma explicação simples do critério usado.
+  function renderEmergencyFundCalc(){
+    var rec = calculateEmergencyFundRecommendation();
+    var rows = getEssentialCategoryBreakdown(rec);
+    var html = '<div class="ef-calc-row"><span class="ef-calc-cat"><strong>Custo essencial mensal estimado</strong></span><span class="mono"><strong>' + euro(rec.monthlyAverage) + '</strong></span></div>';
+    rows.forEach(function(r){
+      html += '<div class="ef-calc-row"><span class="ef-calc-cat"><span class="icon-badge sm" style="' + catTint(r.def.color) + '">' + icon(categoryIconOf(r.def.key)) + '</span>' + escapeHtml(r.def.label) + '</span><span class="mono">' + euro(r.amount) + '</span></div>';
+    });
+    if (!rows.length){
+      html += '<div class="hint">Nenhuma categoria essencial com orçamento ou histórico ainda.</div>';
+    }
+    html += '<div class="ef-calc-total"><span>Fundo de 3 meses</span><span class="mono">' + euro(rec.threeMonthFund) + '</span></div>';
+    html += '<div class="ef-calc-total"><span>Fundo de 6 meses</span><span class="mono">' + euro(rec.sixMonthFund) + '</span></div>';
+    html += '<p class="hint" style="margin-top:14px;">Esta recomendação baseia-se nas tuas despesas essenciais e no histórico disponível na MAB360 — para cada categoria essencial, usamos o maior valor entre a tua média real recente e o orçamento que tens definido, para não subestimar por causa de um mês fora do normal.</p>';
+    document.getElementById('emergencyFundCalcBody').innerHTML = html;
+  }
+
   // ---------- Dashboard de Espaço Temporário ----------
   function parseSpaceDate(s){ return s ? new Date(s + 'T00:00:00') : null; }
   function spacePeriodLabel(s){
@@ -3688,6 +3976,7 @@
     }
     html += zeroBudgetBannerHtml(sR.total, sD.total);
     html += extraAlertsHtml();
+    html += emergencyFundCardHtml();
 
     var cards = '';
     if (state.loans.length || state.investments.length || state.savingsGoals.length){
@@ -5434,7 +5723,7 @@
   var savingsFormOverlay = document.getElementById('savingsFormOverlay');
   var editingSavingsId = null;
 
-  function openSavingsForm(editGoal){
+  function openSavingsForm(editGoal, prefill){
     document.getElementById('savingsFormError').style.display = 'none';
     var form = document.getElementById('savingsForm');
     form.reset();
@@ -5445,11 +5734,15 @@
       document.getElementById('fSavingsName').value = editGoal.name;
       document.getElementById('fSavingsGoal').value = editGoal.goalAmount || '';
       document.getElementById('fSavingsTargetDate').value = editGoal.targetDate || '';
+      document.getElementById('fSavingsIsEmergencyFund').checked = editGoal.type === 'emergency_fund';
       initialField.hidden = true;
     } else {
       editingSavingsId = null;
-      document.getElementById('savingsFormTitle').textContent = 'Nova poupança';
+      document.getElementById('savingsFormTitle').textContent = prefill ? 'Criar fundo de emergência' : 'Nova poupança';
+      document.getElementById('fSavingsName').value = (prefill && prefill.name) || '';
+      document.getElementById('fSavingsGoal').value = (prefill && prefill.goalAmount) ? Math.round(prefill.goalAmount * 100) / 100 : '';
       document.getElementById('fSavingsTargetDate').value = '';
+      document.getElementById('fSavingsIsEmergencyFund').checked = !!(prefill && prefill.type === 'emergency_fund');
       initialField.hidden = false;
     }
     savingsFormOverlay.classList.add('open');
@@ -5478,6 +5771,12 @@
       return;
     }
     var data = {name:name, goalAmount:goalAmount, targetDate:targetDate};
+    // 'type' reflete sempre o estado atual da checkbox — assim é possível
+    // marcar OU desmarcar esta poupança como Fundo de Emergência, tanto ao
+    // criar como ao editar (inclui o caso de retrocompatibilidade: uma
+    // poupança "Fundo de emergência" criada antes desta funcionalidade
+    // existir, sem campo 'type', pode agora ser marcada manualmente).
+    data.type = document.getElementById('fSavingsIsEmergencyFund').checked ? 'emergency_fund' : null;
     if (!editingSavingsId){
       var initialRaw = document.getElementById('fSavingsInitial').value;
       var initial = initialRaw === '' ? 0 : parseFloat(initialRaw);
@@ -5531,6 +5830,12 @@
 
   document.getElementById('savingsMoveCancel').addEventListener('click', closeSavingsMoveSheet);
   savingsMoveOverlay.addEventListener('click', function(ev){ if (ev.target === savingsMoveOverlay) closeSavingsMoveSheet(); });
+
+  // ---------- Fundo de Emergência: modal "Ver cálculo" ----------
+  var emergencyFundCalcOverlay = document.getElementById('emergencyFundCalcOverlay');
+  function closeEmergencyFundCalc(){ emergencyFundCalcOverlay.classList.remove('open'); }
+  document.getElementById('closeEmergencyFundCalc').addEventListener('click', closeEmergencyFundCalc);
+  emergencyFundCalcOverlay.addEventListener('click', function(ev){ if (ev.target === emergencyFundCalcOverlay) closeEmergencyFundCalc(); });
   document.getElementById('savingsMoveSave').addEventListener('click', function(){
     if (!pendingMoveGoalId) return;
     var raw = document.getElementById('fSavingsMoveValue').value;
@@ -5613,7 +5918,12 @@
       var list = effectiveCategories(kindKey);
       container.innerHTML = list.map(function(c){
         var removable = c.key !== 'outros';
-        return '<span class="cat-chip"><span class="dot" style="background:' + c.color + '"></span>' + escapeHtml(c.label) +
+        // O toggle "Essencial" só faz sentido nas categorias de despesa — é o
+        // que alimenta o cálculo do Fundo de Emergência (ver isEssentialCategory).
+        var essToggle = kindKey === 'despesa'
+          ? '<button type="button" class="ess-toggle' + (isEssentialCategory(c.key) ? ' active' : '') + '" data-action="toggle-essential" data-key="' + c.key + '" aria-label="Marcar ' + escapeHtml(c.label) + ' como essencial">Essencial</button>'
+          : '';
+        return '<span class="cat-chip"><span class="dot" style="background:' + c.color + '"></span>' + escapeHtml(c.label) + essToggle +
           (removable ? '<button type="button" data-action="remove-category" data-kind="' + kindKey + '" data-key="' + c.key + '" aria-label="Remover ' + escapeHtml(c.label) + '">×</button>' : '') +
           '</span>';
       }).join('');
@@ -5756,6 +6066,14 @@
       saveSettingsCategories();
       renderCategoryChips();
       updateCategoryOptions();
+    } else if (action === 'toggle-essential'){
+      var keyEss = actionEl.getAttribute('data-key');
+      var cfgEss = ensureCategoryConfig(state.activeSpaceId);
+      cfgEss.essentialOverrides = cfgEss.essentialOverrides || {};
+      cfgEss.essentialOverrides[keyEss] = !isEssentialCategory(keyEss);
+      saveSettingsCategories();
+      renderCategoryChips();
+      render(); // o cartão do Fundo de Emergência no Início depende disto
     }
   });
 
@@ -6011,6 +6329,12 @@
     } else if (action === 'keep-space-active'){
       var idKeep = actionEl.getAttribute('data-id');
       unarchiveSpace(idKeep).then(function(){ loadSpaces(); showToast('Espaço mantido ativo.', {icon:'check'}); });
+    } else if (action === 'open-emergency-fund-calc'){
+      renderEmergencyFundCalc();
+      document.getElementById('emergencyFundCalcOverlay').classList.add('open');
+    } else if (action === 'create-emergency-fund'){
+      var efRec = calculateEmergencyFundRecommendation();
+      openSavingsForm(null, {name:'Fundo de Emergência', goalAmount: efRec.sixMonthFund, type:'emergency_fund'});
     } else if (action === 'subview'){
       var subviewGroup = actionEl.getAttribute('data-group');
       var subviewVal = actionEl.getAttribute('data-subview');
@@ -6399,7 +6723,8 @@
     else if (view === 'loan'){ if (db) return loadLoans(); }
     else if (view === 'investment'){ if (db) return loadInvestments(); }
     else if (view === 'poupancas'){ if (db) return loadSavingsGoals(); }
-    else if (view === 'home' || view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals()]); }
+    else if (view === 'home'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals(), loadEmergencyFundHistory()]); }
+    else if (view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals()]); }
     else if (view === 'month' || view === 'movimentos'){ if (db) return Promise.all([loadMonth(state.monthKey), loadCategoryBudgets()]); }
     else if (view === 'recorrencias'){
       if (db){
@@ -6652,7 +6977,8 @@
     savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel',
     welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
-    spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace'
+    spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
+    emergencyFundCalcOverlay:'closeEmergencyFundCalc'
   };
   function topOpenOverlay(){
     var openOverlays = document.querySelectorAll('.overlay.open');
@@ -6749,6 +7075,7 @@
       loadSavingsGoals();
       loadLoans();
       loadInvestments();
+      loadEmergencyFundHistory();
       upsertMyFamilyMember();
       maybeShowWelcome();
       markSplashReady();
