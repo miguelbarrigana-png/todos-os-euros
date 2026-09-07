@@ -2911,7 +2911,18 @@
   // vez que esta funcionalidade corre para esta família), cria automaticamente
   // o Espaço por omissão — sem tocar em payments/entries/categoryBudgets já
   // existentes, que passam a pertencer a ele só por omissão (ver defaultSpaceId).
+  // Cada chamada recebe um "bilhete" — se entretanto uma chamada MAIS
+  // RECENTE a loadSpaces() já tiver sido feita (ex.: o arranque da app ainda
+  // está a carregar quando o utilizador já criou um Espaço novo), a resposta
+  // desta chamada mais antiga é descartada em vez de sobrescrever state.spaces
+  // com uma lista desatualizada que ainda não inclui o Espaço recém-criado.
+  // Sem isto, num telemóvel real (onde os pedidos não são instantâneos como
+  // no mock local), a resposta do loadSpaces() do arranque pode chegar DEPOIS
+  // da resposta do loadSpaces() chamado por createSpace(), apagando o Espaço
+  // que acabou de aparecer (ver ponto 16 do pedido de correção do orçamento).
+  var spacesLoadToken = 0;
   function loadSpaces(){
+    var myLoadToken = ++spacesLoadToken;
     state.spacesLoading = true;
     return db.collection('spaces').get().then(function(snap){
       var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
@@ -2939,6 +2950,12 @@
       }
       return all;
     }).then(function(all){
+      // Uma chamada mais recente a loadSpaces() já resolveu e "venceu" —
+      // esta resposta chegou tarde (por exemplo, o carregamento do arranque
+      // da app, que já vinha em curso quando o utilizador criou um Espaço
+      // novo) e já não reflete o estado mais atual. Descartar em vez de
+      // sobrescrever, para nunca apagar um Espaço que acabou de aparecer.
+      if (myLoadToken !== spacesLoadToken) return;
       state.spaces = all.filter(function(s){ return !s.archived; }).filter(amIMemberOfSpace);
       state.archivedSpaces = all.filter(function(s){ return s.archived; }).filter(amIMemberOfSpace);
       var stored = loadActiveSpaceIdFromStorage();
@@ -2948,6 +2965,7 @@
       state.spacesLoading = false;
       render();
     }).catch(function(err){
+      if (myLoadToken !== spacesLoadToken) return; // idem — um erro desatualizado não deve apagar o estado atual
       console.error('loadSpaces failed', err);
       state.spacesLoading = false;
       // Falha a carregar Espaços não deve impedir a app de mostrar o Espaço
