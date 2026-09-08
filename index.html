@@ -795,15 +795,30 @@
 
   /* ---------- Orçamento: category cards ---------- */
   .budget-toggle{margin-bottom:16px;}
-  .budget-cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:12px; box-shadow:var(--shadow); overflow:hidden;}
-  .budget-cat-head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:inherit;}
+  .budget-cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:12px; box-shadow:var(--shadow);}
+  .budget-cat-head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:inherit; border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
   .budget-cat-name{font-size:14px; font-weight:800; color:var(--text);}
   .budget-cat-amounts{font-size:12px; color:var(--text-faint); margin-top:1px; font-family:'Manrope',sans-serif; font-weight:600; font-variant-numeric:tabular-nums;}
   .budget-cat-head .chev{margin-left:auto; color:var(--text-faint); transition:transform .18s ease; flex-shrink:0;}
   .budget-cat-card.open .budget-cat-head .chev{transform:rotate(90deg);}
   .budget-cat-track{padding:0 16px 14px;}
+  /* max-height + overflow:hidden faz a animação de expandir/colapsar; mas
+     depois de aberto o "..." (menu Editar/Ajustar/Eliminar) de um item desta
+     lista é um dropdown posicionado em absolute que se sobrepõe por baixo do
+     item — com overflow:hidden ainda ligado ele ficava cortado/invisível
+     sempre que o item era o último da lista (ex.: categoria com um único
+     movimento, como a Poupança). Por isso o overflow só fica "hidden"
+     enquanto fechado; quando aberto passa a "visible" para o menu poder
+     sobrepor-se ao resto da página em vez de ser recortado.  */
+  /* Ao fechar (classe .open removida), o overflow volta a "hidden" de
+     imediato — sem isso, o conteúdo "rebentava" visivelmente para fora da
+     caixa ainda pequena enquanto o max-height estava a encolher. */
   .budget-cat-body{max-height:0; overflow:hidden; transition:max-height .22s ease;}
-  .budget-cat-card.open .budget-cat-body{max-height:2000px;}
+  /* Ao abrir, só passa a "visible" DEPOIS de o max-height acabar de animar
+     (delay = duração da transição) — assim o menu "..." não fica cortado
+     depois de aberto, mas também não há um instante a meio da animação em
+     que o conteúdo apareça a extravasar a caixa ainda a crescer. */
+  .budget-cat-card.open .budget-cat-body{max-height:2000px; overflow:visible; transition:max-height .22s ease, overflow 0s linear .22s;}
   .budget-cat-target-row{padding:0 16px 12px; font-size:12.5px; color:var(--text-faint); display:flex; align-items:center; flex-wrap:wrap; gap:6px;}
   .budget-cat-empty{padding:16px; font-size:12.5px; color:var(--text-faint); text-align:center;}
   .link-btn{background:none; border:none; padding:0; margin:0; font:inherit; font-weight:700; color:var(--accent-ink); cursor:pointer; text-decoration:underline;}
@@ -7731,7 +7746,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v39'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v40'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
