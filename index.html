@@ -520,6 +520,89 @@
   .feedback-offline-hint{display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:var(--warning-soft); color:var(--warning); font-size:12.5px; font-weight:600; margin-bottom:14px;}
   .feedback-offline-hint .icon{width:16px; height:16px; flex-shrink:0;}
 
+  /* ---------- Admin → Feedback (backoffice) ---------- */
+  /* Entrada no menu "Mais", só inserida no DOM quando state.isAdmin — ver
+     renderMoreSheetList(). Um utilizador normal nunca vê este bloco, nem no
+     HTML nem no menu (não é só escondido por CSS). */
+  .menu-sheet-section-label{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin:8px 4px 2px; padding-top:12px; border-top:1px solid var(--border);}
+  .menu-sheet-badge{margin-left:auto; background:var(--danger); color:#fff; font-size:11px; font-weight:800; min-width:20px; height:20px; padding:0 6px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;}
+
+  /* O painel em si: no telemóvel continua a ser uma "sheet" como todas as
+     outras (consistência com o resto da app); no desktop cresce para um
+     layout lista+detalhe lado a lado (prioridade pedida para o backoffice),
+     em vez do formulário estreito de 540px usado pelos outros overlays. */
+  .admin-sheet{display:flex; flex-direction:column; max-height:92vh; overflow:hidden;}
+  .admin-dash{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; flex-shrink:0;}
+  .admin-stat{background:var(--surface-2); border-radius:var(--radius-md); padding:11px 12px;}
+  .admin-stat-label{font-size:10px; text-transform:uppercase; letter-spacing:.05em; font-weight:800; color:var(--text-faint); margin-bottom:4px;}
+  .admin-stat-value{font-size:21px; font-weight:800; font-family:'Manrope',sans-serif;}
+  .admin-stat.novos .admin-stat-value{color:var(--danger);}
+  .admin-stat.analise .admin-stat-value{color:var(--warning);}
+  .admin-stat.resolvidos .admin-stat-value{color:var(--success-ink);}
+  .admin-stat.sugestoes .admin-stat-value{color:var(--info);}
+
+  .admin-toolbar{flex-shrink:0;}
+  .admin-toolbar input[type=search]{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text);
+    font-family:'Manrope',sans-serif; font-size:13.5px; margin-bottom:10px;
+  }
+  .admin-toolbar input[type=search]:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .admin-toolbar .filter-chip-row:last-child{margin-bottom:10px;}
+
+  .admin-body{display:flex; flex-direction:column; flex:1; min-height:0; margin-top:4px;}
+  .admin-list-pane{overflow-y:auto; flex:1; min-height:0; padding-right:2px;}
+  .admin-detail-pane{display:none; overflow-y:auto; flex:1; min-height:0; padding-top:2px;}
+  /* .detail-open só existe abaixo dos 900px (ver openAdminDetail()) — troca
+     a lista pelo detalhe numa página só, como um "voltar" de telemóvel. No
+     desktop as duas colunas ficam sempre visíveis (ver media query abaixo). */
+  .admin-body.detail-open .admin-list-pane{display:none;}
+  .admin-body.detail-open .admin-detail-pane{display:block;}
+
+  .admin-item{display:block; width:100%; text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 13px; margin-bottom:9px; cursor:pointer; font-family:inherit;}
+  .admin-item:hover{background:var(--surface-2);}
+  .admin-item.selected{border-color:var(--accent); background:var(--accent-soft);}
+  .admin-item.is-new{border-left:3px solid var(--danger);}
+  .admin-item-top{display:flex; align-items:center; gap:8px; margin-bottom:5px;}
+  .admin-item-type{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted);}
+  .admin-item-cat{font-size:11.5px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .admin-item-date{margin-left:auto; font-size:11px; color:var(--text-faint); flex-shrink:0;}
+  .admin-item-msg{font-size:13.5px; color:var(--text); line-height:1.4; margin-bottom:7px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .admin-item-meta{display:flex; align-items:center; gap:7px; flex-wrap:wrap;}
+  .admin-item-tag{font-size:10.5px; color:var(--text-faint); background:var(--surface-2); padding:2px 7px; border-radius:999px;}
+
+  .admin-status-pill{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; flex-shrink:0;}
+  .admin-status-pill.new{background:var(--danger-soft); color:var(--danger);}
+  .admin-status-pill.reviewing{background:var(--warning-soft); color:var(--warning);}
+  .admin-status-pill.resolved{background:var(--success-soft); color:var(--success-ink);}
+  .admin-status-pill.closed{background:var(--surface-2); color:var(--text-faint);}
+
+  .admin-loadmore-btn{width:100%; margin-top:2px;}
+
+  .admin-back-btn{display:flex; align-items:center; gap:5px; background:none; border:none; color:var(--accent-ink); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; padding:4px 0 12px; margin:0;}
+  .admin-back-btn .icon{width:16px; height:16px;}
+  .admin-detail-header{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;}
+  .admin-detail-header h3{font-size:16px; margin:0 0 4px;}
+  .admin-detail-id{font-size:11px; color:var(--text-faint); font-family:ui-monospace,'SF Mono','Courier New',monospace;}
+  .admin-detail-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; margin-bottom:16px;}
+  .admin-detail-field .k{display:block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:800; color:var(--text-faint); margin-bottom:2px;}
+  .admin-detail-field .v{display:block; font-size:12.5px; color:var(--text); font-weight:600; word-break:break-word;}
+  .admin-detail-message{background:var(--surface-2); border-radius:var(--radius-md); padding:13px; font-size:13.5px; line-height:1.6; white-space:pre-wrap; word-break:break-word; margin-bottom:16px;}
+  .admin-detail-section-label{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin:0 0 8px;}
+  .admin-status-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;}
+  .admin-status-btn{padding:8px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer;}
+  .admin-status-btn.active{border-color:transparent; background:var(--accent-soft); color:var(--accent-ink);}
+  .admin-status-btn:disabled{opacity:.6; cursor:not-allowed;}
+  .admin-note-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.5;}
+
+  @media (min-width:900px){
+    .admin-sheet{max-width:1020px; max-height:88vh;}
+    .admin-dash{grid-template-columns:repeat(4,1fr);}
+    .admin-body{flex-direction:row; gap:20px;}
+    .admin-list-pane{flex:0 0 360px; border-right:1px solid var(--border); padding-right:16px; display:block !important;}
+    .admin-detail-pane{flex:1; min-width:0; display:block !important; padding-left:2px;}
+    .admin-back-btn{display:none;}
+  }
+
   /* Linha compacta e clicável da data de uma despesa pontual — abre o
      seletor de data nativo (input type=date, invisível por cima) em vez
      de mostrar um campo de formulário grande. */
@@ -1743,6 +1826,47 @@
   </div>
 </div>
 
+<!-- ======================================================================
+     ADMIN → FEEDBACK (backoffice)
+     Só é aberto quando state.isAdmin (custom claim "admin" — ver
+     firestore.rules e window.__ContasApp.start). Nunca mostra dados
+     financeiros; mostra feedback de TODAS as famílias via
+     db.collectionGroup('feedback') (ver makeAdapter em index.html). O
+     utilizador que enviou o feedback nunca vê o campo "adminNote" nem pode
+     mudar o "status" — isso continua só possível a partir daqui.
+     ====================================================================== -->
+<div class="overlay" id="adminFeedbackOverlay">
+  <div class="sheet admin-sheet">
+    <div class="sheet-handle"></div>
+    <h2>Admin — Feedback</h2>
+
+    <div class="admin-dash" id="adminDash"></div>
+
+    <div class="admin-toolbar">
+      <input type="search" id="adminSearchInput" placeholder="Pesquisar por mensagem, categoria, página, versão ou ID…" autocomplete="off">
+      <div class="filter-chip-row" id="adminTypeFilterRow"></div>
+      <div class="filter-chip-row" id="adminStatusFilterRow"></div>
+    </div>
+
+    <div class="admin-body" id="adminBody">
+      <div class="admin-list-pane" id="adminListPane">
+        <div id="adminListItems"></div>
+        <div class="empty-inline" id="adminListEmpty" hidden>Sem resultados para estes filtros.</div>
+        <button type="button" class="btn ghost admin-loadmore-btn" id="adminLoadMoreBtn" hidden>Carregar mais</button>
+      </div>
+      <div class="admin-detail-pane" id="adminDetailPane">
+        <button type="button" class="admin-back-btn" id="adminBackBtn"></button>
+        <div class="admin-detail-placeholder" id="adminDetailPlaceholder">Seleciona um item da lista para ver os detalhes.</div>
+        <div id="adminDetailContent" hidden></div>
+      </div>
+    </div>
+
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="closeAdminFeedback">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="deletedOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -1802,6 +1926,7 @@
     yearLoading: true,
     dbAvailable: null,             // null = connecting, 'setup' = needs config, 'nofamily' = conta sem família, false = failed, true = ready
     familyId: null,                // id da família desta conta (também serve de "código de família" a partilhar)
+    isAdmin: false,                // custom claim "admin" — ver Admin -> Feedback
     openMenuId: null,
     editingPaymentId: null,
     searchQuery: '',
@@ -7263,7 +7388,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v34'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v35'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -7547,6 +7672,476 @@
       errorEl.style.display = 'block';
     });
   });
+
+  // ---------- Admin → Feedback (backoffice) ----------
+  // Painel de administração para gerir os reportes/sugestões enviados pela
+  // funcionalidade "Ajuda e Feedback" acima — nunca lê nem escreve nada
+  // financeiro, só a coleção 'feedback', mas de TODAS as famílias (ao
+  // contrário do resto da app, que só vê a sua própria família), através de
+  // db.collectionGroup('feedback') (ver wrapCollGroupQuery/makeAdapter mais
+  // abaixo). Só é aberto quando state.isAdmin — custom claim do Firebase
+  // Auth, nunca decidido pelo cliente (ver window.__ContasApp.start e
+  // isAdmin() em firestore.rules, que são a garantia REAL: esconder o menu
+  // é só conforto de interface, não segurança).
+  //
+  // Índices Firestore necessários (ver firestore.indexes.json), todos com
+  // queryScope COLLECTION_GROUP em "feedback":
+  //   1) createdAt DESC             — lista sem filtro de Estado/Tipo
+  //   2) status ASC, createdAt DESC — filtro por Estado (o mesmo índice
+  //                                    também serve where(status==X) sem
+  //                                    orderBy, usado nas contagens abaixo)
+  //   3) type ASC, createdAt DESC   — filtro por Tipo (idem para a
+  //                                    contagem de sugestões)
+  // De propósito NÃO existe um 4º índice status+type+createdAt: quando os
+  // filtros de Estado E Tipo estão os dois ativos ao mesmo tempo, só o de
+  // Estado vai ao servidor — o de Tipo é aplicado aqui em cima da página já
+  // carregada (ver visibleAdminItems()). Categoria, Versão da app e a
+  // pesquisa de texto nunca têm índice próprio: são sempre filtradas
+  // localmente sobre a janela de itens já carregada — o próprio pedido
+  // permite isto explicitamente para não multiplicar índices compostos por
+  // cada combinação possível de filtros.
+  var ADMIN_PAGE_SIZE = 24; // dentro do intervalo pedido (20–30 itens/página)
+  var ADMIN_STATUS_LABELS = {new:'Novo', reviewing:'Em análise', resolved:'Resolvido', closed:'Fechado'};
+  var ADMIN_STATUS_ORDER = ['new','reviewing','resolved','closed'];
+  var ADMIN_TYPE_LABELS = {bug:'Bug', suggestion:'Sugestão'};
+  var ADMIN_CATEGORY_LABELS = {};
+  FEEDBACK_CATEGORIES.forEach(function(c){ ADMIN_CATEGORY_LABELS[c.key] = c.label; });
+  function adminCategoryLabel(key){ return ADMIN_CATEGORY_LABELS[key] || key || '—'; }
+  // Documentos criados antes de existir este backoffice não têm "status"
+  // nenhum gravado — contam automaticamente como "new" (ponto 30 do
+  // pedido: migração automática, sem tocar em nenhum documento antigo).
+  function adminStatusOf(item){ return (item.status && ADMIN_STATUS_LABELS[item.status]) ? item.status : 'new'; }
+  function adminFormatDateTime(iso){
+    var d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return '—';
+    return d.toLocaleString('pt-PT', {dateStyle:'medium', timeStyle:'short'});
+  }
+
+  var adminState = {
+    typeFilter: 'all',      // 'all' | 'bug' | 'suggestion'
+    statusFilter: 'all',    // 'all' | 'new' | 'reviewing' | 'resolved' | 'closed'
+    search: '',
+    items: [],              // páginas já carregadas para a combinação de filtros de servidor atual
+    cursor: null,           // último item bruto devolvido pelo servidor (para startAfter — cursor por página)
+    hasMore: true,
+    loading: false,
+    loadError: false,
+    selectedId: null,
+    selected: null,         // cópia do item aberto no painel de detalhe
+    savingStatus: false,
+    savingNote: false,
+    counts: {novos:0, emAnalise:0, resolvidos:0, sugestoes:0},
+    countsLoaded: false
+  };
+
+  var adminFeedbackOverlay = document.getElementById('adminFeedbackOverlay');
+  var adminBodyEl = document.getElementById('adminBody');
+  document.getElementById('adminBackBtn').innerHTML = icon('chevronLeft') + '<span>Voltar à lista</span>';
+
+  var ADMIN_TYPE_FILTERS = [
+    {key:'all', label:'Todos'},
+    {key:'bug', label:'Bugs'},
+    {key:'suggestion', label:'Sugestões'}
+  ];
+  var ADMIN_STATUS_FILTERS = [
+    {key:'all', label:'Todos os estados'},
+    {key:'new', label:'Novo'},
+    {key:'reviewing', label:'Em análise'},
+    {key:'resolved', label:'Resolvido'},
+    {key:'closed', label:'Fechado'}
+  ];
+  document.getElementById('adminTypeFilterRow').innerHTML = ADMIN_TYPE_FILTERS.map(function(f){
+    return '<button type="button" class="filter-chip" data-admin-type="' + f.key + '">' + f.label + '</button>';
+  }).join('');
+  document.getElementById('adminStatusFilterRow').innerHTML = ADMIN_STATUS_FILTERS.map(function(f){
+    return '<button type="button" class="filter-chip" data-admin-status="' + f.key + '">' + f.label + '</button>';
+  }).join('');
+  function renderAdminFilterChips(){
+    Array.prototype.forEach.call(document.querySelectorAll('#adminTypeFilterRow [data-admin-type]'), function(btn){
+      btn.classList.toggle('active', btn.getAttribute('data-admin-type') === adminState.typeFilter);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#adminStatusFilterRow [data-admin-status]'), function(btn){
+      btn.classList.toggle('active', btn.getAttribute('data-admin-status') === adminState.statusFilter);
+    });
+  }
+
+  // ---- Contagens do dashboard + badge do menu "Mais" ----
+  // Cada contagem usa where() num único campo sem orderBy — servível pelo
+  // PREFIXO dos índices compostos #2/#3 acima (o Firestore permite usar só
+  // o primeiro campo de um índice composto), sem precisar de mais nenhum
+  // índice só para isto.
+  //
+  // Limitação conhecida e aceite (documentada também no relatório final):
+  // ao contrário da LISTA (que trata um documento sem "status" gravado como
+  // "Novo" — ver adminStatusOf), este contador "Novos" usa
+  // where('status','==','new') e por isso NÃO conta os documentos criados
+  // antes deste backoffice existir (que nunca têm "status" nenhum
+  // gravado) — o Firestore não tem forma barata de agregar "campo em falta
+  // OU igual a X" sem ler todos os documentos. Como qualquer submissão
+  // NOVA já grava sempre status:'new' explicitamente (ver
+  // submitFeedbackDoc), isto só sub-conta um conjunto fixo e decrescente de
+  // documentos antigos — que continuam perfeitamente visíveis, filtráveis
+  // e geríveis na lista, só não entram neste número até alguém lhes tocar.
+  function refreshAdminCounts(){
+    if (!db || !state.isAdmin) return Promise.resolve();
+    var cg = db.collectionGroup('feedback');
+    return Promise.all([
+      cg.where('status','==','new').count(),
+      cg.where('status','==','reviewing').count(),
+      cg.where('status','==','resolved').count(),
+      cg.where('type','==','suggestion').count()
+    ]).then(function(vals){
+      adminState.counts = {novos:vals[0], emAnalise:vals[1], resolvidos:vals[2], sugestoes:vals[3]};
+      adminState.countsLoaded = true;
+      updateAdminMenuBadge();
+      renderAdminDash();
+    }).catch(function(err){
+      console.error('refreshAdminCounts failed', err);
+    });
+  }
+  function updateAdminMenuBadge(){
+    // O <span> só existe depois de o menu "Mais" ter sido construído pelo
+    // menos uma vez com state.isAdmin true (ver renderMoreSheetList) — se
+    // ainda não existir, não há nada para atualizar agora; o valor certo
+    // aparece da próxima vez que o menu for (re)construído.
+    var badge = document.getElementById('adminMenuBadge');
+    if (!badge) return;
+    var n = adminState.counts.novos || 0;
+    if (n > 0){ badge.hidden = false; badge.textContent = n > 99 ? '99+' : String(n); }
+    else { badge.hidden = true; }
+  }
+  function renderAdminDash(){
+    var c = adminState.counts;
+    document.getElementById('adminDash').innerHTML = [
+      {cls:'novos', label:'Novos', value:c.novos},
+      {cls:'analise', label:'Em análise', value:c.emAnalise},
+      {cls:'resolvidos', label:'Resolvidos', value:c.resolvidos},
+      {cls:'sugestoes', label:'Sugestões', value:c.sugestoes}
+    ].map(function(s){
+      return '<div class="admin-stat ' + s.cls + '"><div class="admin-stat-label">' + s.label + '</div><div class="admin-stat-value">' + (adminState.countsLoaded ? s.value : '—') + '</div></div>';
+    }).join('');
+  }
+
+  // ---- Consulta ao servidor (paginada por cursor) ----
+  // O filtro de Estado "Novo" nunca vai ao servidor como where('status','==','new'):
+  // documentos criados ANTES deste backoffice existir não têm nenhum campo
+  // "status" gravado (ver adminStatusOf) e uma igualdade do Firestore nunca
+  // encontra um campo em falta — um where(status=='new') deixaria esses
+  // documentos antigos invisíveis, contrariando a migração automática
+  // pedida. Por isso "Novo" é sempre filtrado aqui em cima (ver
+  // visibleAdminItems), nunca no servidor; os outros três estados
+  // (Em análise/Resolvido/Fechado) só existem em documentos escritos por
+  // este próprio backoffice, sempre com "status" gravado, por isso esses
+  // continuam a ir ao servidor normalmente (mais eficiente).
+  function buildAdminServerQuery(){
+    var q = db.collectionGroup('feedback');
+    var statusGoesToServer = adminState.statusFilter !== 'all' && adminState.statusFilter !== 'new';
+    if (statusGoesToServer) q = q.where('status', '==', adminState.statusFilter);
+    else if (adminState.typeFilter !== 'all') q = q.where('type', '==', adminState.typeFilter);
+    q = q.orderBy('createdAt', 'desc');
+    if (adminState.cursor) q = q.startAfter(adminState.cursor);
+    return q.limit(ADMIN_PAGE_SIZE);
+  }
+  function loadAdminPage(reset){
+    if (!db || !state.isAdmin) return Promise.resolve();
+    if (reset){
+      adminState.items = [];
+      adminState.cursor = null;
+      adminState.hasMore = true;
+      adminState.loadError = false;
+    }
+    if (adminState.loading || !adminState.hasMore) return Promise.resolve();
+    adminState.loading = true;
+    renderAdminList();
+    return buildAdminServerQuery().get().then(function(snap){
+      adminState.loading = false;
+      adminState.hasMore = snap.docs.length === ADMIN_PAGE_SIZE;
+      if (snap.docs.length) adminState.cursor = snap.docs[snap.docs.length - 1];
+      snap.docs.forEach(function(d){
+        adminState.items.push(Object.assign({id:d.id, path:d.path}, d.data()));
+      });
+      renderAdminList();
+    }).catch(function(err){
+      console.error('loadAdminPage failed', err);
+      adminState.loading = false;
+      adminState.loadError = true;
+      renderAdminList();
+    });
+  }
+
+  // ---- Filtros/pesquisa aplicados só sobre o que já está carregado ----
+  function visibleAdminItems(){
+    // Espelha exatamente o que buildAdminServerQuery() decidiu mandar (ou
+    // não) ao servidor — o que NÃO foi ao servidor tem de ser filtrado aqui.
+    var statusWentToServer = adminState.statusFilter !== 'all' && adminState.statusFilter !== 'new';
+    var typeWentToServer = !statusWentToServer && adminState.typeFilter !== 'all';
+    var search = adminState.search.trim().toLowerCase();
+    return adminState.items.filter(function(it){
+      if (adminState.statusFilter === 'new' && adminStatusOf(it) !== 'new') return false;
+      if (!typeWentToServer && adminState.typeFilter !== 'all' && it.type !== adminState.typeFilter) return false;
+      if (!search) return true;
+      var hay = [
+        it.message, adminCategoryLabel(it.category), screenLabelOf(it.screen),
+        it.appVersion, it.id, ADMIN_TYPE_LABELS[it.type]
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.indexOf(search) !== -1;
+    });
+  }
+  function adminItemPreview(it){
+    var msg = it.message || it.expectedBehavior || '(sem mensagem)';
+    return msg.length > 160 ? msg.slice(0, 160) + '…' : msg;
+  }
+
+  function renderAdminList(){
+    var visible = visibleAdminItems();
+    document.getElementById('adminListItems').innerHTML = visible.map(function(it){
+      var status = adminStatusOf(it);
+      var selectedCls = (adminState.selectedId === it.id) ? ' selected' : '';
+      var newCls = (status === 'new') ? ' is-new' : '';
+      return '<button type="button" class="admin-item' + selectedCls + newCls + '" data-admin-item="' + escapeHtml(it.id) + '">' +
+        '<div class="admin-item-top">' +
+          '<span class="admin-item-type">' + escapeHtml(ADMIN_TYPE_LABELS[it.type] || it.type || '—') + '</span>' +
+          '<span class="admin-item-cat">' + escapeHtml(adminCategoryLabel(it.category)) + '</span>' +
+          '<span class="admin-item-date">' + escapeHtml(adminFormatDateTime(it.createdAt)) + '</span>' +
+        '</div>' +
+        '<div class="admin-item-msg">' + escapeHtml(adminItemPreview(it)) + '</div>' +
+        '<div class="admin-item-meta">' +
+          '<span class="admin-status-pill ' + status + '">' + ADMIN_STATUS_LABELS[status] + '</span>' +
+          (it.appVersion ? '<span class="admin-item-tag">' + escapeHtml(it.appVersion) + '</span>' : '') +
+          (it.screen ? '<span class="admin-item-tag">' + escapeHtml(screenLabelOf(it.screen)) + '</span>' : '') +
+        '</div>' +
+      '</button>';
+    }).join('');
+    document.getElementById('adminListEmpty').hidden = visible.length !== 0 || adminState.loading;
+    var loadMoreBtn = document.getElementById('adminLoadMoreBtn');
+    loadMoreBtn.hidden = !adminState.hasMore;
+    loadMoreBtn.disabled = adminState.loading;
+    loadMoreBtn.textContent = adminState.loading ? 'A carregar…' : (adminState.loadError ? 'Tentar novamente' : 'Carregar mais');
+  }
+
+  function restoreAdminPendingNote(text){
+    if (text == null) return;
+    var el = document.getElementById('adminNoteInput');
+    if (el) el.value = text;
+  }
+
+  function renderAdminDetail(){
+    var placeholder = document.getElementById('adminDetailPlaceholder');
+    var content = document.getElementById('adminDetailContent');
+    var it = adminState.selected;
+    if (!it){
+      placeholder.hidden = false;
+      content.hidden = true;
+      content.innerHTML = '';
+      return;
+    }
+    placeholder.hidden = true;
+    content.hidden = false;
+    var status = adminStatusOf(it);
+    var fields = [
+      {k:'Utilizador (uid)', v: it.userId},
+      {k:'Família (id)', v: it.familyId},
+      {k:'Espaço (id)', v: it.spaceId},
+      {k:'Página', v: screenLabelOf(it.screen)},
+      {k:'Versão da app', v: it.appVersion},
+      {k:'Plataforma', v: it.platform},
+      {k:'Idioma', v: it.language},
+      {k:'Tema', v: it.theme === 'dark' ? 'Escuro' : (it.theme === 'light' ? 'Claro' : it.theme)},
+      {k:'Online ao enviar', v: it.online === false ? 'Não' : (it.online === true ? 'Sim' : null)},
+      {k:'Tipo de Espaço', v: it.spaceType},
+      {k:'Criado em', v: adminFormatDateTime(it.createdAt)}
+    ];
+    if (it.type === 'suggestion'){
+      if (it.feedbackType){
+        var ftLabel = FEEDBACK_TYPES.filter(function(t){ return t.key === it.feedbackType; }).map(function(t){ return t.label; })[0];
+        fields.push({k:'Classificação', v: ftLabel || it.feedbackType});
+      }
+      if (it.rating) fields.push({k:'Estrelas', v: String(it.rating) + ' / 5'});
+    }
+    if (it.updatedAt) fields.push({k:'Última atualização', v: adminFormatDateTime(it.updatedAt) + (it.updatedBy ? ' — ' + it.updatedBy : '')});
+    if (it.resolvedAt) fields.push({k:'Resolvido em', v: adminFormatDateTime(it.resolvedAt)});
+
+    // Nunca inclui/mostra tokens, passwords ou qualquer dado financeiro —
+    // só os campos técnicos/identificadores acima, exatamente os mesmos
+    // gravados por submitFeedbackDoc()/feedbackDeviceContext() (ver Ajuda e
+    // Feedback). "adminNote" é editado à parte, mais abaixo, e nunca é lido
+    // por nenhum ecrã visível ao utilizador que enviou o feedback.
+    var messageBlock = escapeHtml(it.message || '(sem mensagem)');
+    if (it.expectedBehavior){
+      messageBlock += '<br><br><strong>O que esperava que acontecesse:</strong><br>' + escapeHtml(it.expectedBehavior);
+    }
+
+    content.innerHTML =
+      '<div class="admin-detail-header">' +
+        '<div><h3>' + escapeHtml(ADMIN_TYPE_LABELS[it.type] || it.type || '—') + ' — ' + escapeHtml(adminCategoryLabel(it.category)) + '</h3>' +
+          '<div class="admin-detail-id">ID: ' + escapeHtml(it.id) + '</div></div>' +
+        '<span class="admin-status-pill ' + status + '">' + ADMIN_STATUS_LABELS[status] + '</span>' +
+      '</div>' +
+      '<div class="admin-detail-message">' + messageBlock + '</div>' +
+      '<div class="admin-detail-grid">' + fields.filter(function(f){ return f.v; }).map(function(f){
+        return '<div class="admin-detail-field"><span class="k">' + escapeHtml(f.k) + '</span><span class="v">' + escapeHtml(String(f.v)) + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="admin-detail-section-label">Estado</div>' +
+      '<div class="admin-status-row" id="adminStatusRow">' + ADMIN_STATUS_ORDER.map(function(s){
+        return '<button type="button" class="admin-status-btn' + (s === status ? ' active' : '') + '"' + (adminState.savingStatus ? ' disabled' : '') + ' data-set-status="' + s + '">' + ADMIN_STATUS_LABELS[s] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="admin-detail-section-label">Nota interna</div>' +
+      '<div class="field">' +
+        '<textarea id="adminNoteInput" maxlength="2000" placeholder="Nunca é mostrada a quem enviou o feedback.">' + escapeHtml(it.adminNote || '') + '</textarea>' +
+        '<div class="hint">Só visível aqui, no backoffice — nunca aparece para o utilizador que enviou o reporte.</div>' +
+      '</div>' +
+      '<div class="sheet-actions">' +
+        '<button type="button" class="btn primary" id="adminSaveNoteBtn"' + (adminState.savingNote ? ' disabled' : '') + '>Guardar nota</button>' +
+      '</div>' +
+      '<div class="admin-note-hint" id="adminNoteSavedHint" hidden>Nota guardada.</div>';
+  }
+
+  function updateLocalAdminItem(id, patch){
+    adminState.items = adminState.items.map(function(it){ return it.id === id ? Object.assign({}, it, patch) : it; });
+    if (adminState.selected && adminState.selected.id === id) adminState.selected = Object.assign({}, adminState.selected, patch);
+  }
+
+  // Só admins conseguem escrever aqui — e só nestes campos exatos (ver
+  // firestore.rules: allow update só com affectedKeys().hasOnly([...])).
+  // Nunca cria nem elimina nada (ponto 15/31: sem botão Eliminar por
+  // omissão) — só muda status/adminNote/updatedAt/updatedBy/resolvedAt.
+  function setAdminFeedbackStatus(item, newStatus){
+    if (adminState.savingStatus) return;
+    var pendingNote = document.getElementById('adminNoteInput');
+    pendingNote = pendingNote ? pendingNote.value : null;
+    adminState.savingStatus = true;
+    renderAdminDetail();
+    restoreAdminPendingNote(pendingNote);
+    var patch = {
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.myEmail || state.myUid || 'admin'
+    };
+    if (newStatus === 'resolved') patch.resolvedAt = new Date().toISOString();
+    db.docByPath(item.path).update(patch).then(function(){
+      updateLocalAdminItem(item.id, patch);
+      adminState.savingStatus = false;
+      renderAdminDetail();
+      restoreAdminPendingNote(pendingNote);
+      renderAdminList();
+      showToast('Estado atualizado: ' + ADMIN_STATUS_LABELS[newStatus], {icon:'check'});
+      refreshAdminCounts();
+    }).catch(function(err){
+      console.error('setAdminFeedbackStatus failed', err);
+      adminState.savingStatus = false;
+      renderAdminDetail();
+      restoreAdminPendingNote(pendingNote);
+      showToast('Não foi possível atualizar o estado.', {icon:'x'});
+    });
+  }
+
+  function saveAdminFeedbackNote(item){
+    if (adminState.savingNote) return;
+    var textarea = document.getElementById('adminNoteInput');
+    var note = textarea ? textarea.value : '';
+    adminState.savingNote = true;
+    var btn = document.getElementById('adminSaveNoteBtn');
+    if (btn) btn.disabled = true;
+    var patch = {
+      adminNote: note,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.myEmail || state.myUid || 'admin'
+    };
+    db.docByPath(item.path).update(patch).then(function(){
+      updateLocalAdminItem(item.id, patch);
+      adminState.savingNote = false;
+      if (btn) btn.disabled = false;
+      var hint = document.getElementById('adminNoteSavedHint');
+      if (hint) hint.hidden = false;
+      showToast('Nota interna guardada.', {icon:'check'});
+    }).catch(function(err){
+      console.error('saveAdminFeedbackNote failed', err);
+      adminState.savingNote = false;
+      if (btn) btn.disabled = false;
+      showToast('Não foi possível guardar a nota.', {icon:'x'});
+    });
+  }
+
+  function openAdminDetail(item){
+    adminState.selectedId = item.id;
+    adminState.selected = item;
+    renderAdminList();
+    renderAdminDetail();
+    adminBodyEl.classList.add('detail-open');
+  }
+  function closeAdminDetail(){
+    adminState.selectedId = null;
+    adminState.selected = null;
+    adminBodyEl.classList.remove('detail-open');
+    renderAdminList();
+    renderAdminDetail();
+  }
+
+  document.getElementById('adminListItems').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-admin-item]');
+    if (!btn) return;
+    var id = btn.getAttribute('data-admin-item');
+    var item = adminState.items.filter(function(it){ return it.id === id; })[0];
+    if (!item) return;
+    openAdminDetail(item);
+  });
+  document.getElementById('adminLoadMoreBtn').addEventListener('click', function(){ loadAdminPage(false); });
+  document.getElementById('adminBackBtn').addEventListener('click', closeAdminDetail);
+  document.getElementById('adminDetailContent').addEventListener('click', function(ev){
+    var statusBtn = ev.target.closest('[data-set-status]');
+    if (statusBtn && adminState.selected){
+      var newStatus = statusBtn.getAttribute('data-set-status');
+      if (newStatus !== adminStatusOf(adminState.selected)) setAdminFeedbackStatus(adminState.selected, newStatus);
+      return;
+    }
+    if (ev.target.closest('#adminSaveNoteBtn') && adminState.selected) saveAdminFeedbackNote(adminState.selected);
+  });
+  document.getElementById('adminSearchInput').addEventListener('input', function(ev){
+    adminState.search = ev.target.value || '';
+    closeAdminDetail();
+    renderAdminList();
+  });
+  document.getElementById('adminTypeFilterRow').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-admin-type]');
+    if (!btn) return;
+    adminState.typeFilter = btn.getAttribute('data-admin-type');
+    renderAdminFilterChips();
+    closeAdminDetail();
+    // Tipo só vai ao servidor quando o Estado não tem já o seu próprio
+    // where() (ver buildAdminServerQuery) — ou seja, quando o Estado está
+    // em "Todos" OU em "Novo" (que nunca usa where(status) no servidor).
+    // Nesses dois casos, mudar o Tipo muda a query real — recarrega. Nos
+    // outros três estados, o Tipo já era só um filtro local — só voltar a
+    // desenhar a lista.
+    var typeAffectsServerQuery = (adminState.statusFilter === 'all' || adminState.statusFilter === 'new');
+    if (typeAffectsServerQuery) loadAdminPage(true);
+    else renderAdminList();
+  });
+  document.getElementById('adminStatusFilterRow').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-admin-status]');
+    if (!btn) return;
+    adminState.statusFilter = btn.getAttribute('data-admin-status');
+    renderAdminFilterChips();
+    closeAdminDetail();
+    loadAdminPage(true);
+  });
+
+  function openAdminFeedbackPanel(){
+    if (!state.isAdmin) return; // proteção extra no cliente — a garantia real está nas Firestore Rules
+    adminFeedbackOverlay.classList.add('open');
+    adminState.search = '';
+    adminState.typeFilter = 'all';
+    adminState.statusFilter = 'all';
+    document.getElementById('adminSearchInput').value = '';
+    renderAdminFilterChips();
+    closeAdminDetail();
+    renderAdminDash();
+    loadAdminPage(true);
+    refreshAdminCounts();
+  }
+  function closeAdminFeedbackPanel(){ adminFeedbackOverlay.classList.remove('open'); }
+  document.getElementById('closeAdminFeedback').addEventListener('click', closeAdminFeedbackPanel);
+  adminFeedbackOverlay.addEventListener('click', function(ev){ if (ev.target === adminFeedbackOverlay) closeAdminFeedbackPanel(); });
 
   document.getElementById('openSettings').addEventListener('click', function(){
     renderCategoryChips();
@@ -8309,11 +8904,30 @@
     {nav:'ajuda', icon:'help', label:'Ajuda e Feedback'},
     {nav:'definicoes', icon:'more', label:'Definições'}
   ];
-  document.getElementById('moreSheetList').innerHTML = MORE_SHEET_ITEMS.map(function(it){
-    return '<button type="button" class="menu-sheet-item" data-more="' + it.nav + '">' +
-      '<span class="icon-badge sm">' + icon(it.icon) + '</span><span>' + it.label + '</span>' +
-    '</button>';
-  }).join('');
+  // Construído por função (não uma vez só) porque a secção "Admin" só deve
+  // aparecer no DOM quando state.isAdmin — chamada de novo sempre que o
+  // menu "Mais" é aberto (ver openMoreSheet), para refletir sempre o
+  // estado mais recente do claim e do contador de "novos" sem depender de
+  // um render() geral. Um utilizador normal NUNCA tem este bloco inserido
+  // no HTML — não é só escondido por CSS (ver isAdmin() em firestore.rules
+  // para a garantia real, que não depende disto).
+  function renderMoreSheetList(){
+    var html = MORE_SHEET_ITEMS.map(function(it){
+      return '<button type="button" class="menu-sheet-item" data-more="' + it.nav + '">' +
+        '<span class="icon-badge sm">' + icon(it.icon) + '</span><span>' + it.label + '</span>' +
+      '</button>';
+    }).join('');
+    if (state.isAdmin){
+      var novos = (adminState.counts && adminState.counts.novos) || 0;
+      html += '<div class="menu-sheet-section-label">Admin</div>' +
+        '<button type="button" class="menu-sheet-item" data-more="admin-feedback">' +
+          '<span class="icon-badge sm">' + icon('shield') + '</span><span>Feedback</span>' +
+          '<span class="menu-sheet-badge" id="adminMenuBadge"' + (novos > 0 ? '' : ' hidden') + '>' + (novos > 99 ? '99+' : novos) + '</span>' +
+        '</button>';
+    }
+    document.getElementById('moreSheetList').innerHTML = html;
+  }
+  renderMoreSheetList();
 
   var QUICK_ADD_ITEMS = [
     {kind:'despesa', icon:'cart', label:'Nova despesa'},
@@ -8328,7 +8942,7 @@
     '</button>';
   }).join('');
 
-  function openMoreSheet(){ moreSheetOverlay.classList.add('open'); }
+  function openMoreSheet(){ renderMoreSheetList(); moreSheetOverlay.classList.add('open'); }
   function closeMoreSheet(){ moreSheetOverlay.classList.remove('open'); }
   function openQuickAdd(){ quickAddOverlay.classList.add('open'); }
   function closeQuickAdd(){ quickAddOverlay.classList.remove('open'); }
@@ -8345,6 +8959,8 @@
       settingsOverlay.classList.add('open');
     } else if (target === 'ajuda'){
       openFeedbackHub();
+    } else if (target === 'admin-feedback'){
+      openAdminFeedbackPanel();
     } else {
       switchView(target);
     }
@@ -8731,6 +9347,7 @@
       state.familyId = familyId || null;
       state.myUid = (profile && profile.uid) || null;
       state.myEmail = (profile && profile.email) || null;
+      state.isAdmin = !!(profile && profile.isAdmin); // custom claim — ver Admin -> Feedback
       // Placeholder seguro imediato (o Espaço por omissão tem sempre este id) —
       // loadSpaces() confirma/substitui pelo Espaço realmente ativo (guardado
       // neste telemóvel) assim que resolver, sem nunca deixar a app sem um
@@ -8747,6 +9364,11 @@
       loadEmergencyFundHistory();
       upsertMyFamilyMember();
       maybeShowWelcome();
+      // Contagens do backoffice (badge "novos" no menu Mais → Admin →
+      // Feedback) — só dispara consultas collectionGroup quando o claim
+      // "admin" está mesmo presente (refreshAdminCounts confirma outra vez
+      // por dentro); para quem não é admin isto não faz nada.
+      if (state.isAdmin) refreshAdminCounts();
       markSplashReady();
     },
     noFamily: function(){
@@ -8781,11 +9403,12 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-    collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where
+    collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where,
+    collectionGroup, orderBy, limit, startAfter, getCountFromServer
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser
+    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser, getIdTokenResult
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
   // ======= CONFIGURA AQUI OS DADOS DO TEU PROJETO FIREBASE =======
@@ -8829,9 +9452,58 @@
     };
   }
 
+  // ---------- Admin → Feedback: consulta entre famílias (collectionGroup) ----------
+  // Só usado pelo painel de administração (ver "Admin -> Feedback" mais
+  // abaixo) — nunca pelo resto da app, que continua a usar sempre
+  // db.collection(...) com o prefixo da própria família (wrapColl acima,
+  // inalterado). Espelha a forma de wrapColl (encadeável, .get() devolve
+  // {docs, size, empty}) para o código que o usa não ter de aprender uma
+  // API diferente, mas construído sobre collectionGroup() em vez de
+  // collection() — é o que permite ver feedback de TODAS as famílias
+  // (ponto 4 do pedido "Admin → Feedback"): as regras do Firestore, não
+  // esta função, são o que continua a impedir um utilizador normal de o
+  // fazer (ver isAdmin() em firestore.rules).
+  function wrapCollGroupQuery(firestore, name, c){
+    c = c || {wheres:[], orderBys:[], limitN:null, startAfterSnap:null};
+    return {
+      where(field, op, value){ return wrapCollGroupQuery(firestore, name, Object.assign({}, c, {wheres: c.wheres.concat([{field:field,op:op,value:value}])})); },
+      orderBy(field, dir){ return wrapCollGroupQuery(firestore, name, Object.assign({}, c, {orderBys: c.orderBys.concat([{field:field, dir:dir||'asc'}])})); },
+      limit(n){ return wrapCollGroupQuery(firestore, name, Object.assign({}, c, {limitN:n})); },
+      // cursorItem = um item já devolvido por um .get() anterior desta
+      // mesma função (guarda a snapshot real do Firestore, escondida em
+      // _snap, necessária para paginação por cursor).
+      startAfter(cursorItem){ return wrapCollGroupQuery(firestore, name, Object.assign({}, c, {startAfterSnap: cursorItem && cursorItem._snap})); },
+      _buildQuery(){
+        var base = collectionGroup(firestore, name);
+        var parts = c.wheres.map(function(w){ return where(w.field, w.op, w.value); });
+        c.orderBys.forEach(function(o){ parts.push(orderBy(o.field, o.dir)); });
+        if (c.startAfterSnap) parts.push(startAfter(c.startAfterSnap));
+        if (c.limitN) parts.push(limit(c.limitN));
+        return parts.length ? query.apply(null, [base].concat(parts)) : base;
+      },
+      get(){
+        return getDocs(this._buildQuery()).then(function(snap){
+          var docs = [];
+          snap.forEach(function(d){
+            docs.push({id:d.id, exists:true, data:function(){ return d.data(); }, path:d.ref.path, _snap:d});
+          });
+          return {docs:docs, size:docs.length, empty:docs.length===0};
+        });
+      },
+      count(){
+        return getCountFromServer(this._buildQuery()).then(function(snap){ return snap.data().count; });
+      }
+    };
+  }
+
   function makeAdapter(firestore, familyId){
     var prefix = 'families/' + familyId + '/';
-    return { collection: function(path){ return wrapColl(firestore, prefix + path); } };
+    return {
+      collection: function(path){ return wrapColl(firestore, prefix + path); },
+      // Só para o painel de administração — ver nota acima.
+      collectionGroup: function(name){ return wrapCollGroupQuery(firestore, name); },
+      docByPath: function(path){ return wrapDoc(doc(firestore, path)); }
+    };
   }
 
   // ---------- Sessão com tempo máximo ----------
@@ -8932,13 +9604,26 @@
             // Cada conta pertence a uma família (users/{uid} -> familyId).
             // É essa família que decide que dados esta conta vê — várias
             // contas com o mesmo familyId partilham os mesmos dados.
-            getDoc(doc(firestore, 'users', user.uid)).then(function(snap){
+            // Custom Claim "admin" (ver Admin -> Feedback / claude/admin-feedback.md):
+            // getIdTokenResult() lê o ID token atual, que já traz os custom
+            // claims decodificados — nunca um documento à parte que o
+            // cliente pudesse escrever. Não força refresh do token aqui de
+            // propósito (um refresh forçado em CADA login teria um custo de
+            // rede sem necessidade nenhuma no dia a dia): um claim atribuído
+            // agora só aparece depois de o token renovar sozinho (~1h) ou de
+            // um novo login — documentado no admin-feedback.md.
+            Promise.all([
+              getDoc(doc(firestore, 'users', user.uid)),
+              getIdTokenResult(user).catch(function(){ return {claims:{}}; })
+            ]).then(function(results){
+              var snap = results[0], tokenResult = results[1];
               var familyId = snap.exists() ? snap.data().familyId : null;
               if (!familyId){
                 window.__ContasApp.noFamily();
                 return;
               }
-              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email});
+              var isAdminClaim = !!(tokenResult && tokenResult.claims && tokenResult.claims.admin === true);
+              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email, isAdmin: isAdminClaim});
             }).catch(function(err){
               window.__ContasApp.fail(err);
             });
