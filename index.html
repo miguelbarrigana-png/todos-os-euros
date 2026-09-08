@@ -498,6 +498,27 @@
   .field-error.success{color:var(--success-ink);}
   .checkbox-row{display:flex; align-items:center; gap:10px; padding:12px; background:var(--surface-2); border-radius:10px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--text);}
   .checkbox-row input{width:18px; height:18px; accent-color:var(--accent); flex-shrink:0;}
+  .field textarea{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text);
+    font-family:'Manrope',sans-serif; font-size:14.5px; line-height:1.5; resize:vertical; min-height:104px;
+  }
+  .field textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+
+  /* ---------- Ajuda e Feedback ---------- */
+  .feedback-option{display:flex; align-items:flex-start; gap:14px; width:100%; text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; margin-bottom:12px; cursor:pointer; font-family:inherit;}
+  .feedback-option:hover{background:var(--surface-2);}
+  .feedback-option .icon-badge{margin-top:1px;}
+  .feedback-option-body{flex:1; min-width:0;}
+  .feedback-option-body h3{font-size:15px; margin:0 0 3px;}
+  .feedback-option-body p{font-size:12.5px; color:var(--text-muted); line-height:1.5; margin:0;}
+  .feedback-option .chev{margin-left:auto; align-self:center; color:var(--text-faint); flex-shrink:0;}
+  .feedback-origin-hint{font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em; margin-bottom:14px;}
+  .star-row{display:flex; gap:6px; margin-top:4px;}
+  .star-btn{background:none; border:none; padding:4px; cursor:pointer; font-size:23px; line-height:1; color:var(--border); font-family:inherit;}
+  .star-btn.active{color:#f5a623;}
+  .star-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;}
+  .feedback-offline-hint{display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:var(--warning-soft); color:var(--warning); font-size:12.5px; font-weight:600; margin-bottom:14px;}
+  .feedback-offline-hint .icon{width:16px; height:16px; flex-shrink:0;}
 
   /* Linha compacta e clicável da data de uma despesa pontual — abre o
      seletor de data nativo (input type=date, invisível por cima) em vez
@@ -1621,6 +1642,107 @@
   </div>
 </div>
 
+<!-- ---------- Ajuda e Feedback ---------- -->
+<div class="overlay" id="feedbackHubOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Ajuda e Feedback</h2>
+    <button type="button" class="feedback-option" data-action="open-report-problem">
+      <span class="icon-badge" id="feedbackReportIcon"></span>
+      <span class="feedback-option-body">
+        <h3>Reportar um problema</h3>
+        <p>Algo não está a funcionar como esperado?</p>
+      </span>
+      <span class="chev" id="feedbackReportChev"></span>
+    </button>
+    <button type="button" class="feedback-option" data-action="open-give-feedback">
+      <span class="icon-badge" id="feedbackGiveIcon"></span>
+      <span class="feedback-option-body">
+        <h3>Dar feedback</h3>
+        <p>Tens uma ideia para melhorar a MAB360?</p>
+      </span>
+      <span class="chev" id="feedbackGiveChev"></span>
+    </button>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="closeFeedbackHub">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="reportProblemOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Reportar um problema</h2>
+    <div class="feedback-origin-hint" id="reportProblemOrigin"></div>
+    <div class="feedback-offline-hint" id="reportProblemOfflineHint" hidden></div>
+
+    <div class="field">
+      <label for="fRpCategory">Tipo de problema</label>
+      <select id="fRpCategory"></select>
+    </div>
+    <div class="field">
+      <label for="fRpDescription">Descreve o problema</label>
+      <textarea id="fRpDescription" maxlength="2000" placeholder="Explica o que aconteceu e o que esperavas que acontecesse." aria-required="true"></textarea>
+    </div>
+    <div class="field">
+      <label for="fRpExpected">O que estavas a tentar fazer? (opcional)</label>
+      <textarea id="fRpExpected" maxlength="500" placeholder="Ex.: estava a tentar mudar o orçamento de Alimentação."></textarea>
+    </div>
+    <div class="field">
+      <label class="checkbox-row">
+        <input type="checkbox" id="fRpIncludeTech" checked>
+        Incluir informação técnica
+      </label>
+      <div class="hint">Para ajudar a diagnosticar o problema, podemos incluir informação técnica sobre a aplicação e o dispositivo. Não incluímos automaticamente os teus dados financeiros.</div>
+    </div>
+    <div class="field-error" id="reportProblemError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="reportProblemCancel">Cancelar</button>
+      <button type="button" class="btn primary" id="reportProblemSave">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="giveFeedbackOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Dar feedback</h2>
+    <div class="feedback-origin-hint" id="giveFeedbackOrigin"></div>
+    <div class="feedback-offline-hint" id="giveFeedbackOfflineHint" hidden></div>
+
+    <div class="field">
+      <label for="fFbArea">Área da app</label>
+      <select id="fFbArea"></select>
+    </div>
+    <div class="field">
+      <label for="fFbType">Tipo (opcional)</label>
+      <select id="fFbType">
+        <option value="">— Sem tipo —</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fFbMessage">Mensagem</label>
+      <textarea id="fFbMessage" maxlength="2000" placeholder="Conta-nos o que gostavas de ver melhorado na MAB360." aria-required="true"></textarea>
+    </div>
+    <div class="field">
+      <label>Como está a ser a tua experiência? (opcional)</label>
+      <div class="star-row" id="fFbRatingRow" role="group" aria-label="Classificação de 1 a 5 estrelas"></div>
+    </div>
+    <div class="field">
+      <label class="checkbox-row">
+        <input type="checkbox" id="fFbIncludeTech" checked>
+        Incluir informação técnica
+      </label>
+      <div class="hint">Para ajudar a perceber o contexto, podemos incluir informação técnica sobre a aplicação e o dispositivo. Não incluímos automaticamente os teus dados financeiros.</div>
+    </div>
+    <div class="field-error" id="giveFeedbackError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="giveFeedbackCancel">Cancelar</button>
+      <button type="button" class="btn primary" id="giveFeedbackSave">Enviar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="deletedOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -1776,7 +1898,10 @@
     alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9"/>',
     check: '<path d="M4 12l5 5 11-11"/>',
     coins: '<circle cx="9" cy="9" r="6"/><path d="M14.5 8.3A6 6 0 1 1 8.3 14.5"/><path d="M9 6.8v4.4M7 9h4"/>',
-    trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>'
+    trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>',
+    // ---------- Ajuda e Feedback ----------
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.8 2.8 0 1 1 3.9 2.6c-1 .5-1.7 1.1-1.7 2.3"/><circle cx="12" cy="17.2" r=".9"/>',
+    message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 4V6a1 1 0 0 1 1-1z"/>'
   };
   function icon(name, cls){
     var d = ICON_PATHS[name] || ICON_PATHS.tag;
@@ -7120,6 +7245,309 @@
     });
   });
 
+  // ---------- Ajuda e Feedback ----------
+  // Funcionalidade independente de tudo o resto (Poupanças/Créditos/
+  // Investimentos/Orçamento/Espaços): nunca lê nem escreve em nenhuma
+  // coleção financeira, só na coleção nova 'feedback'. Reutiliza os
+  // padrões já existentes na app — overlay tipo "sheet", showToast(),
+  // escapeHtml(), o botão desativado durante o envio (o mesmo padrão do
+  // invContribSave/loanExtraSave) — sem introduzir nenhuma infraestrutura
+  // nova (sem transaction/batch, sem fila offline própria: ver nota em
+  // submitFeedbackDoc() sobre porquê).
+  //
+  // IMPORTANTE (ponto 5/28 do pedido): nunca ler nenhum valor financeiro
+  // (state.entries/state.payments/state.loans/state.investments/
+  // state.savingsGoals/saldos/orçamentos) para dentro de um documento de
+  // feedback. Os únicos campos que identificam a conta são userId/
+  // familyId/spaceId (obrigatórios pelas próprias regras do Firestore, não
+  // são "dados financeiros") — tudo o resto vem só do que a pessoa
+  // escreveu nos campos de texto, ou de informação técnica genérica do
+  // dispositivo/browser (nunca do conteúdo da app).
+  var APP_VERSION = 'v34'; // manter sincronizado com CACHE_NAME em sw.js
+
+  var FEEDBACK_CATEGORIES = [
+    {key:'orcamento', label:'Orçamento'},
+    {key:'movimentos', label:'Movimentos'},
+    {key:'espacos', label:'Espaços'},
+    {key:'poupancas', label:'Poupanças'},
+    {key:'creditos', label:'Créditos'},
+    {key:'investimentos', label:'Investimentos'},
+    {key:'patrimonio', label:'Património'},
+    {key:'login', label:'Login / Conta'},
+    {key:'familia', label:'Família'},
+    {key:'notificacoes', label:'Notificações'},
+    {key:'interface', label:'Interface / Visual'},
+    {key:'outro', label:'Outro'}
+  ];
+  var FEEDBACK_TYPES = [
+    {key:'sugestao', label:'Sugestão'},
+    {key:'melhoria', label:'Melhoria'},
+    {key:'funcionalidade', label:'Nova funcionalidade'},
+    {key:'comentario', label:'Comentário geral'}
+  ];
+  // Nomes de ecrã amigáveis para o "Problema reportado a partir de: X"
+  // (ponto 18) — cobre todos os valores possíveis de state.view. 'ajuda'
+  // nunca é um destes porque abrir Ajuda e Feedback é um overlay, não uma
+  // mudança de view: state.view continua a ser sempre o ecrã de origem
+  // (Orçamento, Investimentos, etc.) enquanto este overlay está aberto.
+  var SCREEN_LABELS = {
+    home:'Início', month:'Orçamento', movimentos:'Movimentos', year:'Visão anual',
+    loan:'Créditos', investment:'Investimentos', poupancas:'Poupanças',
+    patrimonio:'Património', recorrencias:'Recorrências', familia:'Família'
+  };
+  function screenLabelOf(v){ return SCREEN_LABELS[v] || 'Início'; }
+
+  function isStandaloneDisplay(){
+    try {
+      if (window.navigator && window.navigator.standalone === true) return true;
+      return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    } catch(e){ return false; }
+  }
+  function currentThemeMode(){
+    // Reflete o que está realmente a ser mostrado (não só a preferência
+    // guardada) — 'auto' segue o sistema, por isso resolve-se aqui pelo
+    // atributo já aplicado em <html> por applyTheme()/matchMedia.
+    var pref = getThemePref();
+    if (pref === 'dark' || pref === 'light') return pref;
+    try { return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch(e){ return 'light'; }
+  }
+  // Bloco de informação técnica (ponto 4/27) — só entra no documento se a
+  // checkbox "Incluir informação técnica" estiver ligada (ponto 6, ligada
+  // por defeito). Nunca inclui nada do conteúdo da app, só dados sobre o
+  // dispositivo/browser/versão em uso.
+  function feedbackDeviceContext(){
+    return {
+      screen: state.view,
+      appVersion: APP_VERSION,
+      userAgent: (navigator.userAgent || '').slice(0, 300),
+      platform: navigator.platform || '',
+      language: navigator.language || '',
+      theme: currentThemeMode(),
+      online: !!navigator.onLine,
+      displayMode: isStandaloneDisplay() ? 'standalone' : 'browser',
+      viewport: window.innerWidth + 'x' + window.innerHeight,
+      spaceType: (activeSpace() && activeSpace().type) || null
+    };
+  }
+
+  // Anti-spam simples (ponto 17): impede reenviar exatamente o mesmo texto
+  // dentro de poucos segundos (duplo toque, reenvio acidental). De
+  // propósito só em memória — não é preciso nenhuma coleção/contador novo
+  // no Firestore só para isto.
+  var lastFeedbackSubmit = {text:null, at:0};
+  function isDuplicateFeedbackSubmit(text){
+    var now = Date.now();
+    var dup = lastFeedbackSubmit.text === text && (now - lastFeedbackSubmit.at) < 8000;
+    lastFeedbackSubmit = {text:text, at:now};
+    return dup;
+  }
+
+  // Grava o documento em 'feedback' e devolve uma referência curta e
+  // amigável derivada do próprio ID do documento (ex.: "MAB-2026-9F3K2A")
+  // — sem precisar de um contador sequencial à parte (que exigiria uma
+  // transaction/leitura extra e um ponto de contenção partilhado por toda
+  // a gente a enviar reportes ao mesmo tempo); o documentId em si continua
+  // a ser o identificador interno real (ponto 12).
+  //
+  // Offline (ponto 15): esta app já usa persistentLocalCache() no
+  // Firestore (ver ligação ao Firebase, mais abaixo no ficheiro) — ou
+  // seja, já existe uma cache local persistente para TODA a app; não se
+  // criou aqui nenhuma fila própria nova. Mas o utilizador só vê a
+  // confirmação (com a referência) depois de o Firestore confirmar a
+  // escrita, o que enquanto offline pode nunca chegar a acontecer nesta
+  // sessão — por isso, em vez de deixar o botão "Enviar" indefinidamente
+  // "a enviar", verificamos navigator.onLine ANTES de tentar e avisamos
+  // logo com clareza (abordagem B do pedido), preservando sempre o texto
+  // escrito para nova tentativa.
+  function submitFeedbackDoc(baseData, includeTech){
+    if (!db) return Promise.reject(new Error('sem ligação à base de dados'));
+    var payload = Object.assign({
+      userId: state.myUid,
+      familyId: state.familyId,
+      spaceId: state.activeSpaceId,
+      status: 'new',
+      createdAt: new Date().toISOString()
+    }, baseData);
+    if (includeTech) Object.assign(payload, feedbackDeviceContext());
+    return db.collection('feedback').add(payload).then(function(ref){
+      return {id: ref.id, reference: 'MAB-' + new Date().getFullYear() + '-' + ref.id.slice(-6).toUpperCase()};
+    });
+  }
+
+  var feedbackHubOverlay = document.getElementById('feedbackHubOverlay');
+  var reportProblemOverlay = document.getElementById('reportProblemOverlay');
+  var giveFeedbackOverlay = document.getElementById('giveFeedbackOverlay');
+  document.getElementById('feedbackReportIcon').innerHTML = icon('alert');
+  document.getElementById('feedbackGiveIcon').innerHTML = icon('message');
+  document.getElementById('feedbackReportChev').innerHTML = icon('chevronRight');
+  document.getElementById('feedbackGiveChev').innerHTML = icon('chevronRight');
+  document.getElementById('fRpCategory').innerHTML = FEEDBACK_CATEGORIES.map(function(c){
+    return '<option value="' + c.key + '">' + escapeHtml(c.label) + '</option>';
+  }).join('');
+  document.getElementById('fFbArea').innerHTML = FEEDBACK_CATEGORIES.map(function(c){
+    return '<option value="' + c.key + '">' + escapeHtml(c.label) + '</option>';
+  }).join('');
+  document.getElementById('fFbType').insertAdjacentHTML('beforeend', FEEDBACK_TYPES.map(function(t){
+    return '<option value="' + t.key + '">' + escapeHtml(t.label) + '</option>';
+  }).join(''));
+
+  function openFeedbackHub(){ feedbackHubOverlay.classList.add('open'); }
+  function closeFeedbackHub(){ feedbackHubOverlay.classList.remove('open'); }
+  document.getElementById('closeFeedbackHub').addEventListener('click', closeFeedbackHub);
+  feedbackHubOverlay.addEventListener('click', function(ev){
+    if (ev.target === feedbackHubOverlay){ closeFeedbackHub(); return; }
+    var actionEl = ev.target.closest('[data-action]');
+    if (!actionEl) return;
+    var action = actionEl.getAttribute('data-action');
+    closeFeedbackHub();
+    if (action === 'open-report-problem') openReportProblemSheet();
+    else if (action === 'open-give-feedback') openGiveFeedbackSheet();
+  });
+
+  var reportProblemSaving = false;
+  function openReportProblemSheet(){
+    document.getElementById('fRpCategory').value = 'outro';
+    document.getElementById('fRpDescription').value = '';
+    document.getElementById('fRpExpected').value = '';
+    document.getElementById('fRpIncludeTech').checked = true;
+    document.getElementById('reportProblemOrigin').textContent = 'Problema reportado a partir de: ' + screenLabelOf(state.view);
+    document.getElementById('reportProblemOfflineHint').hidden = !!navigator.onLine;
+    document.getElementById('reportProblemOfflineHint').innerHTML = icon('alert') + '<span>Estás offline. Podes escrever o reporte, mas só vai ser possível enviar quando a ligação voltar.</span>';
+    document.getElementById('reportProblemError').style.display = 'none';
+    reportProblemOverlay.classList.add('open');
+  }
+  function closeReportProblemSheet(){ reportProblemOverlay.classList.remove('open'); }
+  document.getElementById('reportProblemCancel').addEventListener('click', closeReportProblemSheet);
+  reportProblemOverlay.addEventListener('click', function(ev){ if (ev.target === reportProblemOverlay) closeReportProblemSheet(); });
+  document.getElementById('reportProblemSave').addEventListener('click', function(){
+    if (reportProblemSaving) return;
+    var descEl = document.getElementById('fRpDescription');
+    var description = descEl.value.trim();
+    var errorEl = document.getElementById('reportProblemError');
+    if (!description){
+      errorEl.textContent = 'Descreve o que aconteceu antes de enviar.';
+      errorEl.style.display = 'block';
+      descEl.focus();
+      return;
+    }
+    if (!navigator.onLine){
+      errorEl.textContent = 'Estás offline. Liga-te à internet e tenta enviar outra vez — o texto fica guardado.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (isDuplicateFeedbackSubmit('bug:' + description)){
+      errorEl.textContent = 'Já enviaste este reporte agora mesmo.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
+    var expected = document.getElementById('fRpExpected').value.trim();
+    var includeTech = document.getElementById('fRpIncludeTech').checked;
+    var baseData = {
+      type: 'bug',
+      category: document.getElementById('fRpCategory').value,
+      message: description
+    };
+    if (expected) baseData.expectedBehavior = expected;
+    reportProblemSaving = true;
+    var saveBtn = document.getElementById('reportProblemSave');
+    saveBtn.disabled = true;
+    submitFeedbackDoc(baseData, includeTech).then(function(result){
+      reportProblemSaving = false;
+      saveBtn.disabled = false;
+      closeReportProblemSheet();
+      showToast('Obrigado. O teu reporte foi enviado. Referência: ' + result.reference, {icon:'check', duration:4200});
+    }).catch(function(err){
+      reportProblemSaving = false;
+      saveBtn.disabled = false;
+      console.error('submitFeedbackDoc(bug) failed', err);
+      errorEl.textContent = 'Não foi possível enviar. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+
+  var feedbackRating = 0;
+  function renderFeedbackStars(){
+    var row = document.getElementById('fFbRatingRow');
+    var html = '';
+    for (var i = 1; i <= 5; i++){
+      html += '<button type="button" class="star-btn' + (i <= feedbackRating ? ' active' : '') + '" data-star="' + i + '" aria-label="' + i + ' de 5 estrelas" aria-pressed="' + (i <= feedbackRating ? 'true' : 'false') + '">★</button>';
+    }
+    row.innerHTML = html;
+  }
+  document.getElementById('fFbRatingRow').addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-star]');
+    if (!btn) return;
+    var val = parseInt(btn.getAttribute('data-star'), 10);
+    feedbackRating = (feedbackRating === val) ? 0 : val; // tocar na mesma estrela desmarca (fica opcional)
+    renderFeedbackStars();
+  });
+
+  var giveFeedbackSaving = false;
+  function openGiveFeedbackSheet(){
+    document.getElementById('fFbArea').value = 'outro';
+    document.getElementById('fFbType').value = '';
+    document.getElementById('fFbMessage').value = '';
+    document.getElementById('fFbIncludeTech').checked = true;
+    feedbackRating = 0;
+    renderFeedbackStars();
+    document.getElementById('giveFeedbackOrigin').textContent = 'Feedback a partir de: ' + screenLabelOf(state.view);
+    document.getElementById('giveFeedbackOfflineHint').hidden = !!navigator.onLine;
+    document.getElementById('giveFeedbackOfflineHint').innerHTML = icon('alert') + '<span>Estás offline. Podes escrever o feedback, mas só vai ser possível enviar quando a ligação voltar.</span>';
+    document.getElementById('giveFeedbackError').style.display = 'none';
+    giveFeedbackOverlay.classList.add('open');
+  }
+  function closeGiveFeedbackSheet(){ giveFeedbackOverlay.classList.remove('open'); }
+  document.getElementById('giveFeedbackCancel').addEventListener('click', closeGiveFeedbackSheet);
+  giveFeedbackOverlay.addEventListener('click', function(ev){ if (ev.target === giveFeedbackOverlay) closeGiveFeedbackSheet(); });
+  document.getElementById('giveFeedbackSave').addEventListener('click', function(){
+    if (giveFeedbackSaving) return;
+    var msgEl = document.getElementById('fFbMessage');
+    var message = msgEl.value.trim();
+    var errorEl = document.getElementById('giveFeedbackError');
+    if (!message){
+      errorEl.textContent = 'Escreve a tua mensagem antes de enviar.';
+      errorEl.style.display = 'block';
+      msgEl.focus();
+      return;
+    }
+    if (!navigator.onLine){
+      errorEl.textContent = 'Estás offline. Liga-te à internet e tenta enviar outra vez — o texto fica guardado.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (isDuplicateFeedbackSubmit('feedback:' + message)){
+      errorEl.textContent = 'Já enviaste este feedback agora mesmo.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
+    var feedbackType = document.getElementById('fFbType').value;
+    var includeTech = document.getElementById('fFbIncludeTech').checked;
+    var baseData = {
+      type: 'suggestion',
+      category: document.getElementById('fFbArea').value,
+      message: message
+    };
+    if (feedbackType) baseData.feedbackType = feedbackType;
+    if (feedbackRating > 0) baseData.rating = feedbackRating;
+    giveFeedbackSaving = true;
+    var saveBtn = document.getElementById('giveFeedbackSave');
+    saveBtn.disabled = true;
+    submitFeedbackDoc(baseData, includeTech).then(function(){
+      giveFeedbackSaving = false;
+      saveBtn.disabled = false;
+      closeGiveFeedbackSheet();
+      showToast('Obrigado pelo feedback.', {icon:'check'});
+    }).catch(function(err){
+      giveFeedbackSaving = false;
+      saveBtn.disabled = false;
+      console.error('submitFeedbackDoc(suggestion) failed', err);
+      errorEl.textContent = 'Não foi possível enviar. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
+  });
+
   document.getElementById('openSettings').addEventListener('click', function(){
     renderCategoryChips();
     settingsOverlay.classList.add('open');
@@ -7878,6 +8306,7 @@
     {nav:'poupancas', icon:'piggy', label:'Poupanças por objetivo'},
     {nav:'recorrencias', icon:'refresh', label:'Recorrências'},
     {nav:'familia', icon:'users', label:'Família'},
+    {nav:'ajuda', icon:'help', label:'Ajuda e Feedback'},
     {nav:'definicoes', icon:'more', label:'Definições'}
   ];
   document.getElementById('moreSheetList').innerHTML = MORE_SHEET_ITEMS.map(function(it){
@@ -7914,6 +8343,8 @@
     if (target === 'definicoes'){
       renderCategoryChips();
       settingsOverlay.classList.add('open');
+    } else if (target === 'ajuda'){
+      openFeedbackHub();
     } else {
       switchView(target);
     }
@@ -8213,7 +8644,8 @@
     welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
-    emergencyFundCalcOverlay:'closeEmergencyFundCalc'
+    emergencyFundCalcOverlay:'closeEmergencyFundCalc',
+    feedbackHubOverlay:'closeFeedbackHub', reportProblemOverlay:'reportProblemCancel', giveFeedbackOverlay:'giveFeedbackCancel'
   };
   function topOpenOverlay(){
     var openOverlays = document.querySelectorAll('.overlay.open');
