@@ -6527,6 +6527,24 @@
     if (d) setSelectedEntryDate(d);
   });
 
+  // A linha "Data" já é clicável por inteiro (o <input type="date"> fica
+  // invisível a cobrir toda a linha, ver .date-row no CSS) — mas em muitos
+  // browsers (Chrome incluído) um clique num <input type="date"> só abre o
+  // seletor nativo se acertar exatamente no pequeno ícone de calendário
+  // interno do próprio input; um clique no resto da área do input apenas
+  // foca o campo sem abrir nada visível. Como esse ícone interno fica
+  // escondido dentro de uma área invisível, na prática quase nenhum toque
+  // caía exatamente nele — dando a sensação de "campo fixo, não reage".
+  // showPicker() força a abertura do seletor nativo a partir de QUALQUER
+  // ponto da linha, de forma fiável em todos os browsers atuais (suportado
+  // desde 2022). Mantém-se o <label for="fEntryDate"> no HTML por acessibilidade
+  // (leitores de ecrã), isto é só um reforço para o clique/toque funcionar sempre.
+  dateField.addEventListener('click', function(){
+    if (typeof fEntryDate.showPicker === 'function'){
+      try { fEntryDate.showPicker(); } catch (e) { /* ex.: browser sem suporte, ou já aberto — ignora, o campo continua focável/editável na mesma */ }
+    }
+  });
+
   document.getElementById('fHasEnd').addEventListener('change', function(ev){
     var fEndMonth = document.getElementById('fEndMonth');
     fEndMonth.hidden = !ev.target.checked;
@@ -7388,7 +7406,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v36'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v37'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
