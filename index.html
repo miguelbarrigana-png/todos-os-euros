@@ -654,6 +654,10 @@
   .hero-label{font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;}
   .hero-value{font-size:38px; font-weight:800; letter-spacing:-.02em; font-family:'Manrope',sans-serif; line-height:1.05;}
   .hero-note{font-size:13px; color:var(--text-muted); margin-top:6px;}
+  /* Home redesenhada: linha de detalhe compacta do cartão "Disponível para
+     gastar" (substitui o trio-grid de 3-4 blocos que existia antes — ver
+     ponto 6/15 do pedido: "sem múltiplos cartões dentro do hero"). */
+  .hero-breakdown{font-size:13px; color:var(--text-muted); margin-top:6px;}
   .trio-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:18px;}
   .trio-grid.four{grid-template-columns:repeat(2,1fr); row-gap:8px;}
   .trio-tile{background:var(--surface-2); border-radius:var(--radius-md); padding:11px 6px; text-align:center; min-width:0;}
@@ -745,7 +749,49 @@
   .alert-banner.warning{background:var(--warning-soft); color:var(--warning);}
   .alert-banner.danger{background:var(--danger-soft); color:var(--danger);}
   .alert-banner.info{background:var(--info-soft); color:var(--info);}
+  .alert-banner.quiet{background:var(--surface-2); color:var(--text-muted);}
   .alert-banner strong{font-weight:800;}
+  .alert-banner.tappable{cursor:pointer; align-items:center;}
+  .alert-banner .chev{width:15px; height:15px; margin-left:auto; flex-shrink:0; opacity:.55;}
+
+  /* ---------- Início (Home) redesenhada — resumo do mês (1 frase),
+     indicadores rápidos, "precisa da tua atenção" e "visão financeira" ---------- */
+  .home-summary-line{display:flex; align-items:flex-start; gap:9px; font-size:13px; color:var(--text-muted); padding:0 2px; margin-bottom:16px; line-height:1.5;}
+  .home-summary-line .icon{width:16px; height:16px; margin-top:1px; flex-shrink:0;}
+  .home-summary-line.warning{color:var(--warning);}
+  .home-summary-line.danger{color:var(--danger);}
+  .home-summary-line.success{color:var(--success-ink);}
+  .home-summary-line.info{color:var(--info);}
+  details.home-summary-line{cursor:pointer;}
+  details.home-summary-line summary{display:flex; align-items:flex-start; gap:9px; list-style:none;}
+  details.home-summary-line summary::-webkit-details-marker{display:none;}
+  details.home-summary-line summary::after{content:'+ mais'; margin-left:6px; font-size:11px; font-weight:700; text-decoration:underline; color:var(--text-faint); flex-shrink:0;}
+  details.home-summary-line[open] summary::after{content:'';}
+  .home-summary-extra{display:flex; flex-direction:column; gap:8px; margin:8px 0 0 25px;}
+  .home-summary-extra .icon{width:15px; height:15px; margin-top:1px; flex-shrink:0;}
+  .home-indicators{margin-top:0; margin-bottom:16px;}
+  .home-indicators .trio-tile.tappable{cursor:pointer;}
+  .home-attention-more{font-size:11.5px; color:var(--text-faint); padding:0 2px; margin-top:-4px; margin-bottom:16px;}
+
+  .finview-card{padding:6px 14px;}
+  .finview-row{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer;}
+  .finview-row:last-child{border-bottom:none;}
+  .finview-body{flex:1; min-width:0;}
+  .finview-label{font-size:13.5px; font-weight:700; color:var(--text);}
+  .finview-note{font-size:11px; color:var(--text-faint); margin-top:1px;}
+  .finview-value{font-size:14px; font-weight:800; font-variant-numeric:tabular-nums; flex-shrink:0;}
+  .finview-value.positive{color:var(--success-ink);}
+  .finview-value.negative{color:var(--danger);}
+  .finview-row .chev{width:15px; height:15px; flex-shrink:0; opacity:.5;}
+
+  .home-quick-actions{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;}
+  .home-quick-btn{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 8px; box-shadow:var(--shadow); font-family:inherit; font-size:12.5px; font-weight:700; color:var(--text); cursor:pointer;}
+  .home-quick-btn .icon{width:19px; height:19px; color:var(--accent-ink);}
+  .home-quick-btn.primary{background:var(--accent); color:#241a04; border-color:transparent;}
+  .home-quick-btn.primary .icon{color:#241a04;}
+  @media (min-width:480px){
+    .home-quick-actions{grid-template-columns:repeat(4,1fr);}
+  }
 
   /* ---------- Orçamento: category cards ---------- */
   .budget-toggle{margin-bottom:16px;}
@@ -1630,6 +1676,34 @@
     <div id="emergencyFundCalcBody"></div>
     <div class="sheet-actions">
       <button type="button" class="btn primary" id="closeEmergencyFundCalc">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detalhe do Fundo de Emergência, aberto a partir da linha "Fundo de
+     emergência" em Visão financeira (Início) — mostra o MESMO cartão
+     completo (emergencyFundCardHtml) que antes ficava sempre visível na
+     Home, agora em detalhe sob pedido (ver ponto 15/24 do pedido de
+     redesenho da Home: "progressive disclosure", nada foi apagado). -->
+<div class="overlay" id="homeEmergencyFundOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div id="homeEmergencyFundBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="closeHomeEmergencyFund">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detalhe da Saúde Financeira, aberto a partir do indicador "Saúde" na
+     Home — mostra o MESMO cartão completo (financialHealthHtml) que antes
+     ficava sempre visível na Home; mesma lógica de progressive disclosure. -->
+<div class="overlay" id="homeHealthOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div id="homeHealthBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="closeHomeHealth">Fechar</button>
     </div>
   </div>
 </div>
@@ -5171,6 +5245,153 @@
     content.innerHTML = html;
   }
 
+  // ---------- Início (Home) — redesenho de composição/UX (mobile-first) ----------
+  // IMPORTANTE: nada aqui inventa novos cálculos financeiros. Todas as
+  // funções abaixo só compõem HTML mais compacto a partir dos mesmos dados/
+  // funções puras já existentes (summaryOf, splitByKind, savingsMonthNet,
+  // netWorthTotals, computeMonthSummary, computeFinancialHealth,
+  // calculateSavingsRate, categoryBudgetBreakdown, upcomingReviewAlerts,
+  // calculateEmergencyFundRecommendation/Coverage, stalledSavingsGoals,
+  // portfolioTotals). Os cartões completos que deixam de ficar sempre
+  // visíveis (Saúde Financeira, Fundo de Emergência) continuam 100%
+  // acessíveis em detalhe a partir daqui — ver openHomeHealth()/
+  // openHomeEmergencyFund() — nada foi apagado da app.
+
+  // Lista priorizada de situações que precisam de atenção — junta os vários
+  // detetores já existentes (orçamento por categoria, atrasos, revisão de
+  // crédito, fundo de emergência, poupanças paradas) numa única lista
+  // ordenada, para a Home mostrar no máximo 1-2 sem repetir/contradizer o
+  // que a página de Orçamento já mostra (usa exatamente os mesmos limiares
+  // 80%/100% de budgetCategoryCardsHtml — ver "Perto"/"Acima" no Orçamento).
+  function homeAttentionAlerts(sD, disponivel, overdueList){
+    var alerts = [];
+    var rows = (state.loading || state.categoryBudgetsLoading) ? [] : categoryBudgetBreakdown(state.entries);
+    var overCats = [], nearCats = [];
+    rows.forEach(function(r){
+      if (r.budget == null || r.budget <= 0) return;
+      var pct = Math.round((r.done / r.budget) * 100);
+      if (r.done > r.budget + 0.005) overCats.push(r.def.label);
+      else if (pct >= 80) nearCats.push({label: r.def.label, pct: pct});
+    });
+    if (overCats.length){
+      alerts.push({p:1, cls:'danger', iconName:'alert',
+        text: '<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(overCats.slice(0,2).join(', ')) + (overCats.length > 2 ? ' e outras' : '') + (overCats.length === 1 ? ' já passou' : ' já passaram') + ' o valor definido.',
+        action:'goto', view:'month'});
+    } else if (disponivel < -0.005){
+      alerts.push({p:1, cls:'danger', iconName:'alert',
+        text: '<strong>Despesas acima da receita prevista.</strong> Ultrapassam em ' + euro(Math.abs(disponivel)) + ' este mês.',
+        action:'goto', view:'month'});
+    }
+    if (overdueList.length){
+      alerts.push({p:2, cls:'danger', iconName:'alert',
+        text: '<strong>' + overdueList.length + (overdueList.length === 1 ? ' pagamento atrasado.' : ' pagamentos atrasados.') + '</strong> Confirma no Orçamento.',
+        action:'goto', view:'month'});
+    }
+    if (nearCats.length){
+      var worst = nearCats.sort(function(a,b){ return b.pct - a.pct; })[0];
+      alerts.push({p:3, cls:'warning', iconName:'alert',
+        text: '<strong>Perto do limite.</strong> ' + escapeHtml(worst.label) + ' já usou ' + worst.pct + '% do orçamento' + (nearCats.length > 1 ? ' (e mais ' + (nearCats.length - 1) + ')' : '') + '.',
+        action:'goto', view:'month'});
+    }
+    var reviews = state.loansLoading ? [] : upcomingReviewAlerts();
+    if (reviews.length){
+      var loanNames = reviews.map(function(r){ return r.loan.name; }).join(', ');
+      alerts.push({p:4, cls:'warning', iconName:'bell',
+        text: '<strong>Revisão de taxa a aproximar-se.</strong> ' + escapeHtml(loanNames) + (reviews.length === 1 ? ' revê a taxa' : ' revêem a taxa') + ' nos próximos 60 dias.',
+        action:'goto', view:'loan'});
+    }
+    if (!state.savingsLoading){
+      var efRec = calculateEmergencyFundRecommendation();
+      if (efRec.monthlyAverage > 0){
+        var cov = calculateEmergencyFundCoverage(efRec);
+        if (!cov.goal || cov.current < efRec.threeMonthFund){
+          alerts.push({p:5, cls:'info', iconName:'shield',
+            text: '<strong>Fundo de emergência abaixo do recomendado.</strong> ' + (cov.goal ? ('Tens ' + euro(cov.current) + ' — referência mínima ' + euro(efRec.threeMonthFund) + '.') : 'Ainda não tens um a acompanhar.'),
+            action:'open-home-emergency-fund'});
+        }
+      }
+      var stalled = stalledSavingsGoals();
+      if (stalled.length){
+        alerts.push({p:6, cls:'info', iconName:'piggy',
+          text: '<strong>Poupanças paradas.</strong> ' + escapeHtml(stalled.map(function(g){ return g.name; }).join(', ')) + (stalled.length === 1 ? ' não tem' : ' não têm') + ' movimentos há mais de 2 meses.',
+          action:'goto', view:'poupancas'});
+      }
+    }
+    alerts.sort(function(a,b){ return a.p - b.p; });
+    return alerts;
+  }
+
+  function homeAttentionHtml(alerts){
+    var html = '<div class="section-head"><h2>Precisa da tua atenção</h2></div>';
+    if (!alerts.length){
+      html += '<div class="alert-banner quiet">' + icon('check') + '<div>Está tudo controlado por agora. Sem alertas importantes.</div></div>';
+      return html;
+    }
+    var shown = alerts.slice(0, 2);
+    var extra = alerts.length - shown.length;
+    html += shown.map(function(a){
+      var attrs = a.action === 'goto' ? (' data-action="goto" data-view="' + a.view + '"') : (' data-action="' + a.action + '"');
+      return '<div class="alert-banner ' + a.cls + ' tappable"' + attrs + '>' + icon(a.iconName) + '<div>' + a.text + '</div>' + icon('chevronRight','chev') + '</div>';
+    }).join('');
+    if (extra > 0){
+      html += '<div class="home-attention-more">+' + extra + (extra === 1 ? ' outra situação a acompanhar' : ' outras situações a acompanhar') + '</div>';
+    }
+    return html;
+  }
+
+  // "Visão financeira" — linhas clicáveis dentro de UM cartão só (em vez da
+  // grelha de mini-cards de antes), cada uma abrindo a página/detalhe já
+  // existente. Fundo de Emergência reaproveita o cartão completo que já
+  // existia (emergencyFundCardHtml), agora em detalhe (openHomeEmergencyFund).
+  function homeFinancialOverviewHtml(netw){
+    var rows = [];
+    if (state.loans.length || state.investments.length || state.savingsGoals.length){
+      rows.push({attrs:' data-action="goto" data-view="patrimonio"', iconName:'trending', label:'Património líquido', value: euro(netw.net), cls: netw.net >= 0 ? 'positive' : 'negative'});
+    }
+    if (!state.savingsLoading){
+      var efRec = calculateEmergencyFundRecommendation();
+      if (efRec.monthlyAverage > 0){
+        var cov = calculateEmergencyFundCoverage(efRec);
+        var efValue = cov.monthsCovered !== null ? (cov.monthsCovered.toFixed(1).replace('.', ',') + ' meses') : '—';
+        rows.push({attrs:' data-action="open-home-emergency-fund"', iconName:'shield', label:'Fundo de emergência', value: efValue});
+      }
+    }
+    if (state.savingsGoals.length){
+      rows.push({attrs:' data-action="goto" data-view="poupancas"', iconName:'piggy', label:'Poupanças', value: euro(netw.savingsTotal)});
+    }
+    if (state.loans.length){
+      rows.push({attrs:' data-action="goto" data-view="loan"', iconName:'landmark', label:'Créditos', value: euro(netw.liabilities), note:'em dívida'});
+    }
+    if (state.investments.length){
+      var port = portfolioTotals();
+      rows.push({attrs:' data-action="goto" data-view="investment"', iconName:'trending', label:'Investimentos', value: euro(port.current), cls: port.gain >= 0 ? 'positive' : 'negative', note: (port.gain >= 0 ? '+' : '') + port.pct.toFixed(1) + '%'});
+    }
+    if (!rows.length) return '';
+    var body = rows.map(function(r){
+      return '<div class="finview-row"' + r.attrs + '>' +
+        '<span class="icon-badge sm">' + icon(r.iconName) + '</span>' +
+        '<div class="finview-body"><div class="finview-label">' + r.label + '</div>' + (r.note ? '<div class="finview-note">' + r.note + '</div>' : '') + '</div>' +
+        '<div class="finview-value mono' + (r.cls ? (' ' + r.cls) : '') + '">' + r.value + '</div>' +
+        icon('chevronRight','chev') +
+      '</div>';
+    }).join('');
+    return '<div class="section-head"><h2>Visão financeira</h2></div><div class="cat-card finview-card">' + body + '</div>';
+  }
+
+  // Ações rápidas — no máximo 4, "Despesa" continua a ser a mais importante
+  // (primeiro botão, com destaque visual). Reaproveita sempre ações já
+  // existentes: openForm()/selectedKind (igual à folha "+" já usada fora da
+  // Home) e a navegação "goto" já usada no resto da app.
+  function homeQuickActionsHtml(){
+    return '<div class="section-head"><h2>Ações rápidas</h2></div>' +
+      '<div class="home-quick-actions">' +
+        '<button type="button" class="home-quick-btn primary" data-action="quick-expense">' + icon('plusCircle') + '<span>Despesa</span></button>' +
+        '<button type="button" class="home-quick-btn" data-action="quick-income">' + icon('banknote') + '<span>Receita</span></button>' +
+        '<button type="button" class="home-quick-btn" data-action="goto" data-view="poupancas">' + icon('piggy') + '<span>Aporte</span></button>' +
+        '<button type="button" class="home-quick-btn" data-action="goto" data-view="month">' + icon('chevronRight') + '<span>Ver orçamento</span></button>' +
+      '</div>';
+  }
+
   function renderHomeView(content){
     var activeSp = activeSpace();
     if (activeSp && activeSp.type === 'temporario'){
@@ -5195,62 +5416,50 @@
     var pctComprometido = sR.total > 0 ? Math.round((sD.total/sR.total)*100) : 0;
     var progressCls = pctComprometido >= 100 ? 'danger' : (pctComprometido >= 80 ? 'warning' : 'success');
 
+    // ---- 1. Header ----
     var html = '<div class="greeting-row"><h1>' + greetingWord() + (greetingName() ? ', ' + escapeHtml(greetingName()) : '') + '</h1><div class="sub">' + monthLabelOf(state.monthKey) + '</div></div>';
 
+    // ---- 2. Disponível para gastar (hero, compacto: 1 linha + 1 barra) ----
     html += '<div class="hero-card">' +
       '<div class="hero-label">Disponível para gastar</div>' +
       '<div class="hero-value mono ' + (disponivel >= 0 ? 'positive' : 'negative') + '">' + (disponivel >= 0 ? '+' : '') + euro(disponivel) + '</div>' +
-      '<div class="hero-note">' + (sR.total > 0 ? 'de ' + euro(sR.total) + ' de rendimento previsto este mês' : 'até ao fim do mês') + '</div>' +
-      '<div class="trio-grid' + (state.savingsGoals.length ? ' four' : '') + '">' +
-        '<div class="trio-tile"><div class="trio-label">Planeado</div><div class="trio-value mono">' + euro(sD.total) + '</div></div>' +
-        '<div class="trio-tile"><div class="trio-label">Gasto</div><div class="trio-value mono">' + euro(sD.done) + '</div></div>' +
-        '<div class="trio-tile"><div class="trio-label">Restante</div><div class="trio-value mono">' + euro(Math.max(0, sD.total - sD.done)) + '</div></div>' +
-        (state.savingsGoals.length ? '<div class="trio-tile"><div class="trio-label">Poupado</div><div class="trio-value mono">' + euro(Math.max(0,poupMes)) + '</div></div>' : '') +
-      '</div>' +
+      '<div class="hero-breakdown">' + (sR.total > 0 ? ('Receitas ' + euro(sR.total) + ' · Utilizado ' + euro(sD.done)) : 'Ainda sem receitas previstas este mês') + '</div>' +
       '<div class="budget-progress-row">' +
         '<div class="budget-progress-label"><span>' + pctComprometido + '% do orçamento utilizado</span></div>' +
         '<div class="progress-track"><div class="progress-fill ' + progressCls + '" style="width:' + Math.max(0,Math.min(100,pctComprometido)) + '%"></div></div>' +
-        (sR.total > 0 ? '<div class="progress-context">' + euro(sD.total) + ' comprometidos de ' + euro(sR.total) + ' disponíveis</div>' : '') +
       '</div>' +
     '</div>';
 
-    html += monthSummaryHtml(sR, sD, poupMes, pendentes);
-    html += financialHealthHtml(sR, sD, poupMes, netw);
+    // ---- 3. Resumo do mês (uma frase; reaproveita computeMonthSummary — se
+    // houver uma 2ª mensagem, fica disponível num toque, sem ocupar espaço) ----
+    var summaryMsgs = computeMonthSummary(sR, sD, poupMes, pendentes);
+    if (summaryMsgs.length === 1){
+      html += '<div class="home-summary-line ' + summaryMsgs[0].type + '">' + icon(summaryMsgs[0].icon) + '<span>' + summaryMsgs[0].text + '</span></div>';
+    } else if (summaryMsgs.length > 1){
+      html += '<details class="home-summary-line ' + summaryMsgs[0].type + '">' +
+        '<summary>' + icon(summaryMsgs[0].icon) + '<span>' + summaryMsgs[0].text + '</span></summary>' +
+        '<div class="home-summary-extra">' + summaryMsgs.slice(1).map(function(m){ return icon(m.icon) + '<span>' + m.text + '</span>'; }).join('') + '</div>' +
+      '</details>';
+    }
 
-    if (overdueList.length){
-      html += '<div class="alert-banner danger">' + icon('alert') +
-        '<div><strong>' + overdueList.length + (overdueList.length === 1 ? ' pagamento atrasado' : ' pagamentos atrasados') + '</strong><br>Confirma os pagamentos em atraso no Orçamento.</div></div>';
-    }
-    html += zeroBudgetBannerHtml(sR.total, sD.total);
-    html += extraAlertsHtml();
-    html += emergencyFundCardHtml();
+    // ---- 4. Indicadores rápidos (máx. 3, numa única linha) ----
+    var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
+    var rate = calculateSavingsRate(sR.done, summaryOf(despesasSemSource).done);
+    var health = computeFinancialHealth(sR, sD, poupMes, netw);
+    html += '<div class="trio-grid home-indicators">' +
+      '<div class="trio-tile"><div class="trio-label">Gasto</div><div class="trio-value mono">' + pctComprometido + '%</div></div>' +
+      '<div class="trio-tile"><div class="trio-label">Poupança</div><div class="trio-value mono' + (rate.rate !== null && rate.rate < 0 ? ' negative' : '') + '">' + (rate.rate === null ? '—' : fmtPercent(rate.rate)) + '</div></div>' +
+      '<div class="trio-tile tappable" data-action="open-home-health"><div class="trio-label">Saúde</div><div class="trio-value mono ' + (health.tier.cls === 'success' ? 'positive' : (health.tier.cls === 'danger' ? 'negative' : '')) + '">' + health.score + '</div></div>' +
+    '</div>';
 
-    var cards = '';
-    if (state.loans.length || state.investments.length || state.savingsGoals.length){
-      cards += miniCardHtml('patrimonio', 'trending', 'Património líquido', euro(netw.net), netw.net >= 0 ? 'positive' : 'negative');
-    }
-    if (state.savingsGoals.length){
-      cards += miniCardHtml('poupancas', 'piggy', 'Poupanças', euro(netw.savingsTotal));
-    }
-    if (state.loans.length){
-      cards += miniCardHtml('loan', 'landmark', 'Créditos', euro(netw.liabilities), null, 'em dívida');
-    }
-    if (state.investments.length){
-      var port = portfolioTotals();
-      cards += miniCardHtml('investment', 'trending', 'Investimentos', euro(port.current), port.gain >= 0 ? 'positive' : 'negative', (port.gain >= 0 ? '+' : '') + port.pct.toFixed(1) + '%');
-    }
-    if (cards) html += '<div class="mini-card-grid">' + cards + '</div>';
+    // ---- 5. Precisa da tua atenção (máx. 1-2) ----
+    html += homeAttentionHtml(homeAttentionAlerts(sD, disponivel, overdueList));
 
-    var proximas = pendentes.slice().sort(function(a,b){ return a.dueDay - b.dueDay; }).slice(0,4);
-    if (proximas.length){
-      html += '<div class="section-head"><h2>Próximas despesas</h2><button type="button" class="link-btn" data-action="goto" data-view="month">Ver orçamento</button></div>' +
-        '<div class="cat-card">' + proximas.map(function(e){
-          var cat = categoryOf(e);
-          return '<div class="upcoming-row"><span class="icon-badge sm" style="' + catTint(cat.color) + '">' + icon(categoryIconOf(cat.key)) + '</span>' +
-            '<div class="upcoming-body"><div class="upcoming-name">' + escapeHtml(e.name) + '</div><div class="upcoming-date">Dia ' + e.dueDay + (isOverdue(e) ? ' · atrasado' : '') + '</div></div>' +
-            '<div class="upcoming-amount mono">' + euro(effectiveAmount(e)) + '</div></div>';
-        }).join('') + '</div>';
-    }
+    // ---- 6. Visão financeira (1 cartão, linhas clicáveis) ----
+    html += homeFinancialOverviewHtml(netw);
+
+    // ---- 7. Ações rápidas (máx. 4) ----
+    html += homeQuickActionsHtml();
 
     content.innerHTML = html;
   }
@@ -7227,6 +7436,32 @@
   function closeEmergencyFundCalc(){ emergencyFundCalcOverlay.classList.remove('open'); }
   document.getElementById('closeEmergencyFundCalc').addEventListener('click', closeEmergencyFundCalc);
   emergencyFundCalcOverlay.addEventListener('click', function(ev){ if (ev.target === emergencyFundCalcOverlay) closeEmergencyFundCalc(); });
+
+  // ---------- Início — detalhes abertos a partir da Home compacta ----------
+  // Reaproveitam integralmente emergencyFundCardHtml()/financialHealthHtml()
+  // (mesma lógica/HTML que antes ficava sempre visível na Home) — só passam
+  // a abrir em detalhe, tal como "Ver cálculo" já fazia (ver ponto 24 do
+  // pedido de redesenho da Home).
+  var homeEmergencyFundOverlay = document.getElementById('homeEmergencyFundOverlay');
+  function closeHomeEmergencyFund(){ homeEmergencyFundOverlay.classList.remove('open'); }
+  function openHomeEmergencyFund(){
+    document.getElementById('homeEmergencyFundBody').innerHTML = emergencyFundCardHtml();
+    homeEmergencyFundOverlay.classList.add('open');
+  }
+  document.getElementById('closeHomeEmergencyFund').addEventListener('click', closeHomeEmergencyFund);
+  homeEmergencyFundOverlay.addEventListener('click', function(ev){ if (ev.target === homeEmergencyFundOverlay) closeHomeEmergencyFund(); });
+
+  var homeHealthOverlay = document.getElementById('homeHealthOverlay');
+  function closeHomeHealth(){ homeHealthOverlay.classList.remove('open'); }
+  function openHomeHealth(){
+    var split = splitByKind(state.entries);
+    var sR = summaryOf(split.receitas), sD = summaryOf(split.despesas);
+    var poupMes = state.savingsLoading ? 0 : savingsMonthNet(state.monthKey);
+    document.getElementById('homeHealthBody').innerHTML = financialHealthHtml(sR, sD, poupMes, netWorthTotals());
+    homeHealthOverlay.classList.add('open');
+  }
+  document.getElementById('closeHomeHealth').addEventListener('click', closeHomeHealth);
+  homeHealthOverlay.addEventListener('click', function(ev){ if (ev.target === homeHealthOverlay) closeHomeHealth(); });
   document.getElementById('savingsMoveSave').addEventListener('click', function(){
     if (!pendingMoveGoalId || savingsMoveSaving) return;
     var raw = document.getElementById('fSavingsMoveValue').value;
@@ -7406,7 +7641,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v37'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v38'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -8550,6 +8785,22 @@
     } else if (action === 'create-emergency-fund'){
       var efRec = calculateEmergencyFundRecommendation();
       openSavingsForm(null, {name:'Fundo de Emergência', goalAmount: efRec.sixMonthFund, type:'emergency_fund'});
+    } else if (action === 'open-home-emergency-fund'){
+      openHomeEmergencyFund();
+    } else if (action === 'open-home-health'){
+      openHomeHealth();
+    } else if (action === 'quick-expense'){
+      // Ação rápida "Despesa" na Home — mesmo caminho que o "+" já usa fora
+      // de Orçamento/Créditos/Investimentos/Poupanças (openQuickAdd → openForm),
+      // só que direto, sem passar pela folha de escolha (ver ponto 12 do
+      // pedido: "adicionar despesa" continua a ser a ação mais importante).
+      openForm(null);
+    } else if (action === 'quick-income'){
+      openForm(null);
+      selectedKind = 'receita';
+      setKindButtons(selectedKind);
+      updateFormTitle();
+      updateCategoryOptions();
     } else if (action === 'subview'){
       var subviewGroup = actionEl.getAttribute('data-group');
       var subviewVal = actionEl.getAttribute('data-subview');
@@ -9279,6 +9530,7 @@
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
     emergencyFundCalcOverlay:'closeEmergencyFundCalc',
+    homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
     feedbackHubOverlay:'closeFeedbackHub', reportProblemOverlay:'reportProblemCancel', giveFeedbackOverlay:'giveFeedbackCancel'
   };
   function topOpenOverlay(){
