@@ -4514,6 +4514,53 @@
     });
   }
 
+  // ---------- Estado de um orçamento (gasto vs. limite) — fonte única ----------
+  // Antes desta função, cada zona da app (Orçamento, Início, "Resumo do
+  // mês", Espaço Temporário) comparava "gasto" com "orçamento" à sua
+  // maneira — nalguns sítios com uma margem de tolerância (+0.005€),
+  // noutros com uma divisão de floats sem arredondamento nenhum
+  // (`r.total / r.budget >= 1`). Isso permitia que gasto === orçamento
+  // fosse interpretado como "ultrapassado" em vez de "atingido" (o bug
+  // relatado: 500€ gasto de 500€ de orçamento a mostrar "ultrapassaste").
+  // getBudgetStatus() é agora o ÚNICO sítio que decide isto, sempre a
+  // comparar em CÊNTIMOS INTEIROS (nunca floats em euros diretamente), para
+  // nunca depender de arredondamento de vírgula flutuante:
+  //   spentCents <  budgetCents → 'normal' (ou 'warning' a partir de 80%)
+  //   spentCents === budgetCents → 'reached' (atingido — nunca "ultrapassado")
+  //   spentCents >  budgetCents → 'over' (ultrapassado, com overAmount > 0)
+  //   sem orçamento definido (budget nulo/≤0) → 'no-budget'/'no-budget-spent'
+  // Todos os chamadores (categoryBudgetBreakdown/budgetCategoryCardsHtml,
+  // homeAttentionAlerts, computeMonthSummary, overBudgetCategories,
+  // renderTemporarySpaceHome) passam a usar esta função — nenhum volta a
+  // comparar euros/percentagens "à mão".
+  function getBudgetStatus(spent, budget){
+    var spentCents = Math.round((Number(spent) || 0) * 100);
+    var hasBudget = budget !== null && budget !== undefined && Number(budget) > 0;
+    if (!hasBudget){
+      return {
+        status: spentCents > 0 ? 'no-budget-spent' : 'no-budget',
+        percentage: null,
+        overAmount: 0,
+        spent: spentCents / 100,
+        budget: 0
+      };
+    }
+    var budgetCents = Math.round(Number(budget) * 100);
+    var percentage = Math.round((spentCents / budgetCents) * 100);
+    var status;
+    if (spentCents > budgetCents) status = 'over';
+    else if (spentCents === budgetCents) status = 'reached';
+    else if (percentage >= 80) status = 'warning';
+    else status = 'normal';
+    return {
+      status: status,
+      percentage: percentage,
+      overAmount: status === 'over' ? (spentCents - budgetCents) / 100 : 0,
+      spent: spentCents / 100,
+      budget: budgetCents / 100
+    };
+  }
+
   // ---------- Shared math ----------
   function groupEntries(entries){
     var groups = {};
@@ -4623,12 +4670,21 @@
       // "Alimentação = 400€" e ver o controlo à medida que vais lançando as
       // compras reais, em vez de só saberes o total no fim do mês.
       var basis = hasBudget ? r.budget : r.total;
+      // Estado (dentro/perto/atingido/ultrapassado) só faz sentido quando
+      // existe um orçamento-alvo definido manualmente — ver getBudgetStatus().
+      // Sem orçamento definido, mantém-se o comportamento de sempre: barra
+      // colorida pela % do que já foi lançado, sem pílula de estado.
+      var bs = hasBudget ? getBudgetStatus(r.done, r.budget) : null;
       var pct = basis > 0 ? Math.round((r.done/basis)*100) : 0;
       var restante = Math.max(0, basis - r.done);
-      var over = r.done > basis + 0.005;
-      var barCls = over ? 'danger' : (pct >= 80 ? 'warning' : 'success');
+      var barCls = bs
+        ? (bs.status === 'over' ? 'danger' : (bs.status === 'reached' || bs.status === 'warning' ? 'warning' : 'success'))
+        : (pct >= 80 ? 'warning' : 'success');
       var metricValue = state.budgetMetric === 'gasto' ? r.done : (state.budgetMetric === 'restante' ? restante : basis);
-      var statusPill = over ? '<span class="budget-status-pill danger">Acima</span>' : (pct >= 80 && pct < 100 ? '<span class="budget-status-pill warning">Perto</span>' : '');
+      var statusPill = !bs ? '' :
+        bs.status === 'over' ? '<span class="budget-status-pill danger">Acima</span>' :
+        bs.status === 'reached' ? '<span class="budget-status-pill warning">Atingido</span>' :
+        bs.status === 'warning' ? '<span class="budget-status-pill warning">Perto</span>' : '';
       var open = state.openCategoryKey === r.def.key;
       var targetRow = '<div class="budget-cat-target-row">' +
         (hasBudget
@@ -4885,7 +4941,14 @@
       totals[cat.key].planned += Number(e.amount) || 0;
       if (e.paid) totals[cat.key].done += effectiveAmount(e);
     });
-    return order.map(function(k){ return totals[k]; }).filter(function(r){ return r.done > r.planned + 0.005; });
+    // "planned" aqui é a soma dos valores habituais (e.amount), não um
+    // orçamento-alvo definido manualmente — mas usa a MESMA comparação
+    // segura em cêntimos de getBudgetStatus(), para nunca tratar
+    // gasto === habitual como "ultrapassado".
+    return order.map(function(k){ return totals[k]; }).map(function(r){
+      r.status = getBudgetStatus(r.done, r.planned);
+      return r;
+    }).filter(function(r){ return r.status.status === 'over'; });
   }
   function stalledSavingsGoals(){
     if (state.savingsLoading) return [];
@@ -4967,17 +5030,28 @@
     var msgs = [];
     var isCurrentMonth = state.monthKey === monthKeyOf(new Date());
 
+    // Estado de cada categoria com orçamento definido, via getBudgetStatus()
+    // (nunca uma divisão de floats "à mão" — era isso que fazia, por exemplo,
+    // gasto === orçamento parecer "ultrapassado": 500/500 >= 1 é verdadeiro
+    // mesmo sem ultrapassar nada). "Gasto" é sempre o já efetivamente pago
+    // (r.done), a mesma definição usada em Orçamento e nos alertas da Home.
     var breakdown = (state.categoryBudgetsLoading ? [] : categoryBudgetBreakdown(state.entries))
-      .filter(function(r){ return r.budget != null && r.budget > 0; });
-    var worst = null;
+      .filter(function(r){ return r.budget != null && r.budget > 0; })
+      .map(function(r){ return {label: r.def.label, bs: getBudgetStatus(r.done, r.budget)}; });
+    var worstOver = null, worstReached = null, worstNear = null;
     breakdown.forEach(function(r){
-      var pct = r.total / r.budget;
-      if (!worst || pct > worst.pct) worst = {label:r.def.label, pct:pct};
+      if (r.bs.status === 'over'){ if (!worstOver || r.bs.overAmount > worstOver.bs.overAmount) worstOver = r; }
+      else if (r.bs.status === 'reached'){ if (!worstReached) worstReached = r; }
+      else if (r.bs.status === 'warning'){ if (!worstNear || r.bs.percentage > worstNear.bs.percentage) worstNear = r; }
     });
-    if (worst && worst.pct >= 1){
-      msgs.push({type:'danger', icon:'alert', text:'Atenção: já ultrapassaste o orçamento de <strong>' + escapeHtml(worst.label) + '</strong> este mês.'});
-    } else if (worst && worst.pct >= 0.8){
-      msgs.push({type:'warning', icon:'alert', text:'Atenção à <strong>' + escapeHtml(worst.label) + '</strong>. Já utilizaste ' + Math.round(worst.pct*100) + '% do orçamento desta categoria.'});
+    // Nunca duas mensagens para a mesma categoria (ultrapassado/atingido/perto
+    // são mutuamente exclusivos) — mostra só a mais prioritária que exista.
+    if (worstOver){
+      msgs.push({type:'danger', icon:'alert', text:'Atenção: já ultrapassaste o orçamento de <strong>' + escapeHtml(worstOver.label) + '</strong> em ' + euro(worstOver.bs.overAmount) + ' este mês.'});
+    } else if (worstReached){
+      msgs.push({type:'warning', icon:'alert', text:'Atingiste o orçamento de <strong>' + escapeHtml(worstReached.label) + '</strong> este mês.'});
+    } else if (worstNear){
+      msgs.push({type:'warning', icon:'alert', text:'Atenção à <strong>' + escapeHtml(worstNear.label) + '</strong>. Já utilizaste ' + worstNear.bs.percentage + '% do orçamento desta categoria.'});
     }
 
     if (isCurrentMonth && sD.total > 0){
@@ -5170,12 +5244,14 @@
     state.entries.forEach(function(e){ if (kindOf(e) === 'despesa') spent += effectiveAmount(e); });
     var total = typeof s.totalBudget === 'number' ? s.totalBudget : null;
     var remaining = total !== null ? (total - spent) : null;
-    var pct = total ? Math.max(0, Math.min(100, Math.round((spent/total)*100))) : 0;
-    var progressCls = pct >= 100 ? 'danger' : (pct >= 80 ? 'warning' : 'success');
-    // A cor 'danger'/'warning' aqui reaproveita as mesmas classes de estado
-    // usadas no resto da app, mas progress-fill só define success/accent/neutral —
-    // por isso mapeamos para as que já existem.
-    var fillCls = pct >= 100 ? 'accent' : (pct >= 80 ? 'accent' : 'success');
+    // Mesmo estado (dentro/perto/atingido/ultrapassado) usado em Orçamento e
+    // na Home — via getBudgetStatus(), nunca uma comparação de floats à
+    // parte. Vermelho só quando é mesmo ultrapassado; a 100% exatos fica
+    // âmbar (atingido), não vermelho (ver ponto 13 do pedido de alertas de
+    // orçamento: "não usar vermelho a 100% se não houver ultrapassagem").
+    var bs = total ? getBudgetStatus(spent, total) : null;
+    var pct = bs && bs.percentage !== null ? Math.max(0, Math.min(100, bs.percentage)) : 0;
+    var fillCls = !bs ? 'success' : (bs.status === 'over' ? 'danger' : (bs.status === 'reached' || bs.status === 'warning' ? 'warning' : 'success'));
 
     var html = '<div class="greeting-row"><h1>' + escapeHtml(s.name) + '</h1><div class="sub">' + spacePeriodLabel(s) + '</div></div>';
 
@@ -5266,17 +5342,23 @@
   function homeAttentionAlerts(sD, disponivel, overdueList){
     var alerts = [];
     var rows = (state.loading || state.categoryBudgetsLoading) ? [] : categoryBudgetBreakdown(state.entries);
-    var overCats = [], nearCats = [];
+    // Estado de cada categoria via getBudgetStatus() (nunca comparação de
+    // floats à mão) — ultrapassado/atingido/perto são mutuamente exclusivos
+    // por categoria, nunca duas ao mesmo tempo para a mesma categoria.
+    var overCats = [], reachedCats = [], nearCats = [];
     rows.forEach(function(r){
       if (r.budget == null || r.budget <= 0) return;
-      var pct = Math.round((r.done / r.budget) * 100);
-      if (r.done > r.budget + 0.005) overCats.push(r.def.label);
-      else if (pct >= 80) nearCats.push({label: r.def.label, pct: pct});
+      var bs = getBudgetStatus(r.done, r.budget);
+      if (bs.status === 'over') overCats.push({label: r.def.label, overAmount: bs.overAmount});
+      else if (bs.status === 'reached') reachedCats.push(r.def.label);
+      else if (bs.status === 'warning') nearCats.push({label: r.def.label, pct: bs.percentage});
     });
     if (overCats.length){
-      alerts.push({p:1, cls:'danger', iconName:'alert',
-        text: '<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(overCats.slice(0,2).join(', ')) + (overCats.length > 2 ? ' e outras' : '') + (overCats.length === 1 ? ' já passou' : ' já passaram') + ' o valor definido.',
-        action:'goto', view:'month'});
+      var worstOverCat = overCats.slice().sort(function(a,b){ return b.overAmount - a.overAmount; })[0];
+      var overText = overCats.length === 1
+        ? ('<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(worstOverCat.label) + ' já passou o valor definido em ' + euro(worstOverCat.overAmount) + '.')
+        : ('<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(overCats.slice(0,2).map(function(c){ return c.label; }).join(', ')) + (overCats.length > 2 ? ' e outras' : '') + ' já passaram o valor definido — a maior, ' + escapeHtml(worstOverCat.label) + ', em ' + euro(worstOverCat.overAmount) + '.');
+      alerts.push({p:1, cls:'danger', iconName:'alert', text: overText, action:'goto', view:'month'});
     } else if (disponivel < -0.005){
       alerts.push({p:1, cls:'danger', iconName:'alert',
         text: '<strong>Despesas acima da receita prevista.</strong> Ultrapassam em ' + euro(Math.abs(disponivel)) + ' este mês.',
@@ -5287,16 +5369,24 @@
         text: '<strong>' + overdueList.length + (overdueList.length === 1 ? ' pagamento atrasado.' : ' pagamentos atrasados.') + '</strong> Confirma no Orçamento.',
         action:'goto', view:'month'});
     }
+    // "Atingido" (100% exato) nunca aparece junto com "ultrapassado" para a
+    // mesma categoria (são estados mutuamente exclusivos); prioridade
+    // média/alta — logo a seguir a atrasos, antes de "perto do limite".
+    if (reachedCats.length){
+      alerts.push({p:3, cls:'warning', iconName:'alert',
+        text: '<strong>Orçamento atingido.</strong> ' + escapeHtml(reachedCats.slice(0,2).join(', ')) + (reachedCats.length > 2 ? ' e outras' : '') + (reachedCats.length === 1 ? ' chegou' : ' chegaram') + ' exatamente ao valor definido.',
+        action:'goto', view:'month'});
+    }
     if (nearCats.length){
       var worst = nearCats.sort(function(a,b){ return b.pct - a.pct; })[0];
-      alerts.push({p:3, cls:'warning', iconName:'alert',
+      alerts.push({p:4, cls:'warning', iconName:'alert',
         text: '<strong>Perto do limite.</strong> ' + escapeHtml(worst.label) + ' já usou ' + worst.pct + '% do orçamento' + (nearCats.length > 1 ? ' (e mais ' + (nearCats.length - 1) + ')' : '') + '.',
         action:'goto', view:'month'});
     }
     var reviews = state.loansLoading ? [] : upcomingReviewAlerts();
     if (reviews.length){
       var loanNames = reviews.map(function(r){ return r.loan.name; }).join(', ');
-      alerts.push({p:4, cls:'warning', iconName:'bell',
+      alerts.push({p:5, cls:'warning', iconName:'bell',
         text: '<strong>Revisão de taxa a aproximar-se.</strong> ' + escapeHtml(loanNames) + (reviews.length === 1 ? ' revê a taxa' : ' revêem a taxa') + ' nos próximos 60 dias.',
         action:'goto', view:'loan'});
     }
@@ -5305,14 +5395,14 @@
       if (efRec.monthlyAverage > 0){
         var cov = calculateEmergencyFundCoverage(efRec);
         if (!cov.goal || cov.current < efRec.threeMonthFund){
-          alerts.push({p:5, cls:'info', iconName:'shield',
+          alerts.push({p:6, cls:'info', iconName:'shield',
             text: '<strong>Fundo de emergência abaixo do recomendado.</strong> ' + (cov.goal ? ('Tens ' + euro(cov.current) + ' — referência mínima ' + euro(efRec.threeMonthFund) + '.') : 'Ainda não tens um a acompanhar.'),
             action:'open-home-emergency-fund'});
         }
       }
       var stalled = stalledSavingsGoals();
       if (stalled.length){
-        alerts.push({p:6, cls:'info', iconName:'piggy',
+        alerts.push({p:7, cls:'info', iconName:'piggy',
           text: '<strong>Poupanças paradas.</strong> ' + escapeHtml(stalled.map(function(g){ return g.name; }).join(', ')) + (stalled.length === 1 ? ' não tem' : ' não têm') + ' movimentos há mais de 2 meses.',
           action:'goto', view:'poupancas'});
       }
@@ -7641,7 +7731,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v38'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v39'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
