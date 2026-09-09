@@ -7687,16 +7687,64 @@
   // tudo num único ficheiro .json que o utilizador pode guardar como
   // backup — útil se algum dia precisar de recuperar dados manualmente.
   var EXPORT_COLLECTIONS = ['spaces', 'payments', 'entries', 'loans', 'loanSnapshots', 'investments', 'investmentContributions', 'investmentSnapshots', 'savingsGoals', 'savingsMovements', 'familyMembers'];
+  // ATENÇÃO (Auditoria de Segurança completa, 2026-09-09): esta função
+  // fazia antes db.collection('spaces'|'payments'|'entries').get() SEM
+  // filtro nenhum — exatamente o mesmo problema estrutural já documentado e
+  // corrigido em loadSpaces()/loadPayments()/loadMonth()/etc. (ver
+  // ESPACOS_FINANCEIROS.md secções 14/15.4/16): assim que a coleção tem UM
+  // documento a que este utilizador não tem acesso (um Espaço privado de
+  // outro membro da família, ou os payments/entries desse Espaço), o
+  // Firestore nega o pedido INTEIRO — o botão "Exportar dados" já estava,
+  // na prática, a falhar sempre para esta família (que já tem um Espaço
+  // privado "Pessoal" de outro membro). E mesmo que não estivesse a falhar,
+  // exportar às cegas os dados privados de outra pessoa seria, só por si,
+  // uma fuga de privacidade grave — a mesma que as regras do Firestore
+  // impedem em todo o resto da app.
+  //
+  // Corrigido para seguir exatamente o mesmo padrão já usado em
+  // loadSpaces(): só pede Espaços que o Firestore consegue provar, pelos
+  // próprios filtros da query, que este utilizador pode ver — nunca a
+  // coleção inteira — e depois só payments/entries desses Espaços
+  // concretos. O resultado é a exportação de TUDO o que este utilizador
+  // legitimamente pode ver (Espaço "Família" + os seus próprios Espaços
+  // privados + qualquer Espaço partilhado onde está listado), nunca de um
+  // Espaço privado alheio — o mesmo âmbito que já vê dentro da própria app.
+  function visibleSpacesForExport(){
+    var myUid = state.myUid;
+    return Promise.all([
+      db.collection('spaces').where('ownerUserId', '==', myUid).get(),
+      db.collection('spaces').where('visibility', '==', 'partilhado').where('memberUids', '==', []).get(),
+      db.collection('spaces').where('visibility', '==', 'partilhado').where('memberUids', 'array-contains', myUid).get()
+    ]).then(function(snaps){
+      var byId = {};
+      snaps.forEach(function(snap){
+        snap.docs.forEach(function(d){ byId[d.id] = Object.assign({id: d.id}, d.data()); });
+      });
+      return Object.keys(byId).map(function(id){ return byId[id]; });
+    });
+  }
   function exportAllFamilyData(){
     if (!db) return Promise.reject(new Error('Sem ligação à base de dados.'));
-    return Promise.all(EXPORT_COLLECTIONS.map(function(name){
-      return db.collection(name).get().then(function(snap){
-        return snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); });
+    // Coleções sem conceito de Espaço (Património global — sempre da família
+    // toda, sem risco de "lista sem filtro": a regra não depende de nenhum
+    // campo do documento, só de souDaFamilia()) continuam exportadas por
+    // inteiro, tal como antes.
+    var GLOBAL_COLLECTIONS = EXPORT_COLLECTIONS.filter(function(name){
+      return name !== 'spaces' && name !== 'payments' && name !== 'entries';
+    });
+    return visibleSpacesForExport().then(function(spaces){
+      var spaceIds = spaces.map(function(s){ return s.id; });
+      var paymentQueries = spaceIds.map(function(sid){ return db.collection('payments').where('spaceId', '==', sid).get(); });
+      var entryQueries = spaceIds.map(function(sid){ return db.collection('entries').where('spaceId', '==', sid).get(); });
+      var globalQueries = GLOBAL_COLLECTIONS.map(function(name){ return db.collection(name).get(); });
+      return Promise.all([Promise.all(paymentQueries), Promise.all(entryQueries), Promise.all(globalQueries)]).then(function(res){
+        var toDocs = function(snap){ return snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); }); };
+        var payments = [].concat.apply([], res[0].map(toDocs));
+        var entries = [].concat.apply([], res[1].map(toDocs));
+        var data = { exportedAt: new Date().toISOString(), app: 'MAB360', spaces: spaces, payments: payments, entries: entries };
+        GLOBAL_COLLECTIONS.forEach(function(name, i){ data[name] = toDocs(res[2][i]); });
+        return data;
       });
-    })).then(function(results){
-      var data = { exportedAt: new Date().toISOString(), app: 'MAB360' };
-      EXPORT_COLLECTIONS.forEach(function(name, i){ data[name] = results[i]; });
-      return data;
     });
   }
   function downloadJson(filename, dataObj){
@@ -7746,7 +7794,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v40'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v41'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
