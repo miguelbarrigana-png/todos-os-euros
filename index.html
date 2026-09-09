@@ -8009,7 +8009,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v42'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v43'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -10109,7 +10109,7 @@
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser, getIdTokenResult,
-    sendEmailVerification
+    sendEmailVerification, reload, getIdToken
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
   // Sistema de Convites de Família (2026-09-09): as 4 operações sensíveis
   // (criar/revogar/resgatar convite, remover membro) correm sempre no
@@ -10303,7 +10303,18 @@
       // logo a seguir ao signup com código, como mais tarde se a pessoa só
       // confirmar o email depois de já ter recarregado a app.
       window.__ContasApp.redeemInvite = function(code){
-        return callRedeemInvite({ code: code }).then(function(res){
+        // O ID token guardado em memória pode ter sido emitido ANTES de a
+        // pessoa confirmar o email (o caso mais comum: confirma o email
+        // numa aba/app diferente e volta aqui sem reiniciar sessão) — nesse
+        // caso `email_verified` no token ainda está a `false` mesmo já
+        // tendo confirmado, e a Cloud Function recusa com EMAIL_NAO_CONFIRMADO.
+        // Por isso força sempre um reload() + token novo antes de tentar.
+        var refreshed = auth.currentUser
+          ? reload(auth.currentUser).then(function(){ return getIdToken(auth.currentUser, true); }).catch(function(){ /* segue mesmo assim — o pior caso é o erro de sempre */ })
+          : Promise.resolve();
+        return refreshed.then(function(){
+          return callRedeemInvite({ code: code });
+        }).then(function(res){
           try { localStorage.removeItem('contasPendingInviteCode'); } catch (e) {}
           try { localStorage.setItem('contasWelcomePending', '1'); } catch (e) {}
           window.location.reload();
