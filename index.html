@@ -2045,6 +2045,8 @@
     familyInviteBusy: false,     // evita duplo-clique em gerar/revogar/remover enquanto a chamada ao backend está em curso
     familiaFormError: null,      // mensagem de erro a mostrar na página Família (gerar convite / remover membro)
     noFamilyError: null,         // mensagem de erro a mostrar no ecrã "Conta sem família" (juntar com código)
+    familiaJoinBusy: false,      // "Juntar a outra família" (conta já existente, ver renderFamiliaView) — evita duplo-clique
+    familiaJoinError: null,      // erro desse mesmo formulário
     noFamilyBusy: false,
     recurrencesLoading: true,
     categoryBudgets: {},           // categoryKey -> valor-alvo mensal definido manualmente (não varia por mês)
@@ -6782,6 +6784,32 @@
       html += '<div class="cat-card"><p class="hint" style="margin:0;">Só o dono da família pode convidar novos membros ou remover alguém.</p></div>';
     }
 
+    // "Juntar a outra família" — para quem já tem conta (não é o fluxo de
+    // signup nem o ecrã "sem família") e recebeu um código de outra pessoa,
+    // ex.: já usava a app sozinho e agora quer juntar-se à família do
+    // cônjuge. O backend (redeemFamilyInviteHandler) já suporta isto para
+    // qualquer conta — só bloqueia quem é dono de uma família COM outros
+    // membros, para nunca abandonar dados de outra pessoa sem dono. Antes
+    // desta secção não havia nenhuma forma de o fazer a partir da app já
+    // autenticado (só no signup ou no ecrã raro "conta sem família").
+    var otherMembers = members.filter(function(m){ return m.uid !== state.myUid; });
+    var ownerWithMembers = isFamilyOwner() && otherMembers.length > 0;
+    html += '<div class="cat-card"><h3>Juntar a outra família</h3>';
+    if (ownerWithMembers){
+      html += '<p class="hint" style="margin:0;">És dono desta família e tens outros membros — remove-os primeiro (ou contacta o suporte) antes de entrares noutra família com um código.</p>';
+    } else {
+      html += '<p class="hint" style="margin:0 0 10px;">Já tens conta e recebeste um código de outra família (ex.: do teu cônjuge)? Cola-o aqui. Sais desta família e entras nessa — os dados que já tens aqui não são apagados, só deixas de os ver a partir de agora.</p>';
+      if (state.familiaJoinError){
+        html += '<p class="hint" style="color:var(--danger);">' + escapeHtml(state.familiaJoinError) + '</p>';
+      }
+      html +=
+        '<div class="field">' +
+          '<input type="text" id="familiaJoinCode" placeholder="Ex.: MAB-7K4P-X92D" autocapitalize="characters" autocomplete="off"' + (state.familiaJoinBusy ? ' disabled' : '') + '>' +
+        '</div>' +
+        '<button type="button" class="btn ghost" data-action="familia-join-other" style="width:100%;"' + (state.familiaJoinBusy ? ' disabled' : '') + '>Juntar-me a essa família</button>';
+    }
+    html += '</div>';
+
     content.innerHTML = html;
   }
 
@@ -8009,7 +8037,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v43'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v44'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -9286,6 +9314,24 @@
       window.__ContasApp.redeemInvite(codeToRedeem).catch(function(err){
         state.noFamilyBusy = false;
         state.noFamilyError = friendlyInviteError(err, 'Não foi possível entrar com este código.');
+        render();
+      });
+    } else if (action === 'familia-join-other'){
+      if (state.familiaJoinBusy) return;
+      var joinCodeEl = document.getElementById('familiaJoinCode');
+      var joinCode = joinCodeEl ? joinCodeEl.value : '';
+      if (!joinCode || !joinCode.trim()){
+        state.familiaJoinError = 'Introduz um código de convite.';
+        render();
+        return;
+      }
+      if (!window.confirm('Sair desta família e entrar na nova com este código? Os dados que já tens aqui continuam a existir, só deixas de os ver a partir de agora.')) return;
+      state.familiaJoinBusy = true;
+      state.familiaJoinError = null;
+      render();
+      window.__ContasApp.redeemInvite(joinCode).catch(function(err){
+        state.familiaJoinBusy = false;
+        state.familiaJoinError = friendlyInviteError(err, 'Não foi possível entrar com este código.');
         render();
       });
     } else if (action === 'nofamily-resend-verification'){
