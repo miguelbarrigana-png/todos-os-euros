@@ -1062,13 +1062,13 @@
         <label>Família</label>
         <div class="segmented" id="signupFamilySeg">
           <button type="button" data-family-mode="new" class="active">Família nova</button>
-          <button type="button" data-family-mode="join">Juntar com código</button>
+          <button type="button" data-family-mode="join">Juntar com convite</button>
         </div>
       </div>
       <div class="field" id="signupFamilyCodeField" hidden>
-        <label for="fSignupFamilyCode">Código da família</label>
-        <input type="text" id="fSignupFamilyCode" placeholder="Pede o código a quem já tem conta" autocomplete="off">
-        <div class="hint">Quem já tem conta encontra o código em Definições → "O teu código de família".</div>
+        <label for="fSignupFamilyCode">Código de convite</label>
+        <input type="text" id="fSignupFamilyCode" placeholder="Ex.: MAB-7K4P-X92D" autocapitalize="characters" autocomplete="off">
+        <div class="hint">Pede um código a quem já tem conta — gera-o na página "Família", em "Convidar membro". Vai ser preciso confirmar o teu email antes de entrares.</div>
       </div>
       <div class="field-error" id="loginError"></div>
       <button type="submit" class="btn primary" id="loginSubmit" style="width:100%;">Entrar</button>
@@ -1788,7 +1788,7 @@
 
     <div class="field">
       <label>Família</label>
-      <div class="hint">Vê quem faz parte e partilha o código de família em Mais → Família.</div>
+      <div class="hint">Vê quem faz parte e convida novos membros em Mais → Família.</div>
     </div>
 
     <div class="field">
@@ -2014,7 +2014,7 @@
     loading: true,
     yearLoading: true,
     dbAvailable: null,             // null = connecting, 'setup' = needs config, 'nofamily' = conta sem família, false = failed, true = ready
-    familyId: null,                // id da família desta conta (também serve de "código de família" a partilhar)
+    familyId: null,                // id da família desta conta — desde o Sistema de Convites de Família (2026-09-09) é só um identificador interno; uid===familyId é quem é "dono" (ver isFamilyOwner()). NUNCA mais é usado como código a partilhar — isso passou a ser o familyInvites/{código}.
     isAdmin: false,                // custom claim "admin" — ver Admin -> Feedback
     openMenuId: null,
     editingPaymentId: null,
@@ -2038,6 +2038,14 @@
     myEmail: null,
     familyMembers: [],
     familyMembersLoading: true,
+    // ---------- Sistema de Convites de Família (2026-09-09) ----------
+    familyInvites: [],           // convites ativos desta família — só carregado/visível para o dono
+    familyInvitesLoading: false,
+    lastCreatedInvite: null,     // {code, expiresAt, maxUses, validityDays} — o código em texto só existe aqui, uma vez, até a pessoa sair da página Família
+    familyInviteBusy: false,     // evita duplo-clique em gerar/revogar/remover enquanto a chamada ao backend está em curso
+    familiaFormError: null,      // mensagem de erro a mostrar na página Família (gerar convite / remover membro)
+    noFamilyError: null,         // mensagem de erro a mostrar no ecrã "Conta sem família" (juntar com código)
+    noFamilyBusy: false,
     recurrencesLoading: true,
     categoryBudgets: {},           // categoryKey -> valor-alvo mensal definido manualmente (não varia por mês)
     categoryBudgetsLoading: true,
@@ -3794,12 +3802,28 @@
   });
 
   // ---------- Família (membros) ----------
+  // joinedAt/expiresAt/createdAt podem vir em dois formatos diferentes,
+  // consoante quem os gravou: uma string ISO (new Date().toISOString(),
+  // usado pelo upsertMyFamilyMember() do próprio cliente) OU um Firestore
+  // Timestamp (usado pelas Cloud Functions do Sistema de Convites de
+  // Família — createFamilyInvite/redeemFamilyInvite/removeFamilyMember,
+  // ver functions/index.js). Esta função normaliza os dois para um número
+  // de milissegundos comparável, para nunca comparar um Timestamp com uma
+  // string diretamente (daria uma ordenação errada, silenciosa).
+  function toMillisFlex(v){
+    if (!v) return 0;
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+    if (typeof v === 'string') { var t = Date.parse(v); return isNaN(t) ? 0 : t; }
+    return 0;
+  }
+
   function loadFamilyMembers(){
     state.familyMembersLoading = true;
     render();
     return db.collection('familyMembers').get().then(function(snap){
       state.familyMembers = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
-        .sort(function(a,b){ return (a.joinedAt||'') < (b.joinedAt||'') ? -1 : ((a.joinedAt||'') > (b.joinedAt||'') ? 1 : 0); });
+        .sort(function(a,b){ return toMillisFlex(a.joinedAt) - toMillisFlex(b.joinedAt); });
       state.familyMembersLoading = false;
       render();
     }).catch(function(err){
@@ -3807,6 +3831,38 @@
       state.familyMembersLoading = false;
       render();
     });
+  }
+
+  // Lista os convites ainda "vivos" (não usados/revogados/expirados) desta
+  // família — só o dono os consegue mesmo ler (ver firestore.rules,
+  // familyInvites: allow read só com souDonoDaFamilia()); por isso só
+  // chamamos isto quando sabemos que esta conta é a dona (evita um
+  // permission-denied desnecessário nos logs para quem não é dono).
+  function loadMyInvites(){
+    if (!isFamilyOwner()) { state.familyInvites = []; return Promise.resolve(); }
+    state.familyInvitesLoading = true;
+    render();
+    return db.collection('familyInvites').get().then(function(snap){
+      var now = Date.now();
+      state.familyInvites = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(inv){ return inv.status === 'active' && toMillisFlex(inv.expiresAt) > now; })
+        .sort(function(a,b){ return toMillisFlex(b.createdAt) - toMillisFlex(a.createdAt); });
+      state.familyInvitesLoading = false;
+      render();
+    }).catch(function(err){
+      console.error('loadMyInvites failed', err);
+      state.familyInvitesLoading = false;
+      render();
+    });
+  }
+
+  // "Dono" da família — SEMPRE derivado (nunca um campo gravado): quem tem
+  // uid === familyId é quem fundou esta família (o mesmo conceito usado em
+  // firestore.rules, souDonoDaFamilia() — tem de ficar sempre sincronizado
+  // com essa função). Ver claude/convites-familia.md para a justificação
+  // completa de porque isto funciona sem nenhuma migração de dados.
+  function isFamilyOwner(){
+    return !!(state.myUid && state.familyId && state.myUid === state.familyId);
   }
 
   // ================= Espaços Financeiros =================
@@ -4509,13 +4565,22 @@
   // para que os outros membros da família a vejam na página Família. O nome
   // continua a viver principalmente em localStorage (por telemóvel); isto
   // só publica uma cópia para os outros verem quem faz parte.
+  // ATUALIZADO — Sistema de Convites de Família (2026-09-09, ponto 14): as
+  // Firestore Rules agora trancam role/status/invitedBy num "update" —
+  // só passam se ficarem EXATAMENTE iguais ao que já estavam (só as Cloud
+  // Functions os escrevem/alteram, nunca este código). Por isso, se o
+  // documento já existir e tiver esses campos (foi criado por
+  // redeemFamilyInvite ou removeFamilyMember), este "upsert" tem de os
+  // repetir sem alterar — nunca os omitir (isso apagava-os, por o .set()
+  // aqui substituir o documento inteiro) nem inventar novos valores.
   function upsertMyFamilyMember(){
     if (!db || !state.myUid) return Promise.resolve();
     var name = '';
     try { name = localStorage.getItem('contasMyName') || ''; } catch(e){}
     var ref = db.collection('familyMembers').doc(state.myUid);
     return ref.get().then(function(doc){
-      var existing = (doc && doc.exists) ? doc.data() : {};
+      var exists = !!(doc && doc.exists);
+      var existing = exists ? doc.data() : {};
       var payload = {
         uid: state.myUid,
         email: state.myEmail || existing.email || '',
@@ -4523,6 +4588,11 @@
         joinedAt: existing.joinedAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
+      if (exists){
+        if ('role' in existing) payload.role = existing.role;
+        if ('status' in existing) payload.status = existing.status;
+        if ('invitedBy' in existing) payload.invitedBy = existing.invitedBy;
+      }
       return ref.set(payload);
     }).then(function(){ return loadFamilyMembers(); }).catch(function(err){
       console.error('upsertMyFamilyMember failed', err);
@@ -6535,17 +6605,127 @@
     for (var i = 0; i < key.length; i++){ sum += key.charCodeAt(i); }
     return AVATAR_COLORS[sum % AVATAR_COLORS.length];
   }
+  // ATUALIZADO — Sistema de Convites de Família (2026-09-09): mostra o
+  // papel (Dono/Membro — sempre derivado de uid===familyId, nunca um campo)
+  // em vez do email para todos; o próprio email só aparece na tua própria
+  // linha (ponto 27 do pedido — não expor email dos outros membros sem
+  // necessidade; as Firestore Rules não conseguem esconder só um campo
+  // dentro do mesmo documento, por isso esta minimização é feita aqui).
+  // Só o dono vê o botão "Remover" — e nunca na própria linha dele.
+  // Traduz o erro devolvido por uma Cloud Function do Sistema de Convites
+  // de Família (createFamilyInvite/revokeFamilyInvite/redeemFamilyInvite/
+  // removeFamilyMember) numa mensagem concreta para a pessoa — usa o
+  // "reason" estruturado (err.details.reason) quando presente, que é
+  // exatamente o que essas funções devolvem (ver functions/index.js) para
+  // não depender do texto exato de err.message.
+  var INVITE_ERROR_MESSAGES = {
+    CODIGO_INVALIDO: 'Código inválido.',
+    CODIGO_EXPIRADO: 'Este código expirou.',
+    CODIGO_REVOGADO: 'Este código foi revogado.',
+    CODIGO_ESGOTADO: 'Este código já foi todo utilizado.',
+    EMAIL_NAO_VERIFICADO: 'Confirma o teu email antes de entrares nesta família — verifica a caixa de entrada (e o spam).',
+    DONO_COM_MEMBROS: 'És dono de uma família com outros membros — remove-os primeiro antes de entrares noutra família.',
+    NAO_PODE_REMOVER_SE_PROPRIO: 'Não podes remover-te a ti próprio.',
+    TEM_ESPACO_PRIVADO: 'Este membro tem um Espaço privado — contacta o suporte antes de o remover.',
+    MEMBRO_NAO_ENCONTRADO: 'Este membro já não faz parte da família.'
+  };
+  function friendlyInviteError(err, fallback){
+    var reason = err && err.details && err.details.reason;
+    if (reason && INVITE_ERROR_MESSAGES[reason]) return INVITE_ERROR_MESSAGES[reason];
+    if (err && typeof err.message === 'string' && err.message && err.message.length < 200) return err.message;
+    return fallback;
+  }
+
+  // Copia texto para a área de transferência com feedback visual no botão
+  // (usado para o código de convite) — com fallback para navegadores sem
+  // navigator.clipboard, via um <input readonly> auxiliar.
+  function copyTextWithFeedback(text, btn, inputId){
+    if (!text) return;
+    var input = inputId ? document.getElementById(inputId) : null;
+    var originalLabel = btn ? btn.textContent : '';
+    function restore(){ if (btn) btn.textContent = originalLabel; }
+    function done(){ if (btn) { btn.textContent = 'Copiado!'; setTimeout(restore, 1500); } }
+    function fallbackCopy(){
+      if (!input) return;
+      input.removeAttribute('readonly');
+      input.focus();
+      input.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      input.setAttribute('readonly', 'readonly');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){ fallbackCopy(); done(); });
+    } else {
+      fallbackCopy();
+      done();
+    }
+  }
+
   function memberRowHtml(m){
     var isMe = m.uid === state.myUid;
+    var isOwnerRow = !!(m.uid && m.uid === state.familyId);
     var color = memberColor(m.uid || m.id);
+    var roleLabel = isOwnerRow ? 'Dono da família' : 'Membro';
+    var canRemove = isFamilyOwner() && !isMe && !isOwnerRow;
     return '<div class="member-row">' +
       '<span class="avatar-badge" style="' + catTint(color) + '">' + escapeHtml(memberInitials(m)) + '</span>' +
       '<div class="member-body"><div class="member-name">' + escapeHtml(m.name || 'Sem nome definido') +
         (isMe ? '<span class="member-you-tag">Tu</span>' : '') + '</div>' +
-        (m.email ? '<div class="member-email">' + escapeHtml(m.email) + '</div>' : '') +
+        '<div class="member-email">' + roleLabel + (isMe && m.email ? ' · ' + escapeHtml(m.email) : '') + '</div>' +
       '</div>' +
+      (canRemove ? '<button type="button" class="link-btn" data-action="remove-family-member" data-uid="' + escapeHtml(m.uid) + '" data-name="' + escapeHtml(m.name || m.email || 'este membro') + '" style="color:var(--danger); flex-shrink:0;">Remover</button>' : '') +
     '</div>';
   }
+
+  function inviteStatusLabel(inv){
+    var usesLeft = (inv.maxUses || 1) - (inv.usedCount || 0);
+    var expDate = inv.expiresAt && typeof inv.expiresAt.toDate === 'function' ? inv.expiresAt.toDate() : null;
+    var expTxt = expDate ? expDate.toLocaleDateString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+    return 'Expira a ' + expTxt + ' · ' + usesLeft + ' de ' + (inv.maxUses || 1) + ' utilizaç' + ((inv.maxUses||1)===1?'ão':'ões') + ' por usar';
+  }
+
+  function inviteRowHtml(inv){
+    return '<div class="member-row">' +
+      '<div class="member-body"><div class="member-name">Convite ativo</div>' +
+        '<div class="member-email">' + inviteStatusLabel(inv) + '</div>' +
+      '</div>' +
+      '<button type="button" class="link-btn" data-action="revoke-family-invite" data-id="' + escapeHtml(inv.id) + '" style="color:var(--danger); flex-shrink:0;">Revogar</button>' +
+    '</div>';
+  }
+
+  // Ecrã mostrado a uma conta autenticada cujo users/{uid} ainda não tem
+  // (ou ainda não pôde ter) familyId — Sistema de Convites de Família
+  // (2026-09-09). Dois casos, distinguidos por haver ou não um código
+  // pendente em localStorage (guardado no signup, ver attemptSignup):
+  //  1) Acabou de se registar com um código de convite: falta confirmar o
+  //     email antes de o conseguir resgatar (redeemFamilyInvite exige
+  //     email_verified — ver functions/index.js). Mostra-se um lembrete
+  //     para confirmar o email + um botão para tentar entrar outra vez.
+  //  2) Chegou aqui sem código nenhum (raro — ex.: um users/{uid} apagado
+  //     manualmente): pode colar um código de convite, OU optar
+  //     explicitamente por "Criar a minha própria família" (isolada).
+  function renderNoFamilyView(content){
+    var pendingCode = '';
+    try { pendingCode = localStorage.getItem('contasPendingInviteCode') || ''; } catch (e) {}
+    var email = (state.myEmail || 'a tua conta');
+    content.innerHTML =
+      '<div class="setup-card">' +
+        '<h3>Falta um passo para começares</h3>' +
+        (pendingCode ?
+          '<p class="hint">Já usaste um código de convite com ' + escapeHtml(email) + '. Falta só confirmar o teu email — verifica a caixa de entrada (e o spam) e clica no link, depois volta aqui e clica em "Juntar à família".</p>'
+          : '<p class="hint">Esta conta (' + escapeHtml(email) + ') ainda não está ligada a nenhuma família. Cola aqui um código de convite, ou começa a tua própria família.</p>') +
+        '<div class="field">' +
+          '<label for="noFamilyInviteCode">Código de convite</label>' +
+          '<input type="text" id="noFamilyInviteCode" placeholder="Ex.: MAB-7K4P-X92D" value="' + escapeHtml(pendingCode) + '" autocapitalize="characters" autocomplete="off">' +
+        '</div>' +
+        (state.noFamilyError ? '<p class="hint" style="color:var(--danger);">' + escapeHtml(state.noFamilyError) + '</p>' : '') +
+        '<button type="button" class="btn primary" data-action="nofamily-redeem" style="width:100%; margin-top:4px;"' + (state.noFamilyBusy ? ' disabled' : '') + '>Juntar à família</button>' +
+        '<button type="button" class="btn ghost" data-action="nofamily-resend-verification" style="width:100%; margin-top:8px;"' + (state.noFamilyBusy ? ' disabled' : '') + '>Reenviar email de confirmação</button>' +
+        '<div class="hint" style="margin-top:18px; text-align:center;">Não tens um código? <button type="button" class="link-btn" data-action="nofamily-isolated">Criar a minha própria família</button></div>' +
+        '<div style="text-align:center; margin-top:10px;"><button type="button" class="link-btn" data-action="nofamily-logout">Terminar sessão</button></div>' +
+      '</div>';
+  }
+
   function renderFamiliaView(content){
     if (state.familyMembersLoading){
       content.innerHTML = '<div class="skeleton">A carregar a família…</div>';
@@ -6553,19 +6733,56 @@
     }
     var members = state.familyMembers || [];
     var membersHtml = members.length ? members.map(memberRowHtml).join('') :
-      '<p class="hint">Ainda não há outros membros — partilha o código abaixo com quem quiseres juntar à família.</p>';
-    content.innerHTML =
-      '<div class="cat-card"><h3>Quem faz parte</h3>' + membersHtml + '</div>' +
-      '<div class="cat-card">' +
-        '<h3>O teu código de família</h3>' +
-        '<div class="field" style="margin-bottom:0;">' +
-          '<div class="hint" style="margin:0 0 10px;">Partilha este código com quem quiseres que veja os mesmos dados — essa pessoa cola-o ao criar a conta dela, em "Juntar com código".</div>' +
-          '<div style="display:flex; gap:8px;">' +
-            '<input type="text" readonly value="' + escapeHtml(state.familyId || '') + '" id="familyCodeDisplayView" style="flex:1;">' +
-            '<button type="button" class="btn ghost" data-action="copy-family-code" style="flex-shrink:0; padding:9px 14px; font-size:12.5px;">Copiar</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      '<p class="hint">Ainda não há mais ninguém nesta família.</p>';
+    var html = '<div class="cat-card"><h3>Quem faz parte</h3>' + membersHtml + '</div>';
+
+    if (isFamilyOwner()){
+      html += '<div class="cat-card"><h3>Convidar membro</h3>';
+      if (state.familiaFormError){
+        html += '<p class="hint" style="color:var(--danger);">' + escapeHtml(state.familiaFormError) + '</p>';
+      }
+      if (state.lastCreatedInvite){
+        var inv = state.lastCreatedInvite;
+        html +=
+          '<div class="field" style="margin-bottom:10px;">' +
+            '<div class="hint" style="margin:0 0 10px;">Este código só é mostrado agora — guarda-o ou envia-o já a quem vai usar. Válido ' + inv.validityDays + ' dia' + (inv.validityDays===1?'':'s') + ', ' + inv.maxUses + ' utilizaç' + (inv.maxUses===1?'ão':'ões') + '.</div>' +
+            '<div style="display:flex; gap:8px;">' +
+              '<input type="text" readonly value="' + escapeHtml(inv.code) + '" id="lastInviteCodeDisplay" style="flex:1; font-family:var(--mono, monospace); letter-spacing:0.5px;">' +
+              '<button type="button" class="btn ghost" data-action="copy-invite-code" style="flex-shrink:0; padding:9px 14px; font-size:12.5px;">Copiar</button>' +
+            '</div>' +
+            '<div style="display:flex; gap:8px; margin-top:8px;">' +
+              '<button type="button" class="btn ghost" data-action="share-invite-code" style="flex:1; font-size:12.5px;">Partilhar</button>' +
+              '<button type="button" class="btn ghost" data-action="dismiss-invite-code" style="flex:1; font-size:12.5px;">OK, guardei</button>' +
+            '</div>' +
+          '</div>';
+      } else {
+        html +=
+          '<div class="field">' +
+            '<div class="hint" style="margin:0 0 10px;">Gera um código para partilhares com quem quiseres juntar à família — a pessoa cola-o ao criar a conta dela, ou aqui na página Família se já tiver conta.</div>' +
+            '<div style="display:flex; gap:8px;">' +
+              '<select id="inviteDaysSelect" style="flex:1;">' +
+                '<option value="1">Válido 1 dia</option>' +
+                '<option value="7" selected>Válido 7 dias</option>' +
+                '<option value="30">Válido 30 dias</option>' +
+              '</select>' +
+              '<select id="inviteUsesSelect" style="flex:1;">' +
+                '<option value="1" selected>1 utilização</option>' +
+                '<option value="5">5 utilizações</option>' +
+                '<option value="10">10 utilizações</option>' +
+              '</select>' +
+            '</div>' +
+            '<button type="button" class="btn primary" data-action="create-family-invite" style="width:100%; margin-top:10px;"' + (state.familyInviteBusy ? ' disabled' : '') + '>Gerar código de convite</button>' +
+          '</div>';
+      }
+      if ((state.familyInvites || []).length){
+        html += '<div style="margin-top:14px;">' + state.familyInvites.map(inviteRowHtml).join('') + '</div>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div class="cat-card"><p class="hint" style="margin:0;">Só o dono da família pode convidar novos membros ou remover alguém.</p></div>';
+    }
+
+    content.innerHTML = html;
   }
 
   // ---------- Root render ----------
@@ -6629,9 +6846,7 @@
 
     if (state.dbAvailable === 'nofamily'){
       fab.hidden = true;
-      content.innerHTML =
-        '<div class="setup-card"><h3>Conta sem família associada</h3>' +
-        '<p>Esta conta ainda não está ligada a nenhuma família. Pede a quem configurou a app para criar um documento em <code>users</code> (com o teu UID como ID) com um campo <code>familyId</code> — instruções em CONFIGURAR.md.</p></div>';
+      renderNoFamilyView(content);
       return;
     }
 
@@ -7794,7 +8009,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v41'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v42'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -9004,26 +9219,86 @@
     } else if (action === 'recur-resume'){
       resumeRecurrence(actionEl.getAttribute('data-id'));
       showToast('Reativado', {icon:'check'});
-    } else if (action === 'copy-family-code'){
-      var codeInput = document.getElementById('familyCodeDisplayView');
-      var codeBtn = actionEl;
-      var codeVal = state.familyId || '';
-      var restoreCodeLabel = function(){ codeBtn.textContent = 'Copiar'; };
-      var doneCodeCopy = function(){ codeBtn.textContent = 'Copiado!'; setTimeout(restoreCodeLabel, 1500); };
-      function fallbackCodeCopy(){
-        if (!codeInput) return;
-        codeInput.removeAttribute('readonly');
-        codeInput.focus();
-        codeInput.select();
-        try { document.execCommand('copy'); } catch (e) {}
-        codeInput.setAttribute('readonly', 'readonly');
-      }
-      if (navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(codeVal).then(doneCodeCopy).catch(function(){ fallbackCodeCopy(); doneCodeCopy(); });
+    } else if (action === 'copy-invite-code'){
+      copyTextWithFeedback((state.lastCreatedInvite && state.lastCreatedInvite.code) || '', actionEl, 'lastInviteCodeDisplay');
+    } else if (action === 'share-invite-code'){
+      var shareCode = state.lastCreatedInvite && state.lastCreatedInvite.code;
+      if (!shareCode) { /* nada a partilhar */ }
+      else if (navigator.share){
+        navigator.share({ title: 'Convite MAB360', text: 'Junta-te à minha família na MAB360 com este código: ' + shareCode }).catch(function(){});
       } else {
-        fallbackCodeCopy();
-        doneCodeCopy();
+        copyTextWithFeedback(shareCode, actionEl, 'lastInviteCodeDisplay');
       }
+    } else if (action === 'dismiss-invite-code'){
+      state.lastCreatedInvite = null;
+      render();
+    } else if (action === 'create-family-invite'){
+      if (state.familyInviteBusy) return;
+      var daysSel = document.getElementById('inviteDaysSelect');
+      var usesSel = document.getElementById('inviteUsesSelect');
+      var opts = {
+        validityDays: daysSel ? parseInt(daysSel.value, 10) : 7,
+        maxUses: usesSel ? parseInt(usesSel.value, 10) : 1
+      };
+      state.familyInviteBusy = true;
+      state.familiaFormError = null;
+      render();
+      window.__ContasApp.createInvite(opts).then(function(res){
+        state.familyInviteBusy = false;
+        state.lastCreatedInvite = res;
+        render();
+        loadMyInvites();
+      }).catch(function(err){
+        state.familyInviteBusy = false;
+        state.familiaFormError = friendlyInviteError(err, 'Não foi possível gerar o código. Tenta novamente.');
+        render();
+      });
+    } else if (action === 'revoke-family-invite'){
+      var revokeId = actionEl.getAttribute('data-id');
+      window.__ContasApp.revokeInvite(revokeId).then(function(){
+        showToast('Convite revogado', {icon:'check'});
+        loadMyInvites();
+      }).catch(function(err){
+        showToast(friendlyInviteError(err, 'Não foi possível revogar o convite.'), {icon:'x'});
+      });
+    } else if (action === 'remove-family-member'){
+      var removeUid = actionEl.getAttribute('data-uid');
+      var removeName = actionEl.getAttribute('data-name') || 'este membro';
+      if (!window.confirm('Remover ' + removeName + ' da família? A conta dele passa a ter uma família própria e vazia — os dados partilhados atuais continuam só aqui, nada é apagado.')) return;
+      window.__ContasApp.removeMember(removeUid).then(function(){
+        showToast('Membro removido', {icon:'check'});
+        loadFamilyMembers();
+      }).catch(function(err){
+        showToast(friendlyInviteError(err, 'Não foi possível remover este membro.'), {icon:'x'});
+      });
+    } else if (action === 'nofamily-redeem'){
+      if (state.noFamilyBusy) return;
+      var codeInputEl = document.getElementById('noFamilyInviteCode');
+      var codeToRedeem = codeInputEl ? codeInputEl.value : '';
+      if (!codeToRedeem || !codeToRedeem.trim()){
+        state.noFamilyError = 'Introduz um código de convite.';
+        render();
+        return;
+      }
+      state.noFamilyBusy = true;
+      state.noFamilyError = null;
+      render();
+      window.__ContasApp.redeemInvite(codeToRedeem).catch(function(err){
+        state.noFamilyBusy = false;
+        state.noFamilyError = friendlyInviteError(err, 'Não foi possível entrar com este código.');
+        render();
+      });
+    } else if (action === 'nofamily-resend-verification'){
+      window.__ContasApp.resendVerificationEmail().then(function(){
+        showToast('Email de confirmação enviado', {icon:'check'});
+      }).catch(function(err){
+        showToast('Não foi possível enviar o email agora. Tenta mais tarde.', {icon:'x'});
+      });
+    } else if (action === 'nofamily-isolated'){
+      if (!window.confirm('Criar a tua própria família, sem entrar na de mais ninguém? Podes sempre convidar alguém depois.')) return;
+      window.__ContasApp.startIsolatedFamily();
+    } else if (action === 'nofamily-logout'){
+      window.__ContasApp.logout();
     }
   });
 
@@ -9579,7 +9854,7 @@
       if (isJoiningFamily){
         familyCode = document.getElementById('fSignupFamilyCode').value.trim();
         if (!familyCode){
-          errorEl.textContent = 'Cola o código de família que a outra pessoa te deu.';
+          errorEl.textContent = 'Cola o código de convite que a outra pessoa te deu.';
           errorEl.style.display = 'block';
           return;
         }
@@ -9786,6 +10061,7 @@
       loadInvestments();
       loadEmergencyFundHistory();
       upsertMyFamilyMember();
+      if (isFamilyOwner()) loadMyInvites();
       maybeShowWelcome();
       // Contagens do backoffice (badge "novos" no menu Mais → Admin →
       // Feedback) — só dispara consultas collectionGroup quando o claim
@@ -9794,9 +10070,10 @@
       if (state.isAdmin) refreshAdminCounts();
       markSplashReady();
     },
-    noFamily: function(){
+    noFamily: function(email){
       document.getElementById('loginScreen').hidden = true;
       state.dbAvailable = 'nofamily';
+      state.myEmail = email || null;
       render();
       markSplashReady();
     },
@@ -9831,8 +10108,16 @@
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser, getIdTokenResult
+    signOut, setPersistence, browserLocalPersistence, sendPasswordResetEmail, deleteUser, getIdTokenResult,
+    sendEmailVerification
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  // Sistema de Convites de Família (2026-09-09): as 4 operações sensíveis
+  // (criar/revogar/resgatar convite, remover membro) correm sempre no
+  // backend (Cloud Functions, ver functions/index.js) — nunca escritas
+  // diretas do cliente ao Firestore. É isto que torna impossível a um
+  // cliente auto-associar-se à família de outra pessoa (ver firestore.rules,
+  // users/{uid}.create).
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 
   // ======= CONFIGURA AQUI OS DADOS DO TEU PROJETO FIREBASE =======
   // Consola do Firebase → Definições do projeto → As tuas apps → SDK setup and configuration → Config
@@ -9961,6 +10246,12 @@
         localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
       });
       var auth = getAuth(app);
+      var functions = getFunctions(app);
+
+      var callCreateInvite = httpsCallable(functions, 'createFamilyInvite');
+      var callRevokeInvite = httpsCallable(functions, 'revokeFamilyInvite');
+      var callRedeemInvite = httpsCallable(functions, 'redeemFamilyInvite');
+      var callRemoveMember = httpsCallable(functions, 'removeFamilyMember');
 
       window.__ContasApp.attemptLogin = function(email, password){
         return signInWithEmailAndPassword(auth, email, password).then(function(result){
@@ -9968,26 +10259,79 @@
           return result;
         });
       };
-      window.__ContasApp.attemptSignup = function(email, password, familyCode){
-        // Por omissão uma conta nova fica isolada: o familyId é o seu
-        // próprio UID, portanto ninguém mais começa com acesso aos dados
-        // dela. Se for dado um familyCode (a pessoa escolheu "Juntar com
-        // código" e colou o código de outra conta), usamos esse valor como
-        // familyId em vez de gerar um novo — ou seja, esta conta passa
-        // logo a partilhar os dados dessa família.
-        var familyId = (familyCode && familyCode.trim()) ? familyCode.trim() : null;
+      // ATUALIZADO — Sistema de Convites de Família (2026-09-09, corrige o
+      // risco CRÍTICO da Auditoria: o "código da família" deixava entrar em
+      // QUALQUER família bastando saber o UID de alguém lá dentro, sem
+      // convite, validade ou possibilidade de revogar).
+      //
+      // Signup ISOLADO (sem código): continua exatamente como antes — o
+      // familyId fica igual ao próprio UID, a conta é logo dona da sua
+      // própria família (vazia), sem passar por nenhuma Cloud Function.
+      //
+      // Signup com CÓDIGO DE CONVITE: o cliente NUNCA escreve familyId
+      // nenhum (as regras já nem deixam — ver users/{uid}.create em
+      // firestore.rules). Em vez disso: cria-se a conta, pede-se
+      // confirmação de email (exigida para entrar na família de outra
+      // pessoa — ver redeemFamilyInvite) e tenta-se logo resgatar o
+      // convite. Se a conta ainda não tiver o email confirmado (o caso mais
+      // comum, mesmo depois de clicar no link, por causa de cache do
+      // token), a chamada falha com EMAIL_NAO_VERIFICADO — nesse caso NÃO é
+      // um erro: guardamos o código para tentar de novo, e a app arranca no
+      // ecrã "Conta criada, falta confirmar o email" (ver noFamily()/
+      // renderNoFamilyView), onde a pessoa pode tentar outra vez assim que
+      // clicar no link de confirmação.
+      window.__ContasApp.attemptSignup = function(email, password, inviteCode){
+        var code = (inviteCode && inviteCode.trim()) ? inviteCode.trim() : null;
         return createUserWithEmailAndPassword(auth, email, password).then(function(cred){
-          var finalFamilyId = familyId || cred.user.uid;
-          return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: finalFamilyId }).then(function(){
-            markLoginNow();
+          markLoginNow();
+          if (!code){
+            return setDoc(doc(firestore, 'users', cred.user.uid), { familyId: cred.user.uid }).then(function(){
+              try { localStorage.setItem('contasWelcomePending', '1'); } catch (e) {}
+              window.location.reload();
+              return cred;
+            });
+          }
+          try { localStorage.setItem('contasPendingInviteCode', code); } catch (e) {}
+          return sendEmailVerification(cred.user).catch(function(){ /* não crítico — a pessoa pode pedir reenvio depois */ }).then(function(){
             try { localStorage.setItem('contasWelcomePending', '1'); } catch (e) {}
-            // Recarrega para arrancar pelo caminho normal de boot (login
-            // já feito, users/{uid} já criado) em vez de duplicar aqui a
-            // lógica de arranque da app.
             window.location.reload();
             return cred;
           });
         });
+      };
+      // Chamado a partir do ecrã "Conta sem família" (noFamily) — tanto
+      // logo a seguir ao signup com código, como mais tarde se a pessoa só
+      // confirmar o email depois de já ter recarregado a app.
+      window.__ContasApp.redeemInvite = function(code){
+        return callRedeemInvite({ code: code }).then(function(res){
+          try { localStorage.removeItem('contasPendingInviteCode'); } catch (e) {}
+          try { localStorage.setItem('contasWelcomePending', '1'); } catch (e) {}
+          window.location.reload();
+          return res.data;
+        });
+      };
+      // Fallback explícito no mesmo ecrã: começar sozinho, sem código —
+      // usado por quem chegou a este ecrã sem convite nenhum (ex.: abriu a
+      // app antes de decidir), nunca escolhido automaticamente.
+      window.__ContasApp.startIsolatedFamily = function(){
+        if (!auth.currentUser) return Promise.reject({code:'auth/no-current-user'});
+        return setDoc(doc(firestore, 'users', auth.currentUser.uid), { familyId: auth.currentUser.uid }).then(function(){
+          try { localStorage.removeItem('contasPendingInviteCode'); } catch (e) {}
+          window.location.reload();
+        });
+      };
+      window.__ContasApp.resendVerificationEmail = function(){
+        if (!auth.currentUser) return Promise.reject({code:'auth/no-current-user'});
+        return sendEmailVerification(auth.currentUser);
+      };
+      window.__ContasApp.createInvite = function(opts){
+        return callCreateInvite(opts || {}).then(function(res){ return res.data; });
+      };
+      window.__ContasApp.revokeInvite = function(inviteId){
+        return callRevokeInvite({ inviteId: inviteId }).then(function(res){ return res.data; });
+      };
+      window.__ContasApp.removeMember = function(uid){
+        return callRemoveMember({ uid: uid }).then(function(res){ return res.data; });
       };
       window.__ContasApp.logout = function(){
         clearLoginMark();
@@ -10042,7 +10386,7 @@
               var snap = results[0], tokenResult = results[1];
               var familyId = snap.exists() ? snap.data().familyId : null;
               if (!familyId){
-                window.__ContasApp.noFamily();
+                window.__ContasApp.noFamily(user.email);
                 return;
               }
               var isAdminClaim = !!(tokenResult && tokenResult.claims && tokenResult.claims.admin === true);
