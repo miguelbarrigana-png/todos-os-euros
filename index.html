@@ -755,8 +755,6 @@
   .upcoming-date{font-size:11.5px; color:var(--text-faint); margin-top:1px;}
   .upcoming-amount{font-size:13.5px; font-weight:700; white-space:nowrap; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums;}
   .section-head{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 0; padding:0 2px 10px; margin-top:6px;}
-  .section-head .budget-toggle{flex:1 0 100%; margin:6px 0 0;}
-  .section-head .budget-toggle button{padding:7px 4px; font-size:12px;}
   .section-head h2{font-size:15.5px;}
   .section-head .link-btn{border:none; background:none; color:var(--accent-ink); font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; padding:0;}
 
@@ -810,18 +808,37 @@
     .home-quick-actions{grid-template-columns:repeat(4,1fr);}
   }
 
-  /* ---------- Orçamento: category cards ---------- */
-  .budget-toggle{margin-bottom:16px;}
-  .budget-cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:12px; box-shadow:var(--shadow);}
-  .budget-cat-head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:inherit; border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
-  .budget-cat-name{font-size:14px; font-weight:800; color:var(--text);}
-  /* P1-17 (auditoria UX): gasto/orçamentado por categoria é informação
-     financeira central, não metadado secundário — --text-faint tinha
-     contraste insuficiente (mesma razão do P1-16). */
-  .budget-cat-amounts{font-size:12px; color:var(--text-muted); margin-top:1px; font-family:'Manrope',sans-serif; font-weight:600; font-variant-numeric:tabular-nums;}
-  .budget-cat-head .chev{margin-left:auto; color:var(--text-faint); transition:transform .18s ease; flex-shrink:0;}
+  /* ---------- Orçamento: category cards ----------
+     Redesenho (ver claude/despesas-categoria-redesenho.md): a leitura
+     principal de cada categoria passa a ser "gasto / orçamento" (ex.:
+     "675,00 € / 800,00 €"), com um texto contextual automático por baixo
+     ("Faltam X €" / "Orçamento atingido" / "Ultrapassaste em X €") — em vez
+     do orçamento isolado como valor principal. As tabs "Planeado/Gasto/
+     Restante" que existiam acima da lista foram removidas: com o valor
+     gasto/orçamento já visível em cada categoria, deixaram de acrescentar
+     informação e só duplicavam o que a linha principal já mostra. */
+  .budget-cat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:10px; box-shadow:var(--shadow);}
+  .budget-cat-head{display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:inherit; border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
+  .budget-cat-name{font-size:13px; font-weight:700; color:var(--text-muted);}
+  /* O par gasto/orçamento é agora o valor de leitura principal do cartão
+     (hierarquia: nome → valor → estado → barra → texto de apoio) — por
+     isso é o texto maior e de maior contraste do cabeçalho, não o nome da
+     categoria. badge de estado (Perto/Atingido/Ultrapassado) fica na mesma
+     linha, à direita do valor. */
+  .budget-cat-amounts{display:flex; align-items:baseline; flex-wrap:wrap; column-gap:7px; row-gap:2px; font-size:17px; font-weight:800; color:var(--text); margin-top:2px; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums;}
+  .budget-cat-amounts .budget-cat-sep{font-weight:600; color:var(--text-faint); font-size:14px;}
+  .budget-cat-amounts .budget-cat-target-amt{font-weight:600; color:var(--text-muted); font-size:14px;}
+  .budget-cat-amounts .budget-cat-nobudget-label{font-size:12.5px; font-weight:600; color:var(--text-muted);}
+  /* Texto contextual automático (Faltam X € / Orçamento atingido /
+     Ultrapassaste em X € / Sem orçamento definido) — a mesma cor de estado
+     da badge/barra reforça o significado, mas o texto em si já diz tudo
+     sem depender só da cor (ponto de acessibilidade do pedido). */
+  .budget-cat-subtext{font-size:12.5px; font-weight:600; color:var(--text-faint); margin-bottom:7px;}
+  .budget-cat-subtext.warning{color:var(--warning);}
+  .budget-cat-subtext.danger{color:var(--danger);}
+  .budget-cat-head .chev{margin-left:auto; color:var(--text-faint); transition:transform .18s ease; flex-shrink:0; align-self:center;}
   .budget-cat-card.open .budget-cat-head .chev{transform:rotate(90deg);}
-  .budget-cat-track{padding:0 16px 14px;}
+  .budget-cat-track{padding:0 16px 12px;}
   /* max-height + overflow:hidden faz a animação de expandir/colapsar; mas
      depois de aberto o "..." (menu Editar/Ajustar/Eliminar) de um item desta
      lista é um dropdown posicionado em absolute que se sobrepõe por baixo do
@@ -1756,17 +1773,6 @@
   </div>
 </div>
 
-<div class="overlay" id="emergencyFundCalcOverlay">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <h2>Como foi calculado</h2>
-    <div id="emergencyFundCalcBody"></div>
-    <div class="sheet-actions">
-      <button type="button" class="btn primary" id="closeEmergencyFundCalc">Fechar</button>
-    </div>
-  </div>
-</div>
-
 <!-- Detalhe do Fundo de Emergência, aberto a partir da linha "Fundo de
      emergência" em Visão financeira (Início) — mostra o MESMO cartão
      completo (emergencyFundCardHtml) que antes ficava sempre visível na
@@ -1778,6 +1784,24 @@
     <div id="homeEmergencyFundBody"></div>
     <div class="sheet-actions">
       <button type="button" class="btn primary" id="closeHomeEmergencyFund">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tem de vir DEPOIS de homeEmergencyFundOverlay no DOM: "Ver cálculo"
+     abre este overlay por cima do homeEmergencyFundOverlay (que fica aberto
+     por baixo), e as duas .overlay partilham o mesmo z-index — em elementos
+     com o mesmo z-index, o mais tarde no DOM é que fica visualmente por
+     cima. Antes desta correção, este bloco vinha ANTES do
+     homeEmergencyFundOverlay, pelo que abria por baixo (invisível) — bug
+     reportado como "o botão Ver cálculo não está a funcionar". -->
+<div class="overlay" id="emergencyFundCalcOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Como foi calculado</h2>
+    <div id="emergencyFundCalcBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="closeEmergencyFundCalc">Fechar</button>
     </div>
   </div>
 </div>
@@ -2091,7 +2115,6 @@
     openMenuId: null,
     editingPaymentId: null,
     searchQuery: '',
-    budgetMetric: 'planeado',      // 'planeado' | 'gasto' | 'restante' — toggle on the Orçamento category cards
     openCategoryKey: null,         // which category card is expanded on the Orçamento page
     movFilter: 'all',              // 'all' | 'despesa' | 'receita' | 'pendente' — Movimentos filter chip
     loans: [],
@@ -5327,15 +5350,21 @@
 
   function catTint(color){ return 'background:color-mix(in srgb, ' + color + ' 16%, transparent); color:' + color + ';'; }
 
+  // Redesenho "Despesas por categoria" (ver claude/despesas-categoria-
+  // redesenho.md): a leitura principal de cada categoria passa a ser
+  // "gasto / orçamento" (ex.: "675,00 € / 800,00 €") com um texto
+  // contextual automático por baixo, em vez do orçamento isolado como valor
+  // principal. Nenhum cálculo financeiro novo — reaproveita exatamente
+  // categoryBudgetBreakdown()/getBudgetStatus() já existentes, só muda como
+  // o resultado é apresentado.
   function budgetCategoryCardsHtml(entries){
     var rows = categoryBudgetBreakdown(entries);
     if (!rows.length) return '';
     return rows.map(function(r){
       var hasBudget = r.budget != null && r.budget > 0;
-      // Com orçamento definido, "planeado/100%" passa a ser esse valor-alvo
-      // em vez da soma do que já foi lançado — é o que permite definir
-      // "Alimentação = 400€" e ver o controlo à medida que vais lançando as
-      // compras reais, em vez de só saberes o total no fim do mês.
+      // Com orçamento definido, "100%" passa a ser esse valor-alvo em vez da
+      // soma do que já foi lançado — é o que permite definir "Alimentação =
+      // 400€" e ver o controlo à medida que vais lançando as compras reais.
       var basis = hasBudget ? r.budget : r.total;
       // Estado (dentro/perto/atingido/ultrapassado) só faz sentido quando
       // existe um orçamento-alvo definido manualmente — ver getBudgetStatus().
@@ -5343,32 +5372,57 @@
       // colorida pela % do que já foi lançado, sem pílula de estado.
       var bs = hasBudget ? getBudgetStatus(r.done, r.budget) : null;
       var pct = basis > 0 ? Math.round((r.done/basis)*100) : 0;
-      var restante = Math.max(0, basis - r.done);
       var barCls = bs
         ? (bs.status === 'over' ? 'danger' : (bs.status === 'reached' || bs.status === 'warning' ? 'warning' : 'success'))
         : (pct >= 80 ? 'warning' : 'success');
-      var metricValue = state.budgetMetric === 'gasto' ? r.done : (state.budgetMetric === 'restante' ? restante : basis);
+
+      // Valor principal: "gasto / orçamento" quando há orçamento definido;
+      // sem orçamento, mostra só o lançado (nunca "X € / 0 €" — caso
+      // especial pedido explicitamente, para não confundir).
+      var mainValueHtml = hasBudget
+        ? '<span>' + euro(r.done) + '</span>' +
+          '<span class="budget-cat-sep">/</span>' +
+          '<span class="budget-cat-target-amt">' + euro(r.budget) + '</span>'
+        : '<span>' + euro(r.total) + '</span><span class="budget-cat-nobudget-label">gasto</span>';
+
       var statusPill = !bs ? '' :
-        bs.status === 'over' ? '<span class="budget-status-pill danger">Acima</span>' :
+        bs.status === 'over' ? '<span class="budget-status-pill danger">Ultrapassado</span>' :
         bs.status === 'reached' ? '<span class="budget-status-pill warning">Atingido</span>' :
         bs.status === 'warning' ? '<span class="budget-status-pill warning">Perto</span>' : '';
+
+      // Texto contextual automático — a única fonte de verdade é sempre
+      // getBudgetStatus() (bs), nunca uma segunda comparação à mão.
+      var subtextCls = 'muted', subtextMsg;
+      if (!hasBudget){
+        subtextMsg = 'Sem orçamento definido';
+      } else if (bs.status === 'over'){
+        subtextMsg = 'Ultrapassaste em ' + euro(bs.overAmount);
+        subtextCls = 'danger';
+      } else if (bs.status === 'reached'){
+        subtextMsg = 'Orçamento atingido';
+        subtextCls = 'warning';
+      } else {
+        subtextMsg = 'Faltam ' + euro(Math.max(0, r.budget - r.done));
+        if (bs.status === 'warning') subtextCls = 'warning';
+      }
+
       var open = state.openCategoryKey === r.def.key;
-      var targetRow = '<div class="budget-cat-target-row">' +
-        (hasBudget
-          ? 'Orçamento definido: <strong>' + euro(r.budget) + '</strong>'
-          : 'Sem orçamento definido — a mostrar a soma do que já foi lançado.') +
-        ' <button type="button" class="link-btn" data-action="edit-category-budget" data-key="' + r.def.key + '">' + (hasBudget ? 'Editar' : 'Definir orçamento') + '</button>' +
-      '</div>';
+      var targetRow = hasBudget
+        ? '<div class="budget-cat-target-row">Orçamento mensal desta categoria. <button type="button" class="link-btn" data-action="edit-category-budget" data-key="' + r.def.key + '">Editar orçamento</button></div>'
+        : '<div class="budget-cat-target-row">Sem orçamento definido — a mostrar a soma do que já foi lançado este mês. <button type="button" class="link-btn" data-action="edit-category-budget" data-key="' + r.def.key + '">Definir orçamento</button></div>';
       var itemsHtml = r.items.length ? r.items.map(itemRow).join('') :
         '<div class="budget-cat-empty">Ainda não lançaste despesas nesta categoria este mês.</div>';
       return '<div class="budget-cat-card' + (open?' open':'') + '">' +
         '<button type="button" class="budget-cat-head" data-action="toggle-category" data-key="' + r.def.key + '">' +
           '<span class="icon-badge sm" style="' + catTint(r.def.color) + '">' + icon(categoryIconOf(r.def.key)) + '</span>' +
           '<span><span class="budget-cat-name">' + escapeHtml(r.def.label) + '</span>' +
-          '<div class="budget-cat-amounts">' + euro(metricValue) + statusPill + '</div></span>' +
+          '<div class="budget-cat-amounts">' + mainValueHtml + statusPill + '</div></span>' +
           icon('chevronRight', 'chev') +
         '</button>' +
-        '<div class="budget-cat-track"><div class="progress-track"><div class="progress-fill ' + barCls + '" style="width:' + Math.max(0,Math.min(100,pct)) + '%"></div></div></div>' +
+        '<div class="budget-cat-track">' +
+          '<div class="budget-cat-subtext ' + subtextCls + '">' + subtextMsg + '</div>' +
+          '<div class="progress-track"><div class="progress-fill ' + barCls + '" style="width:' + Math.max(0,Math.min(100,pct)) + '%"></div></div>' +
+        '</div>' +
         '<div class="budget-cat-body">' + targetRow + '<div class="group-list">' + itemsHtml + '</div></div>' +
       '</div>';
     }).join('');
@@ -5566,13 +5620,11 @@
 
     html += kindSectionHtml('Receitas', 'receita', visibleEntries, split.receitas.length);
 
-    html += '<div class="section-head"><h2>Despesas por categoria</h2>' +
-      '<div class="segmented budget-toggle" style="margin:0;">' +
-        ['planeado','gasto','restante'].map(function(m){
-          var lbl = m === 'planeado' ? 'Planeado' : (m === 'gasto' ? 'Gasto' : 'Restante');
-          return '<button type="button" data-action="set-budget-metric" data-metric="' + m + '" class="' + (state.budgetMetric === m ? 'active' : '') + '">' + lbl + '</button>';
-        }).join('') +
-      '</div></div>';
+    // As tabs "Planeado/Gasto/Restante" que existiam aqui foram removidas
+    // (ver claude/despesas-categoria-redesenho.md) — cada cartão de
+    // categoria já mostra "gasto / orçamento" e o texto de restante/excesso
+    // diretamente, o que tornava as tabs redundantes.
+    html += '<div class="section-head"><h2>Despesas por categoria</h2></div>';
 
     if (visibleDespesas.length){
       html += budgetCategoryCardsHtml(visibleDespesas);
@@ -8526,7 +8578,27 @@
     homeEmergencyFundOverlay.classList.add('open');
   }
   document.getElementById('closeHomeEmergencyFund').addEventListener('click', closeHomeEmergencyFund);
-  homeEmergencyFundOverlay.addEventListener('click', function(ev){ if (ev.target === homeEmergencyFundOverlay) closeHomeEmergencyFund(); });
+  // NOTA/CORREÇÃO: emergencyFundCardHtml() (o "Ver cálculo" e o "Criar fundo
+  // de emergência") só é injetado aqui dentro (homeEmergencyFundBody), e este
+  // overlay é um irmão do #content no DOM (não um descendente) — por isso o
+  // delegate de cliques ligado a #content nunca via estes botões, e "Ver
+  // cálculo" parecia não fazer nada. Precisa do seu próprio delegate, tal
+  // como settingsOverlay/deletedOverlay já fazem para os seus próprios
+  // data-action.
+  homeEmergencyFundOverlay.addEventListener('click', function(ev){
+    if (ev.target === homeEmergencyFundOverlay){ closeHomeEmergencyFund(); return; }
+    var actionEl = ev.target.closest('[data-action]');
+    if (!actionEl) return;
+    var action = actionEl.getAttribute('data-action');
+    if (action === 'open-emergency-fund-calc'){
+      renderEmergencyFundCalc();
+      emergencyFundCalcOverlay.classList.add('open');
+    } else if (action === 'create-emergency-fund'){
+      var efRec = calculateEmergencyFundRecommendation();
+      closeHomeEmergencyFund();
+      openSavingsForm(null, {name:'Fundo de Emergência', goalAmount: efRec.sixMonthFund, type:'emergency_fund'});
+    }
+  });
 
   var homeHealthOverlay = document.getElementById('homeHealthOverlay');
   function closeHomeHealth(){ homeHealthOverlay.classList.remove('open'); }
@@ -8766,7 +8838,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v47'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v49'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -9981,9 +10053,6 @@
       if (investmentSimInputs.scenariosEnabled && !investmentSimInputs.rateEsperado){
         investmentSimInputs.rateEsperado = investmentSimInputs.annualReturn;
       }
-      render();
-    } else if (action === 'set-budget-metric'){
-      state.budgetMetric = actionEl.getAttribute('data-metric');
       render();
     } else if (action === 'toggle-category'){
       var catKey = actionEl.getAttribute('data-key');
