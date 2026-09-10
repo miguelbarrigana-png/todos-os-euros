@@ -1516,6 +1516,14 @@
       <label for="fLoanExtraNote">Nota (opcional)</label>
       <input type="text" id="fLoanExtraNote" maxlength="80">
     </div>
+    <div class="field">
+      <label>Como queres aplicar este abatimento?</label>
+      <div class="segmented" id="loanExtraEffectSeg">
+        <button type="button" data-effect="reduce_payment" class="active">Reduzir prestação</button>
+        <button type="button" data-effect="reduce_term">Reduzir prazo</button>
+      </div>
+      <div class="hint" id="loanExtraEffectHint">Baixa o valor das prestações futuras, mantendo a data final.</div>
+    </div>
     <div class="field-error" id="loanExtraError"></div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" id="loanExtraCancel">Cancelar</button>
@@ -1721,10 +1729,16 @@
     <div class="sheet-handle"></div>
     <h2 id="sourceMoveEditTitle">Editar movimento</h2>
     <p class="hint" id="sourceMoveEditHint" style="margin-bottom:14px;"></p>
+    <div class="field" id="sourceMoveEffectSummary" style="display:none;">
+      <label>Aplicação do abatimento</label>
+      <div class="loan-review-chip" id="sourceMoveEffectLabel" style="margin-top:0;"></div>
+      <div class="hint" id="sourceMoveEffectDetail" style="margin-top:8px;"></div>
+    </div>
     <div class="field">
       <label for="fSourceMoveValue">Valor (€)</label>
       <input type="number" id="fSourceMoveValue" step="0.01" min="0">
     </div>
+    <p class="hint" id="sourceMoveValueLockedHint" style="display:none;"></p>
     <div class="field">
       <label for="fSourceMoveDate">Data</label>
       <input type="date" id="fSourceMoveDate">
@@ -2082,6 +2096,7 @@
     movFilter: 'all',              // 'all' | 'despesa' | 'receita' | 'pendente' — Movimentos filter chip
     loans: [],
     loanSnapshots: {},         // loanId -> [{id,date,value}] sorted by date
+    loanPayments: {},          // loanId -> {id, amount, endMonth, ...} a prestação recorrente ligada (ensureLoanPayment), ou undefined se ainda não ligada
     loansLoading: true,
     loanSubview: 'list',       // 'list' | 'simulator' — toggle on the Créditos page (simulator is never persisted)
     investmentSubview: 'list', // 'list' | 'simulator' — toggle on the Investimentos page (simulator is never persisted)
@@ -2371,12 +2386,22 @@
   // ---------- Loan (crédito) math — sistema de prestações constantes (francês) ----------
   function monthlyRate(annualPct){ return (Number(annualPct)||0)/100/12; }
 
+  // Fórmula de prestação constante (sistema francês), extraída para aceitar
+  // qualquer capital/prazo — não só os originais do crédito — reutilizada
+  // por loanInstallment() abaixo (comportamento idêntico, zero duplicação)
+  // e pelo recálculo real de "reduzir prestação" num abatimento extra (ver
+  // applyExtraPaymentTermEffect mais abaixo).
+  function installmentFor(P, i, n){
+    P = Number(P)||0; n = Number(n)||1;
+    if (i === 0) return P/n;
+    return P * i / (1 - Math.pow(1+i, -n));
+  }
+
   function loanInstallment(loan){
     var i = monthlyRate(loan.rate);
     var n = Number(loan.termMonths)||1;
     var P = Number(loan.principal)||0;
-    if (i === 0) return P/n;
-    return P * i / (1 - Math.pow(1+i, -n));
+    return installmentFor(P, i, n);
   }
 
   function monthsElapsed(loan){
@@ -2420,21 +2445,30 @@
     return new Date(sy, sm + cycles*period, 1);
   }
 
+  // Meses que faltam para liquidar `balance` a pagamentos constantes de
+  // `monthlyPayment`, à taxa mensal `i` — extraída do simulador (era um
+  // closure interno de simulateEarlyRepayment) para ser reutilizável com a
+  // prestação REAL atual do crédito (que, depois de um abatimento com
+  // "reduzir prazo", pode já não ser loanInstallment(loan) — ver
+  // applyExtraPaymentTermEffect). `null` = a prestação não chega para cobrir
+  // os juros deste saldo (nunca amortiza) — o chamador trata isso como erro,
+  // nunca como NaN/Infinity.
+  function remainingMonthsForBalance(balance, monthlyPayment, i){
+    if (balance <= 0) return 0;
+    if (i === 0) return monthlyPayment > 0 ? balance/monthlyPayment : null;
+    var ratio = 1 - i*balance/monthlyPayment;
+    if (ratio <= 0) return null;
+    return -Math.log(ratio)/Math.log(1+i);
+  }
+
   function simulateEarlyRepayment(loan, extra){
     var i = monthlyRate(loan.rate);
     var inst = loanInstallment(loan);
     var balance = currentBalance(loan);
     extra = Math.min(Math.max(0, extra), balance);
     var newBalance = balance - extra;
-    function remainingTerm(bal){
-      if (bal <= 0) return 0;
-      if (i === 0) return bal/inst;
-      var ratio = 1 - i*bal/inst;
-      if (ratio <= 0) return null;
-      return -Math.log(ratio)/Math.log(1+i);
-    }
-    var nBefore = remainingTerm(balance);
-    var nAfter = remainingTerm(newBalance);
+    var nBefore = remainingMonthsForBalance(balance, inst, i);
+    var nAfter = remainingMonthsForBalance(newBalance, inst, i);
     if (nBefore === null || nAfter === null) return null;
     var monthsSaved = Math.max(0, nBefore - nAfter);
     var interestSaved = Math.max(0, (nBefore-nAfter)*inst - extra);
@@ -2506,12 +2540,6 @@
       });
     });
     return sum;
-  }
-  // Número de meses inteiros entre duas chaves "YYYY-MM" (pode ser negativo).
-  function monthsBetweenKeys(fromKey, toKey){
-    var fp = String(fromKey).split('-'); var fy = parseInt(fp[0],10), fm = parseInt(fp[1],10);
-    var tp = String(toKey).split('-'); var ty = parseInt(tp[0],10), tm = parseInt(tp[1],10);
-    return (ty-fy)*12 + (tm-fm);
   }
   // Poupança por objetivo com data-alvo (targetDate, opcional, formato "YYYY-MM",
   // backward-compatible: metas antigas sem o campo simplesmente não têm esta secção).
@@ -2743,6 +2771,12 @@
     var parts = key.split('-'); var y = parseInt(parts[0],10); var m = parseInt(parts[1],10)-1;
     var d = new Date(y, m+delta, 1);
     return monthKeyOf(d);
+  }
+  // Número de meses de fromKey até toKey (positivo se toKey for depois) —
+  // usado para calcular quantas prestações faltam até um "fim" ('YYYY-MM').
+  function monthsBetweenKeys(fromKey, toKey){
+    var fp = String(fromKey).split('-'), tp = String(toKey).split('-');
+    return (parseInt(tp[0],10)-parseInt(fp[0],10))*12 + (parseInt(tp[1],10)-parseInt(fp[1],10));
   }
   function monthLabelOf(key){
     var parts = key.split('-'); var y = parseInt(parts[0],10); var m = parseInt(parts[1],10)-1;
@@ -3287,27 +3321,57 @@
     });
   }
 
+  // Contador de geração — protege contra chamadas sobrepostas a loadLoans()
+  // (ex.: navegar rapidamente entre Início/Créditos/Património, todos a
+  // chamar loadLoans(); ou um abatimento extra seguido de imediato por uma
+  // edição do crédito/revisão de taxa) resolverem fora de ordem. Sem isto,
+  // uma resposta mais LENTA de uma chamada mais ANTIGA podia chegar depois
+  // de uma chamada mais recente já ter aplicado dados atuais, e sobrepô-los
+  // com valores desatualizados de loanSnapshots/loanPayments — exatamente
+  // o género de saldo errado que applyExtraPaymentTermEffect/
+  // ensureLoanPayment (ver ambas) dependem de nunca acontecer, já que leem
+  // esta cache logo a seguir a uma mudança. Por isso todo o resultado
+  // (loans/loanSnapshots/loanPayments) só é aplicado ao state de uma vez,
+  // no fim, e só se nenhuma chamada mais recente tiver entretanto arrancado.
+  var loanLoadGeneration = 0;
   function loadLoans(){
     state.loansLoading = true;
     render();
+    var myGeneration = ++loanLoadGeneration;
     return db.collection('loans').get().then(function(snap){
       var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      state.loans = all.filter(function(l){ return !l.archived; });
-      var snapPromises = state.loans.map(function(l){
+      var loans = all.filter(function(l){ return !l.archived; });
+      var newSnapshots = {};
+      var newPayments = {};
+      var snapPromises = loans.map(function(l){
         return db.collection('loanSnapshots').where('loanId','==',l.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
           list.sort(sortByDateThenCreated);
-          state.loanSnapshots[l.id] = list;
+          newSnapshots[l.id] = list;
         });
       });
-      return Promise.all(snapPromises);
+      // Carrega também, por crédito, a prestação recorrente ligada (ver
+      // ensureLoanPayment) — necessário para o cartão mostrar a prestação/fim
+      // REAIS (já ajustados por um abatimento extra, ver applyExtraPaymentTermEffect)
+      // em vez de recalcular sempre a partir do capital/prazo originais.
+      var paymentPromises = loans.map(function(l){
+        return db.collection('payments').where('loanId','==',l.id).where('spaceId','==',defaultSpaceId()).get().then(function(s){
+          var active = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(p){ return !p.archived; });
+          newPayments[l.id] = active.length ? active[0] : null;
+        });
+      });
+      return Promise.all(snapPromises.concat(paymentPromises)).then(function(){
+        if (myGeneration !== loanLoadGeneration) return; // uma chamada mais recente já venceu — descarta esta resposta mais lenta/antiga
+        state.loans = loans;
+        Object.assign(state.loanSnapshots, newSnapshots);
+        Object.assign(state.loanPayments, newPayments);
+      });
     }).then(function(){
-      state.loansLoading = false;
+      if (myGeneration === loanLoadGeneration) state.loansLoading = false;
       render();
     }).catch(function(err){
       console.error('loadLoans failed', err);
-      state.loansLoading = false;
-      state.dbAvailable = false;
+      if (myGeneration === loanLoadGeneration){ state.loansLoading = false; state.dbAvailable = false; }
       render();
     });
   }
@@ -3576,25 +3640,30 @@
 
   // Cria o par payments(pontual)+entries de um aporte/pagamento novo.
   // Devolve {paymentId, entryId, paid, monthKey}.
-  function createSourceMovement(sourceType, sourceId, targetName, amount, dateStr, note, categoryOverride){
+  // `extraFields` (opcional, genérico — não é um branch por sourceType):
+  // campos adicionais misturados no payment/entry, hoje só usado pelo
+  // abatimento extra de crédito para gravar `extraPaymentEffect`. Poupanças
+  // e Investimentos continuam a não passar nada — comportamento inalterado.
+  function createSourceMovement(sourceType, sourceId, targetName, amount, dateStr, note, categoryOverride, extraFields){
     var d = parseInputDateLocal(dateStr) || new Date();
     var monthKey = monthKeyOf(d);
     var paidNow = dateStr <= todayStr();
     var spaceId = state.activeSpaceId;
-    var payload = {
+    var payload = Object.assign({
       name: sourceMovementName(sourceType, targetName),
       amount: amount, dueDay: d.getDate(), type: 'pontual', kind: 'despesa',
       category: categoryOverride || SOURCE_META[sourceType].category,
       monthKey: monthKey, startMonth: null, endMonth: null,
       archived: false, createdAt: new Date().toISOString(), spaceId: spaceId,
       sourceType: sourceType, sourceId: sourceId, sourceAction: SOURCE_ACTION[sourceType]
-    };
+    }, extraFields || {});
     if (note) payload.note = note;
     return db.collection('payments').add(payload).then(function(ref){
       var entryId = entryDocId(monthKey, ref.id);
       var snap = entrySnapshot(monthKey, Object.assign({id:ref.id}, payload));
       snap.sourceType = sourceType; snap.sourceId = sourceId; snap.sourceAction = payload.sourceAction;
       if (note) snap.note = note;
+      if (extraFields) Object.assign(snap, extraFields);
       if (paidNow){ snap.paid = true; snap.paidAt = new Date().toISOString(); }
       return db.collection('entries').doc(entryId).set(snap).then(function(){
         var entryForEffect = Object.assign({id:entryId, paymentId:ref.id}, snap);
@@ -3612,18 +3681,152 @@
   // sourceRecordId não faz nada.
   function applySourceEffect(entry, paidValue){
     if (!entry.sourceType) return Promise.resolve();
+    var base;
     if (paidValue){
-      if (entry.sourceRecordId) return Promise.resolve();
-      return createSourceLedgerRecord(entry).then(function(recordId){
+      base = entry.sourceRecordId ? Promise.resolve() : createSourceLedgerRecord(entry).then(function(recordId){
         entry.sourceRecordId = recordId;
         return db.collection('entries').doc(entry.id).update({sourceRecordId: recordId});
       });
+    } else if (!entry.sourceRecordId){
+      base = Promise.resolve();
+    } else {
+      var oldId = entry.sourceRecordId;
+      base = deleteSourceLedgerRecord(entry.sourceType, oldId).then(function(){
+        entry.sourceRecordId = null;
+        // Mesmo motivo do patch ao criar (ver createSourceLedgerRecord): a
+        // cache local tem de refletir a remoção já a tempo de um eventual
+        // applyExtraPaymentTermEffect(entry, false) a seguir (reversão do
+        // efeito de prestação/prazo) calcular o saldo correto.
+        if (entry.sourceType === 'credit') patchLoanSnapshotCache(entry.sourceId, null, oldId);
+        return db.collection('entries').doc(entry.id).update({sourceRecordId: null});
+      });
     }
-    if (!entry.sourceRecordId) return Promise.resolve();
-    var oldId = entry.sourceRecordId;
-    return deleteSourceLedgerRecord(entry.sourceType, oldId).then(function(){
-      entry.sourceRecordId = null;
-      return db.collection('entries').doc(entry.id).update({sourceRecordId: null});
+    // Efeito de "reduzir prestação"/"reduzir prazo" de um abatimento extra
+    // (ver applyExtraPaymentTermEffect, logo abaixo) — só para abatimentos
+    // de crédito com este campo novo escolhido no formulário. Para qualquer
+    // outra entry (Poupanças, Investimentos, e todo o histórico de
+    // abatimentos extra anteriores a esta funcionalidade, sem
+    // extraPaymentEffect), isto continua a ser sempre um no-op — a redução
+    // de capital acima (base) é a única coisa que acontece, exatamente como
+    // antes.
+    if (entry.sourceType === 'credit' && entry.extraPaymentEffect){
+      return base.then(function(){ return applyExtraPaymentTermEffect(entry, paidValue); });
+    }
+    return base;
+  }
+
+  // Aplica (paidValue=true) ou reverte (paidValue=false) o efeito de um
+  // abatimento extra sobre a prestação/prazo do crédito — chamado só depois
+  // de o capital já ter sido reduzido/reposto acima (createSourceLedgerRecord/
+  // deleteSourceLedgerRecord), nunca antes: as duas fases juntas são o que
+  // torna "reduzir prestação"/"reduzir prazo" corretas (o novo cálculo já
+  // parte do capital PÓS-abatimento). Idempotente por entry.termEffectApplied
+  // — nunca recalcula duas vezes, mesmo com duplo-toque ou reabrir a app.
+  function applyExtraPaymentTermEffect(entry, paidValue){
+    if (paidValue){
+      if (entry.termEffectApplied) return Promise.resolve();
+      return getLoanFresh(entry.sourceId).then(function(loan){
+        return getLoanPaymentFresh(entry.sourceId).then(function(linkedPayment){
+          if (!linkedPayment){
+            // Crédito ainda sem prestação ligada (não passou pela integração
+            // Créditos↔Orçamento) — nada para ajustar; o capital já foi
+            // reduzido normalmente acima. Documentado como limitação conhecida.
+            return db.collection('entries').doc(entry.id).update({
+              termEffectApplied: true, termEffectAppliedAt: new Date().toISOString(),
+              termEffectSkippedReason: 'no_linked_payment'
+            }).then(function(){
+              entry.termEffectApplied = true; entry.termEffectSkippedReason = 'no_linked_payment';
+            });
+          }
+          return getCurrentBalanceFresh(entry.sourceId).then(function(newBalance){
+            var i = monthlyRate(loan.rate);
+            var previous = {monthlyPayment: Number(linkedPayment.amount)||0, endMonth: linkedPayment.endMonth || null};
+            var applyFromMonthKey = monthKeyAdd(monthKeyOf(new Date()), 1); // "a partir da prestação seguinte" (ponto 8)
+            var changes, neu, skippedReason = null;
+            if (entry.extraPaymentEffect === 'reduce_term'){
+              var remainingRaw = remainingMonthsForBalance(newBalance, previous.monthlyPayment, i);
+              if (remainingRaw === null){
+                skippedReason = 'insufficient_payment';
+              } else {
+                var remainingMonths = Math.max(0, Math.ceil(remainingRaw - 1e-9));
+                var newEndMonth = remainingMonths > 0 ? monthKeyAdd(applyFromMonthKey, remainingMonths - 1) : monthKeyAdd(applyFromMonthKey, -1);
+                changes = {endMonth: newEndMonth};
+                neu = {monthlyPayment: previous.monthlyPayment, endMonth: newEndMonth};
+              }
+            } else { // 'reduce_payment' (omisso = este, ver formulário)
+              var scheduleEnd = previous.endMonth || monthKeyAdd(loan.startMonth, (Number(loan.termMonths)||0) - 1);
+              var remaining = monthsBetweenKeys(applyFromMonthKey, scheduleEnd) + 1;
+              if (remaining <= 0){
+                skippedReason = 'insufficient_payment';
+              } else {
+                var newAmount = Math.round(installmentFor(newBalance, i, remaining) * 100) / 100;
+                changes = {amount: newAmount};
+                neu = {monthlyPayment: newAmount, endMonth: previous.endMonth};
+              }
+            }
+            if (skippedReason){
+              return db.collection('entries').doc(entry.id).update({
+                termEffectApplied: true, termEffectAppliedAt: new Date().toISOString(), termEffectSkippedReason: skippedReason
+              }).then(function(){ entry.termEffectApplied = true; entry.termEffectSkippedReason = skippedReason; });
+            }
+            var ops = [
+              db.collection('payments').doc(linkedPayment.id).update(changes),
+              propagateTemplateChanges(linkedPayment.id, applyFromMonthKey, changes, state.activeSpaceId, true)
+            ];
+            if (entry.extraPaymentEffect === 'reduce_term'){
+              ops.push(deleteFutureUnpaidEntriesAfter(linkedPayment.id, state.activeSpaceId, neu.endMonth));
+            }
+            return Promise.all(ops).then(function(){
+              // Mantém a cache local (state.loanPayments) sincronizada — mesmo
+              // motivo do patchLoanSnapshotCache acima: sem isto, um segundo
+              // abatimento na mesma sessão podia partir de um valor desatualizado.
+              if (state.loanPayments[entry.sourceId]) state.loanPayments[entry.sourceId] = Object.assign({}, state.loanPayments[entry.sourceId], changes);
+              return db.collection('entries').doc(entry.id).update({
+                termEffectApplied: true, termEffectAppliedAt: new Date().toISOString(),
+                termEffectPrevious: previous, termEffectNew: neu
+              }).then(function(){
+                entry.termEffectApplied = true; entry.termEffectPrevious = previous; entry.termEffectNew = neu;
+              });
+            });
+          });
+        });
+      });
+    }
+    // Reverter
+    if (!entry.termEffectApplied || !entry.termEffectPrevious) return Promise.resolve();
+    var applyFromMonthKeyRev = monthKeyAdd(monthKeyOf(new Date()), 1);
+    return getLoanPaymentFresh(entry.sourceId).then(function(linkedPayment){
+      if (!linkedPayment){
+        return db.collection('entries').doc(entry.id).update({termEffectApplied: false, termEffectAppliedAt: null});
+      }
+      var changesBack = entry.extraPaymentEffect === 'reduce_term'
+        ? {endMonth: entry.termEffectPrevious.endMonth}
+        : {amount: entry.termEffectPrevious.monthlyPayment};
+      var ops = [
+        db.collection('payments').doc(linkedPayment.id).update(changesBack),
+        propagateTemplateChanges(linkedPayment.id, applyFromMonthKeyRev, changesBack, state.activeSpaceId, true)
+      ];
+      return Promise.all(ops).then(function(){
+        if (state.loanPayments[entry.sourceId]) state.loanPayments[entry.sourceId] = Object.assign({}, state.loanPayments[entry.sourceId], changesBack);
+        entry.termEffectApplied = false;
+        return db.collection('entries').doc(entry.id).update({termEffectApplied: false, termEffectAppliedAt: null});
+      });
+    });
+  }
+
+  // Usado só por applyExtraPaymentTermEffect (ponto 12 do pedido): quando um
+  // abatimento reduz o prazo, elimina entries FUTURAS já materializadas
+  // (ex.: por ter visitado esses meses antes) que caiam depois do novo fim —
+  // nunca as pagas (mesmo padrão já usado em submitPayment() para o caso de
+  // uma despesa recorrente passar a pontual, ver esse comentário).
+  function deleteFutureUnpaidEntriesAfter(paymentId, spaceId, cutoffMonthKey){
+    return db.collection('entries').where('paymentId','==',paymentId).where('spaceId','==',spaceId).get().then(function(snap){
+      var ops = [];
+      snap.docs.forEach(function(d){
+        var ed = d.data();
+        if (!ed.paid && ed.monthKey > cutoffMonthKey) ops.push(db.collection('entries').doc(d.id).delete());
+      });
+      return Promise.all(ops);
     });
   }
 
@@ -3667,7 +3870,17 @@
     if (entry.sourceType === 'credit'){
       return getCurrentBalanceFresh(entry.sourceId).then(function(baseline){
         var newValue = Math.max(0, baseline - amount);
-        return db.collection('loanSnapshots').add({loanId:entry.sourceId, date:dateStr, value:newValue, type:'extra_payment', amount:amount, entryId:entry.id, createdAt:new Date().toISOString()}).then(function(ref){ return ref.id; });
+        var payload = {loanId:entry.sourceId, date:dateStr, value:newValue, type:'extra_payment', amount:amount, entryId:entry.id, createdAt:new Date().toISOString()};
+        return db.collection('loanSnapshots').add(payload).then(function(ref){
+          // Mesmo motivo do patchLoanSnapshotCache usado pela prestação normal
+          // (ver applyLoanInstallmentEffect): sem isto, um leitor síncrono a
+          // seguir (applyExtraPaymentTermEffect, que calcula a nova
+          // prestação/prazo a partir do saldo PÓS-abatimento) via
+          // getCurrentBalanceFresh podia ler a cache antiga e usar o saldo
+          // errado, mesmo já tendo sido gravado este novo registo.
+          patchLoanSnapshotCache(entry.sourceId, Object.assign({id: ref.id}, payload), null);
+          return ref.id;
+        });
       });
     }
     return Promise.resolve(null);
@@ -3821,14 +4034,22 @@
   // registos restantes — ver nota grande no topo). Nunca deixa dados
   // órfãos (ponto 18).
   function deleteSourceMovement(entry){
-    var ops = [
-      db.collection('entries').doc(entry.id).delete(),
-      db.collection('payments').doc(entry.paymentId).delete()
-    ];
-    if (entry.paid && entry.sourceRecordId){
-      ops.push(deleteSourceLedgerRecord(entry.sourceType, entry.sourceRecordId));
-    }
-    return Promise.all(ops).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+    // Se este abatimento extra já tinha o efeito de prestação/prazo
+    // aplicado, reverte-o primeiro (repõe a prestação/prazo anteriores) —
+    // sem isto, eliminar um abatimento já efetivado deixava o crédito preso
+    // na prestação/prazo ajustados, mesmo sem o abatimento que os causou.
+    // No-op para qualquer entry sem termEffectApplied (a esmagadora maioria).
+    var pre = (entry.paid && entry.termEffectApplied) ? applyExtraPaymentTermEffect(entry, false) : Promise.resolve();
+    return pre.then(function(){
+      var ops = [
+        db.collection('entries').doc(entry.id).delete(),
+        db.collection('payments').doc(entry.paymentId).delete()
+      ];
+      if (entry.paid && entry.sourceRecordId){
+        ops.push(deleteSourceLedgerRecord(entry.sourceType, entry.sourceRecordId));
+      }
+      return Promise.all(ops);
+    }).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
   }
 
   // ---------- Prestação normal de crédito ↔ Orçamento/Movimentos ----------
@@ -3850,9 +4071,14 @@
   // aplicada ao capital REAL (balanceBefore vindo de getCurrentBalanceFresh),
   // não a um cronograma sintético.
   function loanInstallmentSplit(loan, balanceBefore, paymentAmount){
-    var interest = Math.max(0, (Number(balanceBefore)||0) * monthlyRate(loan.rate));
+    var balance = Number(balanceBefore)||0;
+    var interest = Math.max(0, balance * monthlyRate(loan.rate));
     interest = Math.min(interest, Number(paymentAmount)||0);
     var principal = Math.max(0, (Number(paymentAmount)||0) - interest);
+    // Nunca amortiza mais do que o capital que realmente resta — protege
+    // contra o capital ficar negativo quando a última prestação (ao valor
+    // fixo do template) excede ligeiramente o saldo remanescente.
+    principal = Math.min(principal, balance);
     return {interest: interest, principal: principal};
   }
 
@@ -3863,6 +4089,19 @@
     var cached = state.loans.find(function(l){ return l.id === loanId; });
     if (cached) return Promise.resolve(cached);
     return db.collection('loans').doc(loanId).get().then(function(d){ return Object.assign({id:d.id}, d.data()); });
+  }
+
+  // Mesmo padrão, para a prestação recorrente ligada a um crédito (ver
+  // ensureLoanPayment) — usa a cache de loadLoans() quando disponível
+  // (state.loanPayments), senão vai buscar ao Firestore. `null` = crédito
+  // ainda sem prestação ligada (ainda não passou pela integração
+  // Créditos↔Orçamento).
+  function getLoanPaymentFresh(loanId){
+    if (Object.prototype.hasOwnProperty.call(state.loanPayments, loanId)) return Promise.resolve(state.loanPayments[loanId]);
+    return db.collection('payments').where('loanId','==',loanId).where('spaceId','==',defaultSpaceId()).get().then(function(snap){
+      var active = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(p){ return !p.archived; });
+      return active.length ? active[0] : null;
+    });
   }
 
   // Aplica (paidValue=true) ou reverte (paidValue=false) o efeito no capital
@@ -3965,18 +4204,33 @@
   function ensureLoanPayment(loan){
     var spaceId = defaultSpaceId();
     var nowMonthKey = monthKeyOf(new Date());
+    var name = 'Prestação · ' + loan.name;
     return db.collection('payments').where('loanId','==',loan.id).where('spaceId','==',spaceId).get().then(function(snap){
       var active = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(p){ return !p.archived; });
-      var amount = loanInstallment(loan);
-      var name = 'Prestação · ' + loan.name;
       if (active.length){
         var payment = active[0];
-        var changes = {name:name, amount:amount, category:'creditos'};
-        return db.collection('payments').doc(payment.id).update(changes)
-          .then(function(){ return propagateTemplateChanges(payment.id, nowMonthKey, changes, spaceId, true); });
+        // Recalcula a partir do capital ATUAL e do prazo restante ATUAL
+        // (payment.endMonth, se já foi ajustado por um "reduzir prazo" —
+        // ver applyExtraPaymentTermEffect — senão o fim teórico original do
+        // crédito) em vez de sempre loanInstallment(loan) (capital/prazo
+        // ORIGINAIS). Matematicamente idêntico ao comportamento anterior
+        // sempre que não houve nenhum abatimento/ajuste — é uma propriedade
+        // da fórmula de prestação constante — e agora corrige uma revisão
+        // de taxa depois de um abatimento, que antes ignorava a amortização
+        // já feita.
+        return getCurrentBalanceFresh(loan.id).then(function(balance){
+          var i = monthlyRate(loan.rate);
+          var scheduleEnd = payment.endMonth || monthKeyAdd(loan.startMonth, (Number(loan.termMonths)||0) - 1);
+          var remaining = monthsBetweenKeys(nowMonthKey, scheduleEnd) + 1;
+          var amount = remaining > 0 ? Math.round(installmentFor(balance, i, remaining) * 100) / 100 : loanInstallment(loan);
+          var changes = {name:name, amount:amount, category:'creditos'};
+          return db.collection('payments').doc(payment.id).update(changes)
+            .then(function(){ return propagateTemplateChanges(payment.id, nowMonthKey, changes, spaceId, true); })
+            .then(function(){ if (state.loanPayments[loan.id]) state.loanPayments[loan.id] = Object.assign({}, state.loanPayments[loan.id], changes); });
+        });
       }
       var payload = {
-        name:name, amount:amount, dueDay:1, type:'recorrente', kind:'despesa', category:'creditos',
+        name:name, amount: loanInstallment(loan), dueDay:1, type:'recorrente', kind:'despesa', category:'creditos',
         startMonth: nowMonthKey, endMonth: null, archived:false, createdAt:new Date().toISOString(),
         spaceId: spaceId, loanId: loan.id
       };
@@ -4034,13 +4288,47 @@
   var pendingSourceMoveDeleteEntry = null;
   var sourceMoveEditSaving = false;
 
+  function extraPaymentEffectLabel(effect){
+    return effect === 'reduce_term' ? 'Redução de prazo' : 'Redução de prestação';
+  }
   function openSourceMoveEditSheet(entry){
     pendingSourceMoveEntry = entry;
     document.getElementById('sourceMoveEditTitle').textContent = entry.name || 'Editar movimento';
-    document.getElementById('sourceMoveEditHint').textContent = entry.paid
-      ? 'Já confirmado como pago — editar atualiza também o valor em Património.'
-      : 'Ainda por confirmar — só atualiza o valor previsto no Orçamento.';
-    document.getElementById('fSourceMoveValue').value = Math.round((Number(entry.amount)||0)*100)/100;
+    var valueInput = document.getElementById('fSourceMoveValue');
+    var lockedHint = document.getElementById('sourceMoveValueLockedHint');
+    var valueLocked = !!(entry.paid && entry.termEffectApplied);
+    valueInput.value = Math.round((Number(entry.amount)||0)*100)/100;
+    valueInput.readOnly = valueLocked;
+    valueInput.disabled = false;
+    if (valueLocked){
+      lockedHint.textContent = 'Desmarca como pago antes de editar o valor — já ajustou a prestação/prazo do crédito.';
+      lockedHint.style.display = 'block';
+      document.getElementById('sourceMoveEditHint').textContent = 'Já confirmado como pago — o valor está bloqueado (ver abaixo).';
+    } else {
+      lockedHint.style.display = 'none';
+      document.getElementById('sourceMoveEditHint').textContent = entry.paid
+        ? 'Já confirmado como pago — editar atualiza também o valor em Património.'
+        : 'Ainda por confirmar — só atualiza o valor previsto no Orçamento.';
+    }
+    var summaryBox = document.getElementById('sourceMoveEffectSummary');
+    if (entry.sourceType === 'credit' && entry.extraPaymentEffect){
+      summaryBox.style.display = 'block';
+      document.getElementById('sourceMoveEffectLabel').textContent = extraPaymentEffectLabel(entry.extraPaymentEffect);
+      var detailEl = document.getElementById('sourceMoveEffectDetail');
+      if (entry.termEffectApplied && entry.termEffectPrevious && entry.termEffectNew){
+        detailEl.textContent = entry.extraPaymentEffect === 'reduce_term'
+          ? ('Fim previsto: ' + monthLabelOf(entry.termEffectPrevious.endMonth || '') + ' → ' + monthLabelOf(entry.termEffectNew.endMonth || ''))
+          : ('Prestação: ' + euro(entry.termEffectPrevious.monthlyPayment||0) + ' → ' + euro(entry.termEffectNew.monthlyPayment||0));
+      } else if (entry.termEffectSkippedReason){
+        detailEl.textContent = entry.termEffectSkippedReason === 'no_linked_payment'
+          ? 'Ainda sem prestação ligada a este crédito — só o capital foi reduzido.'
+          : 'A prestação atual não é suficiente para aplicar este efeito — só o capital foi reduzido.';
+      } else {
+        detailEl.textContent = 'Ainda por aplicar — só tem efeito quando este pagamento for confirmado.';
+      }
+    } else {
+      summaryBox.style.display = 'none';
+    }
     document.getElementById('fSourceMoveDate').value = creditLedgerDateStr(entry);
     document.getElementById('fSourceMoveNote').value = entry.note || '';
     document.getElementById('sourceMoveEditError').style.display = 'none';
@@ -4052,10 +4340,15 @@
   sourceMoveEditOverlay.addEventListener('click', function(ev){ if (ev.target === sourceMoveEditOverlay) closeSourceMoveEditSheet(); });
   document.getElementById('sourceMoveEditSave').addEventListener('click', function(){
     if (!pendingSourceMoveEntry || sourceMoveEditSaving) return;
+    var errorEl = document.getElementById('sourceMoveEditError');
+    if (pendingSourceMoveEntry.paid && pendingSourceMoveEntry.termEffectApplied){
+      errorEl.textContent = 'O valor está bloqueado. Desmarca este pagamento como pago antes de o editar.';
+      errorEl.style.display = 'block';
+      return;
+    }
     var raw = document.getElementById('fSourceMoveValue').value;
     var dateStr = document.getElementById('fSourceMoveDate').value;
     var noteVal = document.getElementById('fSourceMoveNote').value.trim();
-    var errorEl = document.getElementById('sourceMoveEditError');
     var value = parseFloat(raw);
     if (isNaN(value) || value <= 0 || !dateStr){
       errorEl.textContent = 'Introduz um valor e uma data válidos.';
@@ -6184,7 +6477,13 @@
     var P = Number(loan.principal)||0;
     var balance = currentBalance(loan);
     var paidPct = P > 0 ? Math.round(((P-balance)/P)*100) : 0;
-    var inst = loanInstallment(loan);
+    var linkedPayment = state.loanPayments ? state.loanPayments[loan.id] : null;
+    // "Prestação mensal" mostra o valor REAL atual (já ajustado por um
+    // abatimento extra com "reduzir prestação", ver applyExtraPaymentTermEffect)
+    // quando a prestação está ligada; loanInstallment(loan) (o valor
+    // teórico original) só serve de recurso para um crédito ainda sem
+    // integração Créditos↔Orçamento.
+    var inst = linkedPayment ? (Number(linkedPayment.amount)||0) : loanInstallment(loan);
     var k = monthsElapsed(loan);
     var totalPaid = inst * k;
     var capitalPaidTheo = P - theoreticalBalance(loan, k);
@@ -6192,6 +6491,14 @@
     var rateLabel = loan.rateType === 'fixa' ? 'Fixa' : (loan.rateType === 'mista' ? 'Mista' : 'Variável');
     var review = nextReviewDate(loan);
     var reviewHtml = review ? '<div class="loan-review-chip">Próxima revisão de taxa: ' + MONTHS_PT[review.getMonth()] + ' de ' + review.getFullYear() + '</div>' : '';
+    // "Fim previsto" — só aparece quando diverge do fim teórico original,
+    // sinal visual de que um "reduzir prazo" já encurtou o crédito (ponto
+    // 22 do pedido de abatimento extra).
+    var theoreticalEndMonth = monthKeyAdd(loan.startMonth, (Number(loan.termMonths)||0) - 1);
+    var currentEndMonth = (linkedPayment && linkedPayment.endMonth) ? linkedPayment.endMonth : theoreticalEndMonth;
+    var endDateHtml = currentEndMonth !== theoreticalEndMonth
+      ? '<div class="loan-review-chip">Fim previsto: ' + monthLabelOf(currentEndMonth) + ' (era ' + monthLabelOf(theoreticalEndMonth) + ')</div>'
+      : '';
     var equityHtml = loan.propertyValue ?
       '<div class="loan-review-chip">Valor do imóvel: ' + euro(loan.propertyValue) + ' · capital próprio: ' + euro(loan.propertyValue - balance) + '</div>' : '';
     var snaps = state.loanSnapshots[loan.id] || [];
@@ -6217,7 +6524,7 @@
         '<div class="stat-tile"><div class="stat-label">Juros pagos (estim.)</div><div class="stat-value mono">' + euro(interestPaidEst) + '</div></div>' +
       '</div>' +
       extraHistoryHtml +
-      reviewHtml + equityHtml +
+      reviewHtml + endDateHtml + equityHtml +
       '<div class="loan-actions-row">' +
         '<button type="button" class="btn ghost" data-action="loan-snapshot" data-id="' + loan.id + '">Atualizar valor</button>' +
         '<button type="button" class="btn ghost" data-action="loan-extra-payment" data-id="' + loan.id + '">Pagamento extra</button>' +
@@ -7809,14 +8116,33 @@
 
   // ---------- Crédito: pagamento extra / amortização extraordinária ----------
   var loanExtraOverlay = document.getElementById('loanExtraOverlay');
+  var loanExtraEffectSeg = document.getElementById('loanExtraEffectSeg');
   var pendingLoanExtraId = null;
   var pendingLoanExtraName = '';
+  var pendingLoanExtraBalance = 0;
+  var selectedExtraPaymentEffect = 'reduce_payment';
   var loanExtraSaving = false;
+
+  var EXTRA_EFFECT_HINTS = {
+    reduce_payment: 'Baixa o valor das prestações futuras, mantendo a data final.',
+    reduce_term: 'Mantém aproximadamente a prestação atual e reduz o número de meses restantes.'
+  };
+  loanExtraEffectSeg.addEventListener('click', function(ev){
+    var btn = ev.target.closest('button');
+    if (!btn) return;
+    selectedExtraPaymentEffect = btn.dataset.effect;
+    Array.prototype.forEach.call(loanExtraEffectSeg.querySelectorAll('button'), function(b){ b.classList.toggle('active', b === btn); });
+    document.getElementById('loanExtraEffectHint').textContent = EXTRA_EFFECT_HINTS[selectedExtraPaymentEffect];
+  });
 
   function openLoanExtraSheet(loan){
     pendingLoanExtraId = loan.id;
     pendingLoanExtraName = loan.name;
-    document.getElementById('loanExtraHint').textContent = 'Vai reduzir o capital em dívida de "' + escapeHtml(loan.name) + '". Cria também um Movimento em "' + escapeHtml(despesaCategoryDefByKey('creditos') ? despesaCategoryDefByKey('creditos').label : 'Créditos') + '".';
+    pendingLoanExtraBalance = currentBalance(loan);
+    selectedExtraPaymentEffect = 'reduce_payment';
+    Array.prototype.forEach.call(loanExtraEffectSeg.querySelectorAll('button'), function(b){ b.classList.toggle('active', b.dataset.effect === 'reduce_payment'); });
+    document.getElementById('loanExtraEffectHint').textContent = EXTRA_EFFECT_HINTS.reduce_payment;
+    document.getElementById('loanExtraHint').textContent = 'Vai reduzir o capital em dívida de "' + escapeHtml(loan.name) + '" (atualmente ' + euro(pendingLoanExtraBalance) + '). Cria também um Movimento em "' + escapeHtml(despesaCategoryDefByKey('creditos') ? despesaCategoryDefByKey('creditos').label : 'Créditos') + '".';
     document.getElementById('fLoanExtraValue').value = '';
     document.getElementById('fLoanExtraDate').value = todayStr();
     document.getElementById('fLoanExtraNote').value = '';
@@ -7839,11 +8165,20 @@
       errorEl.style.display = 'block';
       return;
     }
+    // Nunca deixar o abatimento exceder o capital em dívida (evita capital
+    // negativo) — pede para ajustar ao valor máximo em vez de aceitar às
+    // cegas e limitar silenciosamente por trás.
+    if (value > pendingLoanExtraBalance + 0.01){
+      errorEl.textContent = 'O valor não pode ser maior do que o capital em dívida (' + euro(pendingLoanExtraBalance) + '). Isso liquidaria o crédito — usa ' + euro(pendingLoanExtraBalance) + ' para o liquidar por completo.';
+      errorEl.style.display = 'block';
+      return;
+    }
     errorEl.style.display = 'none';
     var loanId = pendingLoanExtraId;
     var loanName = pendingLoanExtraName;
+    var effect = selectedExtraPaymentEffect;
     loanExtraSaving = true;
-    createSourceMovement('credit', loanId, loanName, value, dateStr, noteVal).then(function(result){
+    createSourceMovement('credit', loanId, loanName, value, dateStr, noteVal, null, {extraPaymentEffect: effect}).then(function(result){
       loanExtraSaving = false;
       closeLoanExtraSheet();
       return reloadAfterSourceChange('credit').then(function(){
@@ -8431,7 +8766,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v46'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v47'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
