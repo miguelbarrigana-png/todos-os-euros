@@ -2966,7 +2966,7 @@
   }
 
   function entrySnapshot(monthKey, p){
-    return {monthKey:monthKey, paymentId:p.id, name:p.name, amount:p.amount, dueDay:p.dueDay, type:p.type, kind:kindOf(p), category:p.category || 'outros', paid:false, paidAt:null, actualAmount:null, spaceId: spaceIdOf(p)};
+    return {monthKey:monthKey, paymentId:p.id, name:p.name, amount:p.amount, dueDay:p.dueDay, type:p.type, kind:kindOf(p), category:p.category || 'outros', paid:false, paidAt:null, actualAmount:null, spaceId: spaceIdOf(p), loanId: p.loanId || null};
   }
 
   // ATENÇÃO — mesma causa raiz documentada em loadSpaces() (ver
@@ -3087,10 +3087,21 @@
       // remove o registo que efetiva o aporte/pagamento no saldo/capital de
       // destino. Para qualquer entry normal (sem sourceType, a esmagadora
       // maioria) isto é sempre um no-op imediato — comportamento inalterado.
-      if (!entry.sourceType) return;
-      return applySourceEffect(entry, paidValue).then(function(){ render(); }).catch(function(err){
-        console.error('applySourceEffect failed', err);
-      });
+      if (entry.sourceType){
+        return applySourceEffect(entry, paidValue).then(function(){ render(); }).catch(function(err){
+          console.error('applySourceEffect failed', err);
+        });
+      }
+      // Gancho equivalente para uma prestação NORMAL de crédito (entry.loanId,
+      // ver secção "Prestação normal de crédito ↔ Orçamento/Movimentos" mais
+      // abaixo) — reduz/repõe o capital em dívida pela parte de amortização,
+      // nunca pela prestação inteira. Também no-op para qualquer entry sem
+      // loanId (a esmagadora maioria, incluindo todas as entries sourceType).
+      if (entry.loanId){
+        return applyLoanInstallmentEffect(entry, paidValue).then(function(){ render(); }).catch(function(err){
+          console.error('applyLoanInstallmentEffect failed', err);
+        });
+      }
     }).catch(function(err){
       console.error('setPaid failed', err);
       entry.paid = !paidValue;
@@ -3120,7 +3131,17 @@
     var prev = entry.actualAmount;
     entry.actualAmount = value;
     render();
-    return db.collection('entries').doc(entry.id).update({actualAmount:value}).catch(function(err){
+    return db.collection('entries').doc(entry.id).update({actualAmount:value}).then(function(){
+      // Se esta prestação de crédito já estava paga (já tem efeito aplicado
+      // no capital em dívida), reajusta esse efeito ao novo valor em vez de
+      // o deixar desatualizado — sem reamortizar do zero (ver
+      // adjustLoanInstallmentAmount). Para qualquer outra entry, no-op.
+      if (entry.loanId && entry.loanSnapshotId){
+        return adjustLoanInstallmentAmount(entry, value).catch(function(err){
+          console.error('adjustLoanInstallmentAmount failed', err);
+        });
+      }
+    }).catch(function(err){
       console.error('setActualAmount failed', err);
       entry.actualAmount = prev;
       render();
@@ -3131,17 +3152,21 @@
   // so an edit to a recorrente payment (e.g. a new category) is reflected in months already
   // materialized (by loadYear, or by having visited them before) — not just the one being viewed.
   // Past months (before fromMonthKey) are left untouched, preserving their historical snapshot.
-  function propagateTemplateChanges(paymentId, fromMonthKey, changes, spaceId){
+  function propagateTemplateChanges(paymentId, fromMonthKey, changes, spaceId, skipPaid){
     // Ver nota junto a loadPayments(): um where() só por paymentId não é
     // suficiente — o Firestore só aceita a query como segura se TODOS os
     // filtros necessários à regra estiverem explícitos nela, por isso o
     // spaceId (do payment a que estas entries pertencem) tem de vir sempre
     // como segundo filtro, nunca só paymentId sozinho.
+    // `skipPaid` (opcional, omisso em todas as chamadas existentes — ver
+    // ensureLoanPayment para o único chamador que o usa) ignora entries já
+    // pagas: usado quando uma revisão de taxa de um crédito atualiza a
+    // prestação futura, para nunca reescrever uma prestação já confirmada.
     return db.collection('entries').where('paymentId','==',paymentId).where('spaceId','==',spaceId).get().then(function(snap){
       var ops = [];
       snap.docs.forEach(function(d){
         var data = d.data();
-        if (data.monthKey >= fromMonthKey){
+        if (data.monthKey >= fromMonthKey && !(skipPaid && data.paid)){
           ops.push(db.collection('entries').doc(d.id).update(changes));
         }
       });
@@ -3295,14 +3320,28 @@
       archived:false
     };
     if (editingId){
-      return db.collection('loans').doc(editingId).update(payload).then(function(){ return loadLoans(); });
+      // Devolve o id do crédito guardado — usado pelo handler de submit do
+      // formulário para ligar/sincronizar a prestação no Orçamento logo a
+      // seguir (ver ensureLoanPayment). Nenhum chamador existente usa o
+      // valor resolvido desta promise, por isso é seguro acrescentá-lo.
+      return db.collection('loans').doc(editingId).update(payload).then(function(){ return loadLoans(); }).then(function(){ return editingId; });
     }
     payload.createdAt = new Date().toISOString();
-    return db.collection('loans').add(payload).then(function(){ return loadLoans(); });
+    return db.collection('loans').add(payload).then(function(ref){ return loadLoans().then(function(){ return ref.id; }); });
   }
 
   function deleteLoan(loanId){
-    return db.collection('loans').doc(loanId).update({archived:true}).then(function(){ return loadLoans(); });
+    return db.collection('loans').doc(loanId).update({archived:true}).then(function(){
+      // Arquiva também a prestação ligada (se existir), para não deixar uma
+      // despesa recorrente futura órfã de um crédito já eliminado.
+      return db.collection('payments').where('loanId','==',loanId).where('spaceId','==',defaultSpaceId()).get();
+    }).then(function(snap){
+      var ops = [];
+      snap.docs.forEach(function(d){
+        if (!d.data().archived) ops.push(db.collection('payments').doc(d.id).update({archived:true}));
+      });
+      return Promise.all(ops);
+    }).then(function(){ return loadLoans(); });
   }
 
   function addLoanSnapshot(loanId, dateStr, value){
@@ -3790,6 +3829,196 @@
       ops.push(deleteSourceLedgerRecord(entry.sourceType, entry.sourceRecordId));
     }
     return Promise.all(ops).then(function(){ return reloadAfterSourceChange(entry.sourceType); });
+  }
+
+  // ---------- Prestação normal de crédito ↔ Orçamento/Movimentos ----------
+  // Ao contrário do pagamento extra acima (sourceType:'credit', sempre um
+  // Movimento pontual isolado), a prestação MENSAL normal de um crédito é
+  // um payment/entry perfeitamente normal (type:'recorrente'), só marcado
+  // com `loanId` — continua a passar por openForm/submitPayment/
+  // propagateTemplateChanges/deletePayment/openAmountSheet/setActualAmount
+  // como qualquer outra despesa recorrente. Reutilizar sourceType aqui
+  // corromperia editar/eliminar uma única prestação, porque
+  // updateSourceMovement/deleteSourceMovement (acima) assumem sempre um
+  // pagamento pontual = uma entry = um Movimento. Só o efeito sobre o
+  // capital em dívida (aplicar/reverter/reajustar) tem lógica própria,
+  // abaixo — parecida em espírito com applySourceEffect, mas independente.
+
+  // Reaproveita SEMPRE monthlyRate() — não existe uma segunda fórmula de
+  // juros. Mesma divisão juros/capital que o simulador já usa em
+  // generateAmortizationSchedule (balance*monthlyRate / resto da prestação),
+  // aplicada ao capital REAL (balanceBefore vindo de getCurrentBalanceFresh),
+  // não a um cronograma sintético.
+  function loanInstallmentSplit(loan, balanceBefore, paymentAmount){
+    var interest = Math.max(0, (Number(balanceBefore)||0) * monthlyRate(loan.rate));
+    interest = Math.min(interest, Number(paymentAmount)||0);
+    var principal = Math.max(0, (Number(paymentAmount)||0) - interest);
+    return {interest: interest, principal: principal};
+  }
+
+  // Mesmo padrão cache-ou-Firestore de getCurrentBalanceFresh (acima),
+  // extraído à parte para não alterar essa função já usada pelo fluxo de
+  // pagamento extra.
+  function getLoanFresh(loanId){
+    var cached = state.loans.find(function(l){ return l.id === loanId; });
+    if (cached) return Promise.resolve(cached);
+    return db.collection('loans').doc(loanId).get().then(function(d){ return Object.assign({id:d.id}, d.data()); });
+  }
+
+  // Aplica (paidValue=true) ou reverte (paidValue=false) o efeito no capital
+  // em dívida de UMA prestação normal marcada/desmarcada como paga.
+  // Idempotente por entry.loanSnapshotId — duplo-toque, reabrir a app ou um
+  // retry de rede nunca reduzem o capital duas vezes (mesmo mecanismo de
+  // sourceRecordId em applySourceEffect, campo diferente).
+  // Mantém state.loanSnapshots[loanId] (a cache usada por currentBalance()/
+  // getCurrentBalanceFresh() para desenhar o cartão do crédito e para o
+  // saldo de partida do próximo cálculo) sincronizada com a escrita que
+  // acabou de acontecer no Firestore — sem isto, duas prestações marcadas
+  // como pagas em seguida (ou marcar/desmarcar/marcar outra vez) na mesma
+  // sessão podiam calcular a segunda a partir de um saldo desatualizado
+  // (a cache só era recarregada do zero num loadLoans() completo).
+  function patchLoanSnapshotCache(loanId, newSnap, removeId){
+    var list = state.loanSnapshots[loanId];
+    if (!list) return; // nunca carregada nesta sessão — getCurrentBalanceFresh vai sempre buscar ao Firestore, nada a corrigir
+    if (removeId) list = list.filter(function(s){ return s.id !== removeId; });
+    if (newSnap) list = list.concat([newSnap]);
+    list.sort(sortByDateThenCreated);
+    state.loanSnapshots[loanId] = list;
+  }
+
+  function applyLoanInstallmentEffect(entry, paidValue){
+    if (!entry.loanId) return Promise.resolve();
+    if (paidValue){
+      if (entry.loanSnapshotId) return Promise.resolve();
+      return getLoanFresh(entry.loanId).then(function(loan){
+        return getCurrentBalanceFresh(entry.loanId).then(function(balanceBefore){
+          var amount = effectiveAmount(entry);
+          var split = loanInstallmentSplit(loan, balanceBefore, amount);
+          var newValue = Math.max(0, balanceBefore - split.principal);
+          var dateStr = creditLedgerDateStr(entry);
+          var payload = {
+            loanId: entry.loanId, date: dateStr, value: newValue, type: 'installment',
+            amount: amount, interestPart: split.interest, principalPart: split.principal,
+            entryId: entry.id, createdAt: new Date().toISOString()
+          };
+          return db.collection('loanSnapshots').add(payload).then(function(ref){
+            entry.loanSnapshotId = ref.id;
+            entry.loanInterestPart = split.interest;
+            entry.loanPrincipalPart = split.principal;
+            entry.loanBalanceBefore = balanceBefore;
+            patchLoanSnapshotCache(entry.loanId, Object.assign({id: ref.id}, payload), null);
+            return db.collection('entries').doc(entry.id).update({
+              loanSnapshotId: ref.id, loanInterestPart: split.interest,
+              loanPrincipalPart: split.principal, loanBalanceBefore: balanceBefore
+            });
+          });
+        });
+      });
+    }
+    if (!entry.loanSnapshotId) return Promise.resolve();
+    var oldId = entry.loanSnapshotId;
+    return db.collection('loanSnapshots').doc(oldId).delete().then(function(){
+      entry.loanSnapshotId = null;
+      patchLoanSnapshotCache(entry.loanId, null, oldId);
+      return db.collection('entries').doc(entry.id).update({loanSnapshotId: null});
+    });
+  }
+
+  // "Ajustar valor" numa prestação JÁ paga: não reamortiza do zero — reusa
+  // o capital-antes guardado no momento em que foi marcada como paga
+  // (entry.loanBalanceBefore) e só corrige o registo já existente em
+  // loanSnapshots (mesma ideia de updateSourceMovement para um pagamento
+  // extra editado, acima, adaptada a uma prestação recorrente). Nunca cria
+  // um segundo registo — nunca duplica o efeito.
+  function adjustLoanInstallmentAmount(entry, newAmount){
+    if (!entry.loanId || !entry.loanSnapshotId) return Promise.resolve();
+    return getLoanFresh(entry.loanId).then(function(loan){
+      var balanceBefore = Number(entry.loanBalanceBefore)||0;
+      var split = loanInstallmentSplit(loan, balanceBefore, newAmount);
+      var newValue = Math.max(0, balanceBefore - split.principal);
+      return db.collection('loanSnapshots').doc(entry.loanSnapshotId).update({
+        value: newValue, amount: newAmount, interestPart: split.interest, principalPart: split.principal
+      }).then(function(){
+        entry.loanInterestPart = split.interest;
+        entry.loanPrincipalPart = split.principal;
+        // Corrige o MESMO registo dentro da cache também (ver
+        // patchLoanSnapshotCache acima) — nunca acrescenta um novo.
+        var list = state.loanSnapshots[entry.loanId];
+        if (list){
+          var cached = list.find(function(s){ return s.id === entry.loanSnapshotId; });
+          if (cached){ cached.value = newValue; cached.amount = newAmount; cached.interestPart = split.interest; cached.principalPart = split.principal; }
+        }
+        return db.collection('entries').doc(entry.id).update({
+          loanInterestPart: split.interest, loanPrincipalPart: split.principal
+        });
+      });
+    });
+  }
+
+  // Cria ou sincroniza o payment recorrente ligado a este crédito — nunca
+  // um segundo (procura sempre primeiro por loanId, evita duplicação).
+  // Sobre um crédito já ligado, só atualiza nome/valor/categoria e propaga
+  // a partir do mês atual, saltando entries já pagas (skipPaid=true) —
+  // cobre revisão de taxa sem tocar prestações já confirmadas. Sobre um
+  // crédito sem ligação, cria a partir do mês ATUAL (nunca retroativo ao
+  // startMonth histórico do crédito).
+  function ensureLoanPayment(loan){
+    var spaceId = defaultSpaceId();
+    var nowMonthKey = monthKeyOf(new Date());
+    return db.collection('payments').where('loanId','==',loan.id).where('spaceId','==',spaceId).get().then(function(snap){
+      var active = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(p){ return !p.archived; });
+      var amount = loanInstallment(loan);
+      var name = 'Prestação · ' + loan.name;
+      if (active.length){
+        var payment = active[0];
+        var changes = {name:name, amount:amount, category:'creditos'};
+        return db.collection('payments').doc(payment.id).update(changes)
+          .then(function(){ return propagateTemplateChanges(payment.id, nowMonthKey, changes, spaceId, true); });
+      }
+      var payload = {
+        name:name, amount:amount, dueDay:1, type:'recorrente', kind:'despesa', category:'creditos',
+        startMonth: nowMonthKey, endMonth: null, archived:false, createdAt:new Date().toISOString(),
+        spaceId: spaceId, loanId: loan.id
+      };
+      return db.collection('payments').add(payload);
+    });
+  }
+
+  // Migração best-effort, uma única vez por telemóvel (mesmo padrão de
+  // backfillMissingSpaceIds): liga automaticamente TODOS os créditos ativos
+  // já existentes à sua prestação no Orçamento/Movimentos. ensureLoanPayment
+  // já garante que nunca cria uma segunda ligação para o mesmo crédito; o
+  // que esta função não consegue garantir é que não exista já, à mão, uma
+  // despesa recorrente manual a representar a mesma prestação (não há campo
+  // nenhum hoje que ligue as duas) — por isso, para cada crédito, regista em
+  // window.loanMigrationWarnings quando encontra outra despesa recorrente
+  // com valor muito próximo (±2%) do valor da prestação, para o relatório
+  // final poder assinalar "possível duplicação, revê".
+  var LOAN_PAYMENT_MIGRATION_FLAG = 'contasLoanPaymentMigrationDone_v1';
+  function migrateExistingLoansToPayments(){
+    var done = false;
+    try { done = localStorage.getItem(LOAN_PAYMENT_MIGRATION_FLAG) === '1'; } catch(e){}
+    if (done) return Promise.resolve();
+    var spaceId = defaultSpaceId();
+    return db.collection('loans').get().then(function(snap){
+      var loans = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(l){ return !l.archived; });
+      if (!loans.length) return;
+      return db.collection('payments').where('spaceId','==',spaceId).get().then(function(paySnap){
+        var others = paySnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+          .filter(function(p){ return !p.archived && p.type === 'recorrente' && !p.loanId; });
+        window.loanMigrationWarnings = window.loanMigrationWarnings || [];
+        loans.forEach(function(loan){
+          var inst = loanInstallment(loan);
+          var suspect = others.find(function(p){ return Math.abs((Number(p.amount)||0) - inst) <= inst*0.02; });
+          if (suspect) window.loanMigrationWarnings.push({loanId:loan.id, loanName:loan.name, suspectPaymentId:suspect.id, suspectName:suspect.name, amount:suspect.amount});
+        });
+        return Promise.all(loans.map(function(loan){ return ensureLoanPayment(loan); }));
+      });
+    }).then(function(){
+      try { localStorage.setItem(LOAN_PAYMENT_MIGRATION_FLAG, '1'); } catch(e){}
+    }).catch(function(err){
+      console.error('migrateExistingLoansToPayments falhou (não crítico):', err);
+    });
   }
 
   // Sheet única de editar/eliminar um Movimento ligado a uma origem
@@ -7524,7 +7753,18 @@
     submitLoan({
       name:name, principal:principal, startMonth:start, termMonths: years*12,
       rateType:selectedLoanRateType, rate:rate, reviewMonths:reviewMonths, propertyValue:propertyValue
-    }, editingLoanId).then(function(){
+    }, editingLoanId).then(function(loanId){
+      // Cria ou sincroniza a prestação mensal no Orçamento/Movimentos (ver
+      // ensureLoanPayment) — cobre tanto um crédito novo como uma edição
+      // (ex.: revisão de taxa muda o valor da prestação futura).
+      var savedLoan = state.loans.find(function(l){ return l.id === loanId; });
+      var ensured = savedLoan ? ensureLoanPayment(savedLoan) : Promise.resolve();
+      return ensured.then(function(){
+        if (state.view === 'month' || state.view === 'movimentos') return loadMonth(state.monthKey);
+      }).catch(function(err){
+        console.error('ensureLoanPayment failed', err);
+      });
+    }).then(function(){
       submitBtn.disabled = false;
       closeLoanForm();
     }).catch(function(err){
@@ -8191,7 +8431,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v45'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v46'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -10297,6 +10537,13 @@
         return backfillMissingSpaceIds();
       }).then(function(){
         return loadDataForActiveSpace();
+      }).then(function(){
+        // Liga automaticamente créditos já existentes à sua prestação no
+        // Orçamento/Movimentos (ver migrateExistingLoansToPayments) — corre
+        // uma única vez por telemóvel, depois de espaço/backfill resolvidos.
+        return migrateExistingLoansToPayments();
+      }).then(function(){
+        if (state.view === 'month' || state.view === 'movimentos') return loadMonth(state.monthKey);
       });
       loadSavingsGoals();
       loadLoans();
