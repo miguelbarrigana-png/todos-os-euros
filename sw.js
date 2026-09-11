@@ -8,7 +8,7 @@
 // Without it, phones can keep showing an old version indefinitely.
 // (The cache key name itself is an internal identifier, left as-is for
 // upgrade compatibility with installs already running v5.)
-var CACHE_NAME = 'contas-em-dia-v49';
+var CACHE_NAME = 'contas-em-dia-v50';
 var SHELL_FILES = [
   './',
   './index.html',
