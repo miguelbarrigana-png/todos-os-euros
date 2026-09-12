@@ -993,6 +993,14 @@
     animation:none; opacity:1; transform:none;
   }
   .app-splash.app-splash-reduced.app-splash-leaving{ animation:app-splash-out .2s ease forwards; }
+
+  /* v52: only emergency-fund content; existing tokens and components. */
+  #emergencyFundFormOverlay .segmented button{min-height:44px;}
+  #efSourceList .checkbox-row{margin:8px 0;min-height:44px;}
+  #efSourceList .checkbox-row span{min-width:0;overflow-wrap:anywhere;}
+  #efPreview .ef-calc-row, #homeEmergencyFundBody .ef-calc-row, #homeEmergencyFundBody .ef-row{gap:12px;flex-wrap:wrap;}
+  #homeEmergencyFundBody .ef-calc-cat{min-width:0;overflow-wrap:anywhere;}
+  #efPreview .mono, #homeEmergencyFundBody .mono{overflow-wrap:anywhere;}
 </style>
 </head>
 <body>
@@ -1684,9 +1692,9 @@
         <div class="field">
           <label class="checkbox-row">
             <input type="checkbox" id="fSavingsIsEmergencyFund">
-            <span>Marcar como Fundo de Emergência</span>
+            <span>Conta para o Fundo de Emergência</span>
           </label>
-          <div class="hint">Liga esta poupança ao cartão de Fundo de Emergência do Início. Só pode haver uma por família — marcar esta desmarca automaticamente outra, se existir.</div>
+          <div class="hint">Este saldo será considerado na tua reserva de emergência.</div>
         </div>
         <div class="field">
           <label for="fSavingsTargetDate">Data alvo (opcional)</label>
@@ -1820,10 +1828,50 @@
   </div>
 </div>
 
+<div class="overlay" id="pushSettingsOverlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pushSettingsTitle">
+    <div class="sheet-handle"></div><h2 id="pushSettingsTitle">Notificações</h2>
+    <div id="pushSettingsBody"><p class="hint">A preparar as definições de notificações…</p></div>
+    <div class="sheet-actions"><button type="button" class="btn ghost" id="closePushSettings">Fechar</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="emergencyFundFormOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Fundo de Emergência</h2>
+    <form id="emergencyFundForm">
+      <div class="field"><label id="efTargetLabel">Como queres definir o teu objetivo?</label>
+        <input type="hidden" id="efTargetMode" value="months"><div class="segmented" id="efTargetSeg" role="group" aria-labelledby="efTargetLabel"><button type="button" data-mode="months">Meses de cobertura</button><button type="button" data-mode="amount">Valor objetivo</button></div>
+      </div>
+      <div class="field" id="efMonthsField"><label for="efTargetMonths">Quantos meses queres ter de reserva?</label>
+        <input id="efTargetMonths" type="number" inputmode="decimal" min="0.1" max="120" step="0.1" value="6">
+      </div>
+      <div class="field" id="efAmountField" hidden><label for="efTargetAmount">Valor objetivo (€)</label>
+        <input id="efTargetAmount" type="number" inputmode="decimal" min="0.01" step="0.01">
+      </div>
+      <div class="field"><label id="efReferenceLabel">Valor mensal de referência</label>
+        <input type="hidden" id="efReferenceMode" value="automatic"><div class="segmented" id="efReferenceSeg" role="group" aria-labelledby="efReferenceLabel"><button type="button" data-mode="automatic">Usar cálculo MAB360</button><button type="button" data-mode="manual">Definir manualmente</button></div>
+      </div>
+      <div class="field" id="efManualField" hidden><label for="efManualReference">Referência mensal manual (€)</label>
+        <input id="efManualReference" type="number" inputmode="decimal" min="0.01" step="0.01">
+      </div>
+      <div id="efAutomaticHint" class="hint"></div>
+      <h3>Fontes</h3>
+      <div class="hint">Seleciona apenas saldos distintos. Se o fundo antigo já representa dinheiro destas contas, desmarca-o para não contar o mesmo dinheiro duas vezes. Marcar ou desmarcar não movimenta dinheiro.</div>
+      <div id="efSourceList"></div>
+      <div id="efPreview" aria-live="polite" aria-atomic="true"></div>
+      <div class="field-error" id="efFormError" role="alert"></div>
+      <div class="sheet-actions"><button type="button" class="btn ghost" id="cancelEmergencyFundForm">Cancelar</button><button type="submit" class="btn primary" id="saveEmergencyFundForm">Guardar</button></div>
+    </form>
+  </div>
+</div>
+
 <div class="overlay" id="settingsOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2>Definições</h2>
+    <div class="field"><label>Notificações</label><button type="button" class="btn ghost" id="openPushSettings">Gerir notificações</button></div>
 
     <div class="field">
       <label>Aparência</label>
@@ -2158,6 +2206,7 @@
     // ---------- Fundo de Emergência ----------
     // monthly: { 'YYYY-MM' -> { categoriaKey -> totalGasto } }, só meses
     // COMPLETOS (anteriores ao corrente) com despesas do Espaço ativo.
+    emergencyFundConfig: null,
     emergencyFundHistory: {ready:false, monthly:{}},
     emergencyFundHistoryLoading: true,
 
@@ -3630,57 +3679,48 @@
   }
 
   function loadSavingsGoals(){
+    var forDb = db;
+    var requestId = (state.savingsRequestId || 0) + 1;
+    state.savingsRequestId = requestId;
+    state.savingsLoadError = false;
     state.savingsLoading = true;
     render();
-    return db.collection('savingsGoals').get().then(function(snap){
-      var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      state.savingsGoals = all.filter(function(g){ return !g.archived; });
-      var subPromises = state.savingsGoals.map(function(g){
-        return db.collection('savingsMovements').where('goalId','==',g.id).get().then(function(s){
-          var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-          list.sort(sortByDateThenCreated);
-          state.savingsMovements[g.id] = list;
+    return Promise.all([forDb.collection('savingsGoals').get(), forDb.collection('settings').doc('emergencyFund').get()]).then(function(result){
+      var goals = result[0].docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }).filter(function(g){return !g.archived;});
+      var movements = {};
+      return Promise.all(goals.map(function(g){
+        return forDb.collection('savingsMovements').where('goalId','==',g.id).get().then(function(snap){
+          movements[g.id] = snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).sort(sortByDateThenCreated);
         });
+      })).then(function(){
+        if (db !== forDb || state.savingsRequestId !== requestId) return;
+        state.savingsGoals = goals;
+        state.savingsMovements = movements;
+        state.emergencyFundConfig = result[1].exists ? result[1].data() : null;
+        state.savingsLoading = false;
+        render();
       });
-      return Promise.all(subPromises);
-    }).then(function(){
-      state.savingsLoading = false;
-      render();
     }).catch(function(err){
-      console.error('loadSavingsGoals failed', err);
+      if (db !== forDb || state.savingsRequestId !== requestId) return;
+      console.error('loadSavingsGoals failed',err);
+      state.savingsLoadError = true;
       state.savingsLoading = false;
       state.dbAvailable = false;
       render();
+      throw err;
     });
   }
 
   function submitSavingsGoal(data, editingId){
     var payload = {name:data.name, goalAmount: data.goalAmount || null, targetDate: data.targetDate || null, archived:false};
-    // 'type' reflete sempre o estado explícito da checkbox "Marcar como Fundo
-    // de Emergência" (ver savingsFormOverlay) — é sempre gravado, incl. como
-    // null, porque update() faz merge: só escrever quando "truthy" nunca
-    // conseguiria LIMPAR o campo ao desmarcar a checkbox numa edição.
-    payload.type = data.type || null;
-    // Só pode haver uma poupança "Fundo de emergência" por família (ponto 10
-    // do pedido original) — ao marcar esta, desmarca-se automaticamente
-    // qualquer outra que já tivesse esse type (inclui o caso de
-    // retrocompatibilidade: uma poupança antiga, criada antes desta
-    // funcionalidade existir, sem campo 'type' nenhum, é reconhecida assim
-    // que o utilizador a marca manualmente aqui).
-    var unmarkOther = Promise.resolve();
-    if (payload.type === 'emergency_fund'){
-      var other = state.savingsGoals.find(function(g){ return g.type === 'emergency_fund' && g.id !== editingId; });
-      if (other) unmarkOther = db.collection('savingsGoals').doc(other.id).update({type:null});
-    }
+    var oldGoal = state.savingsGoals.find(function(g){return g.id === editingId;});
+    payload.type = oldGoal ? (oldGoal.type || null) : null;
+    payload.countsTowardEmergencyFund = data.countsTowardEmergencyFund === true;
     if (editingId){
-      return unmarkOther.then(function(){
-        return db.collection('savingsGoals').doc(editingId).update(payload);
-      }).then(function(){ return loadSavingsGoals(); });
+      return db.collection('savingsGoals').doc(editingId).update(payload).then(function(){return loadSavingsGoals();});
     }
     payload.createdAt = new Date().toISOString();
-    return unmarkOther.then(function(){
-      return db.collection('savingsGoals').add(payload);
-    }).then(function(ref){
+    return db.collection('savingsGoals').add(payload).then(function(ref){
       var initial = Number(data.initial)||0;
       if (initial > 0){
         return db.collection('savingsMovements').add({goalId:ref.id, date:todayStr(), amount:initial, createdAt:new Date().toISOString()});
@@ -5232,24 +5272,53 @@
     };
   }
 
-  // Poupança principal marcada como Fundo de Emergência (savings.type ===
-  // 'emergency_fund') — por desenho, só faz sentido existir uma por família
-  // (Património/Poupanças são sempre globais à família, não por Espaço —
-  // ver ponto 7 do pedido original de Espaços Financeiros).
+  // Legacy: antigo fundo continua uma fonte; o objetivo agregado vive em settings/emergencyFund.
   function emergencyFundSavingsGoal(){
-    return state.savingsGoals.filter(function(g){ return g.type === 'emergency_fund'; })[0] || null;
+    return state.savingsGoals.filter(function(g){return !g.archived && g.type === 'emergency_fund';}).sort(function(a,b){return String(a.id).localeCompare(String(b.id));})[0] || null;
+  }
+
+  function emergencyFundSourceIncluded(goal){
+    return !!goal && !goal.archived && (typeof goal.countsTowardEmergencyFund === 'boolean' ? goal.countsTowardEmergencyFund : goal.type === 'emergency_fund');
+  }
+
+  function emergencyFundSettings(){
+    var legacy = emergencyFundSavingsGoal();
+    var raw = state.emergencyFundConfig || legacy || {};
+    var amount = Number(raw.targetAmount != null ? raw.targetAmount : raw.goalAmount) || 0;
+    var mode = raw.targetMode === 'months' ? 'months' : (raw.targetMode === 'amount' || raw.targetAmount != null || raw.goalAmount != null ? 'amount' : 'months');
+    return {type:'emergency_fund', schemaVersion:2, targetMode:mode,
+      targetMonths: Number(raw.targetMonths) > 0 ? Number(raw.targetMonths) : 6,
+      targetAmount: Math.max(0,amount), monthlyReferenceMode:raw.monthlyReferenceMode === 'manual' ? 'manual' : 'automatic',
+      manualMonthlyReference: Number(raw.manualMonthlyReference) > 0 ? Number(raw.manualMonthlyReference) : null};
+  }
+
+  function emergencyFundMetrics(config, sources, automaticReference){
+    var reference = config.monthlyReferenceMode === 'manual' ? Number(config.manualMonthlyReference) : Number(automaticReference);
+    reference = Number.isFinite(reference) && reference > 0 ? reference : 0;
+    var ids = Object.create(null);
+    var currentCents = sources.reduce(function(sum,g){
+      if (ids[g.id]) return sum;
+      ids[g.id] = true;
+      return sum + Math.round(savingsSavedOf(g.id) * 100);
+    },0);
+    var current = currentCents / 100;
+    var target = config.targetMode === 'months' ? (reference > 0 ? Math.round(reference * config.targetMonths * 100)/100 : null) : config.targetAmount;
+    return {current:current, monthlyReference:reference, targetAmount:target,
+      monthsCovered:reference > 0 ? current/reference : null,
+      targetMonths:reference > 0 && target != null ? target/reference : null,
+      progress:target > 0 ? current/target : null,
+      progressThree:reference > 0 ? current/(reference*3) : null,
+      progressSix:reference > 0 ? current/(reference*6) : null};
   }
 
   function calculateEmergencyFundCoverage(rec){
-    var goal = emergencyFundSavingsGoal();
-    var current = goal ? savingsSavedOf(goal.id) : 0;
-    return {
-      goal: goal,
-      current: current,
-      monthsCovered: rec.monthlyAverage > 0 ? (current / rec.monthlyAverage) : null,
-      progressThree: rec.threeMonthFund > 0 ? (current / rec.threeMonthFund) : null,
-      progressSix: rec.sixMonthFund > 0 ? (current / rec.sixMonthFund) : null
-    };
+    var config = emergencyFundSettings();
+    var sources = state.savingsGoals.filter(emergencyFundSourceIncluded);
+    var result = emergencyFundMetrics(config,sources,rec.monthlyAverage);
+    result.goal = state.emergencyFundConfig || emergencyFundSavingsGoal() || (sources.length ? config : null);
+    result.config = config;
+    result.sources = sources;
+    return result;
   }
 
   // Três níveis pedidos (1 mês / 2-5 meses / 6+ meses), mais um quarto caso
@@ -5964,51 +6033,25 @@
   // Nunca chamada para um Espaço Temporário (renderHomeView delega para
   // renderTemporarySpaceHome antes de aqui chegar — ver ponto 14 do pedido).
   function emergencyFundCardHtml(){
-    var rec = calculateEmergencyFundRecommendation();
-    var confidence = getEmergencyFundConfidence(rec.monthsCount);
-
-    if (rec.monthlyAverage <= 0){
-      return '<div class="section-head"><h2>Fundo de Emergência</h2></div>' +
-        '<div class="cat-card emergency-fund-card"><div class="ef-empty">' + icon('shield') +
-        '<div>Ainda não há dados suficientes sobre as tuas despesas essenciais. Define orçamentos para as categorias essenciais (em Orçamento, por categoria) ou regista algumas despesas para veres aqui uma recomendação.</div></div></div>';
+    if (state.savingsLoading) return '<div class="skeleton">A carregar o Fundo de Emergência…</div>';
+    if (state.savingsLoadError) return '<div class="hint">Não foi possível carregar todas as fontes. Atualiza a página para voltar a tentar.</div>';
+    var rec = calculateEmergencyFundRecommendation(), cov = calculateEmergencyFundCoverage(rec);
+    var fmtMonths = function(v){return v === null ? '—' : v.toFixed(1).replace('.',',') + ' meses';};
+    var row = function(label,value){return '<div class="ef-row"><span class="ef-label">'+label+'</span><span class="ef-value mono">'+value+'</span></div>';};
+    var html = '<div class="section-head"><h2>Fundo de Emergência</h2><button type="button" class="link-btn" data-action="open-emergency-fund-calc">Ver cálculo</button></div><div class="cat-card emergency-fund-card">';
+    html += row('Atual',euro(cov.current)) + row('Objetivo',cov.targetAmount == null ? '—' : euro(cov.targetAmount));
+    html += row('Cobertura atual',fmtMonths(cov.monthsCovered)) + row('Cobertura objetivo',fmtMonths(cov.targetMonths));
+    if (cov.progress !== null){
+      var percent = cov.progress*100;
+      html += '<div class="progress-track" role="progressbar" aria-label="Progresso do Fundo de Emergência" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+Math.max(0,Math.min(100,percent))+'"><div class="progress-fill '+(percent>=100?'success':'accent')+'" style="width:'+Math.max(0,Math.min(100,percent))+'%"></div></div><div class="progress-context">'+percent.toFixed(1).replace('.',',')+'% do objetivo</div>';
     }
-
-    var cov = calculateEmergencyFundCoverage(rec);
-    var currentHtml;
-    if (cov.goal){
-      var pctSix = cov.progressSix === null ? 0 : Math.round(cov.progressSix * 100);
-      var pctSixClamped = Math.max(0, Math.min(100, pctSix));
-      var progressCls = pctSix >= 100 ? 'success' : (pctSix >= 50 ? 'accent' : 'warning');
-      var coverageHint;
-      if (cov.current < rec.threeMonthFund){
-        coverageHint = 'Faltam ' + euro(rec.threeMonthFund - cov.current) + ' para atingires uma reserva equivalente a 3 meses.';
-      } else if (cov.current < rec.sixMonthFund){
-        coverageHint = 'Já atingiste a referência de 3 meses — faltam ' + euro(rec.sixMonthFund - cov.current) + ' para atingires 6 meses de cobertura.';
-      } else {
-        coverageHint = 'O teu fundo de emergência já cobre pelo menos 6 meses de despesas essenciais.';
-      }
-      currentHtml =
-        '<div class="ef-current-row"><span>O teu fundo</span><span class="mono">' + euro(cov.current) + '</span></div>' +
-        '<div class="progress-track"><div class="progress-fill ' + progressCls + '" style="width:' + pctSixClamped + '%"></div></div>' +
-        '<div class="progress-context">' + pctSixClamped + '% de 6 meses' + (cov.monthsCovered !== null ? ' · cobre ' + cov.monthsCovered.toFixed(1).replace('.', ',') + ' meses de despesas essenciais' : '') + '</div>' +
-        '<div class="hint">' + escapeHtml(coverageHint) + '</div>';
-    } else {
-      currentHtml =
-        '<div class="hint" style="margin-top:12px;">Ainda não estás a acompanhar um fundo de emergência.</div>' +
-        '<button type="button" class="btn ghost" data-action="create-emergency-fund" style="width:100%; margin-top:8px;">Criar fundo de emergência</button>';
-    }
-
-    return '<div class="section-head"><h2>Fundo de Emergência</h2><button type="button" class="link-btn" data-action="open-emergency-fund-calc">Ver cálculo</button></div>' +
-      '<div class="cat-card emergency-fund-card">' +
-        '<div class="ef-row"><span class="ef-label">Custo essencial médio</span><span class="ef-value mono">' + euro(rec.monthlyAverage) + '/mês</span></div>' +
-        '<div class="trio-grid ef-duo">' +
-          '<div class="trio-tile"><div class="trio-label">3 meses · base</div><div class="trio-value mono">' + euro(rec.threeMonthFund) + '</div></div>' +
-          '<div class="trio-tile"><div class="trio-label">6 meses · reforçada</div><div class="trio-value mono">' + euro(rec.sixMonthFund) + '</div></div>' +
-        '</div>' +
-        currentHtml +
-        '<div class="hint"><strong>' + confidence.label + '.</strong> ' + confidence.detail + '</div>' +
-        '<div class="hint">Esta estimativa baseia-se nos dados registados na MAB360 e serve como referência de planeamento financeiro.</div>' +
-      '</div>';
+    html += '<div class="hint">Referência '+(cov.config.monthlyReferenceMode === 'manual'?'manual':'MAB360')+': '+euro(cov.monthlyReference)+'/mês.</div>';
+    if (!cov.monthlyReference) html += '<div class="hint">Ainda não temos dados suficientes para calcular a cobertura em meses. Podes definir uma referência manual.</div>';
+    html += '<h3>Fontes</h3>';
+    if (!cov.sources.length) html += '<div class="hint">Ainda não há fontes selecionadas. Podes associar ou criar uma poupança mais tarde.</div>';
+    cov.sources.forEach(function(g){html += '<div class="ef-calc-row"><span class="ef-calc-cat">'+escapeHtml(g.name)+'</span><span class="mono">'+euro(savingsSavedOf(g.id))+'</span></div>';});
+    html += '<button type="button" class="btn ghost" data-action="configure-emergency-fund" style="width:100%;margin-top:12px">'+(cov.goal?'Editar objetivo e fontes':'Criar fundo de emergência')+'</button>';
+    return html + '</div>';
   }
 
   // Conteúdo do modal "Ver cálculo" — decomposição por categoria essencial,
@@ -6016,6 +6059,7 @@
   function renderEmergencyFundCalc(){
     var rec = calculateEmergencyFundRecommendation();
     var rows = getEssentialCategoryBreakdown(rec);
+    var cov = calculateEmergencyFundCoverage(rec);
     var html = '<div class="ef-calc-row"><span class="ef-calc-cat"><strong>Custo essencial mensal estimado</strong></span><span class="mono"><strong>' + euro(rec.monthlyAverage) + '</strong></span></div>';
     rows.forEach(function(r){
       html += '<div class="ef-calc-row"><span class="ef-calc-cat"><span class="icon-badge sm" style="' + catTint(r.def.color) + '">' + icon(categoryIconOf(r.def.key)) + '</span>' + escapeHtml(r.def.label) + '</span><span class="mono">' + euro(r.amount) + '</span></div>';
@@ -6026,6 +6070,7 @@
     html += '<div class="ef-calc-total"><span>Fundo de 3 meses</span><span class="mono">' + euro(rec.threeMonthFund) + '</span></div>';
     html += '<div class="ef-calc-total"><span>Fundo de 6 meses</span><span class="mono">' + euro(rec.sixMonthFund) + '</span></div>';
     html += '<p class="hint" style="margin-top:14px;">Histórico: apenas despesas confirmadas dos meses completos disponíveis. Em cada categoria usamos o maior valor entre média paga e orçamento do mês. Cada crédito incluído aparece separadamente, pelo maior valor entre média das suas prestações pagas e prestação atual (referência de planeamento no Space Família). Estes valores não se somam entre si. Aportes e abatimentos extraordinários ficam sempre excluídos; créditos liquidados também. Prestações manuais sem ligação não são adicionadas quando existem créditos incluídos, para evitar duplicações.</p>';
+    if (cov.config.monthlyReferenceMode === 'manual') html += '<p class="hint">Para o teu objetivo e cobertura é usada a referência manual de '+euro(cov.monthlyReference)+'/mês. A decomposição acima mostra apenas o cálculo automático MAB360.</p>';
     document.getElementById('emergencyFundCalcBody').innerHTML = html;
   }
 
@@ -6211,13 +6256,13 @@
         text: '<strong>Revisão de taxa a aproximar-se.</strong> ' + escapeHtml(loanNames) + (reviews.length === 1 ? ' revê a taxa' : ' revêem a taxa') + ' nos próximos 60 dias.',
         action:'goto', view:'loan'});
     }
-    if (!state.savingsLoading){
+    if (!state.savingsLoading && !state.savingsLoadError){
       var efRec = calculateEmergencyFundRecommendation();
-      if (efRec.monthlyAverage > 0){
-        var cov = calculateEmergencyFundCoverage(efRec);
-        if (!cov.goal || cov.current < efRec.threeMonthFund){
+      var cov = calculateEmergencyFundCoverage(efRec);
+      if (cov.monthlyReference > 0){
+        if (!cov.goal || cov.current < cov.monthlyReference * 3){
           alerts.push({p:6, cls:'info', iconName:'shield',
-            text: '<strong>Fundo de emergência abaixo do recomendado.</strong> ' + (cov.goal ? ('Tens ' + euro(cov.current) + ' — referência mínima ' + euro(efRec.threeMonthFund) + '.') : 'Ainda não tens um a acompanhar.'),
+            text: '<strong>Fundo de emergência abaixo do recomendado.</strong> ' + (cov.goal ? ('Tens ' + euro(cov.current) + ' — referência mínima ' + euro(cov.monthlyReference * 3) + '.') : 'Ainda não tens um a acompanhar.'),
             action:'open-home-emergency-fund'});
         }
       }
@@ -6259,9 +6304,9 @@
     if (state.loans.length || state.investments.length || state.savingsGoals.length){
       rows.push({attrs:' data-action="goto" data-view="patrimonio"', iconName:'trending', label:'Património líquido', value: euro(netw.net), cls: netw.net >= 0 ? 'positive' : 'negative'});
     }
-    if (!state.savingsLoading){
+    if (!state.savingsLoading && !state.savingsLoadError){
       var efRec = calculateEmergencyFundRecommendation();
-      if (efRec.monthlyAverage > 0){
+      if (efRec.monthlyAverage > 0 || state.emergencyFundConfig || state.savingsGoals.some(emergencyFundSourceIncluded)){
         var cov = calculateEmergencyFundCoverage(efRec);
         var efValue = cov.monthsCovered !== null ? (cov.monthsCovered.toFixed(1).replace('.', ',') + ' meses') : '—';
         rows.push({attrs:' data-action="open-home-emergency-fund"', iconName:'shield', label:'Fundo de emergência', value: efValue});
@@ -7182,7 +7227,7 @@
       '<div class="loan-head"><h3>' + escapeHtml(goal.name) + '</h3>' +
         (goal.goalAmount ? '' : '<div class="sub">Sem objetivo definido — só a acumular</div>') + '</div></div>' +
       '<div class="saldo-row"><div class="label">Guardado até agora</div><div class="saldo-value mono positive">' + euro(saved) + '</div></div>' +
-      goalHtml + lastHtml +
+      (emergencyFundSourceIncluded(goal) ? '<div class="hint">Incluída no Fundo de Emergência</div>' : '') + goalHtml + lastHtml +
       aporteHistoryHtml +
       '<div class="inv-actions-row">' +
         '<button type="button" class="btn ghost" data-action="savings-move" data-id="' + goal.id + '">Adicionar / retirar</button>' +
@@ -7198,7 +7243,7 @@
       return;
     }
     if (!state.savingsGoals.length){
-      content.innerHTML = '<div class="empty"><h3>Ainda não há poupanças por objetivo</h3>' +
+      content.innerHTML = '<button type="button" class="btn ghost" data-action="open-home-emergency-fund">Fundo de Emergência</button><div class="empty"><h3>Ainda não há poupanças por objetivo</h3>' +
         '<p>Toca no botão + para criares uma poupança (ex.: férias, fundo de emergência, carro novo) e ires acumulando dinheiro com um objetivo à vista.</p>' +
         '<button type="button" class="btn primary" data-action="empty-add" data-kind="poupanca">+ Nova poupança</button></div>';
       return;
@@ -7207,7 +7252,7 @@
     var summaryHtml = '<div class="summary">' +
       '<div class="saldo-row"><div class="label">Total guardado em poupanças</div><div class="saldo-value mono positive">' + euro(totalSaved) + '</div></div>' +
     '</div>';
-    content.innerHTML = summaryHtml + state.savingsGoals.map(savingsGoalCardHtml).join('');
+    content.innerHTML = summaryHtml + '<button type="button" class="btn ghost" data-action="open-home-emergency-fund" style="margin-bottom:12px">Fundo de Emergência</button>' + state.savingsGoals.map(savingsGoalCardHtml).join('');
   }
 
   // ---------- Património (net worth) view — purely computed from loans + investments ----------
@@ -7588,6 +7633,9 @@
   var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia'];
 
   function render(){
+    if (document.getElementById('emergencyFundFormOverlay').classList.contains('open')) updateEmergencyFundPreview();
+    var efBody = document.getElementById('homeEmergencyFundBody');
+    if (efBody && document.getElementById('homeEmergencyFundOverlay').classList.contains('open')) efBody.innerHTML = emergencyFundCardHtml();
     var isYear = state.view === 'year';
     var isLoan = state.view === 'loan';
     var isInvestment = state.view === 'investment';
@@ -8540,6 +8588,107 @@
     showToast('Valor atualizado', {icon:'check'});
   });
 
+  // v52: one settings document per family; balances live only in savingsMovements.
+  var emergencyFundDraftSources = [];
+  var emergencyFundDraftFamily = null;
+  function readEmergencyFundDraft(){
+    return {type:'emergency_fund',schemaVersion:2,
+      targetMode:document.getElementById('efTargetMode').value,
+      targetMonths:Number(document.getElementById('efTargetMonths').value),
+      targetAmount:Number(document.getElementById('efTargetAmount').value),
+      monthlyReferenceMode:document.getElementById('efReferenceMode').value,
+      manualMonthlyReference:Number(document.getElementById('efManualReference').value) || null};
+  }
+
+  function validateEmergencyFundConfig(config){
+    if (config.targetMode !== 'months' && config.targetMode !== 'amount') throw new Error('Escolhe como definir o objetivo.');
+    if (config.targetMode === 'months' && (!Number.isFinite(config.targetMonths) || config.targetMonths < 0.1 || config.targetMonths > 120)) throw new Error('Escolhe entre 0,1 e 120 meses.');
+    if (config.targetMode === 'amount' && (!Number.isFinite(config.targetAmount) || config.targetAmount < 0.01 || config.targetAmount > 1e12)) throw new Error('Indica um valor objetivo positivo e válido.');
+    if (config.monthlyReferenceMode !== 'automatic' && config.monthlyReferenceMode !== 'manual') throw new Error('Escolhe a referência mensal.');
+    if (config.monthlyReferenceMode === 'manual' && (!Number.isFinite(config.manualMonthlyReference) || config.manualMonthlyReference < 0.01 || config.manualMonthlyReference > 1e12)) throw new Error('Indica uma referência mensal positiva e válida.');
+  }
+
+  function saveEmergencyFundConfiguration(config,changes){
+    validateEmergencyFundConfig(config);
+    if (changes.length > 450) return Promise.reject(new Error('Demasiadas fontes alteradas de uma vez. Guarda em grupos menores.'));
+    var payload = {type:'emergency_fund',schemaVersion:2,targetMode:config.targetMode,
+      targetMonths:config.targetMode === 'months' ? config.targetMonths : null,
+      targetAmount:config.targetMode === 'amount' ? Math.round(config.targetAmount*100)/100 : null,
+      monthlyReferenceMode:config.monthlyReferenceMode,
+      manualMonthlyReference:config.manualMonthlyReference > 0 && Number.isFinite(config.manualMonthlyReference) ? Math.round(config.manualMonthlyReference*100)/100 : null};
+    return db.saveEmergencyFund(payload,changes).then(function(){return loadSavingsGoals();});
+  }
+
+  function updateEmergencyFundPreview(){
+    var config = readEmergencyFundDraft();
+    var months = config.targetMode === 'months', manual = config.monthlyReferenceMode === 'manual';
+    [['efTargetSeg',config.targetMode],['efReferenceSeg',config.monthlyReferenceMode]].forEach(function(pair){
+      Array.prototype.forEach.call(document.getElementById(pair[0]).querySelectorAll('button'),function(button){var selected=button.dataset.mode===pair[1];button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});
+    });
+    document.getElementById('efMonthsField').hidden = !months;
+    document.getElementById('efAmountField').hidden = months;
+    document.getElementById('efManualField').hidden = !manual;
+    document.getElementById('efTargetMonths').disabled = !months;
+    document.getElementById('efTargetAmount').disabled = months;
+    document.getElementById('efManualReference').disabled = !manual;
+    var selected = emergencyFundDraftSources.filter(function(source,index){return document.getElementById('efSource'+index).checked;});
+    var automatic = calculateEmergencyFundRecommendation().monthlyAverage;
+    var metrics = emergencyFundMetrics(config,selected,automatic);
+    document.getElementById('efAutomaticHint').textContent = 'Cálculo MAB360: '+euro(automatic)+'/mês. '+(manual?'O valor manual mantém-se até o alterares.':'Atualiza com as despesas essenciais e prestações consideradas pela MAB360.');
+    var row = function(label,value){return '<div class="ef-calc-row"><span>'+label+'</span><span class="mono">'+value+'</span></div>';};
+    var fmt = function(value){return value == null || !Number.isFinite(value) ? '—' : value.toFixed(1).replace('.',',')+' meses';};
+    var html = row('Despesas mensais consideradas',euro(metrics.monthlyReference));
+    html += row('Objetivo financeiro',metrics.targetAmount > 0 ? euro(metrics.targetAmount) : '—');
+    html += row('Cobertura objetivo',fmt(metrics.targetMonths)) + row('Total atual',euro(metrics.current)) + row('Cobertura atual',fmt(metrics.monthsCovered));
+    if (!metrics.monthlyReference) html += '<div class="hint">Ainda não temos dados suficientes para calcular a cobertura em meses. Podes definir uma referência manual.</div>';
+    document.getElementById('efPreview').innerHTML = html;
+  }
+
+  function openEmergencyFundForm(){
+    if (state.savingsLoadError) {showToast('Atualiza as poupanças antes de editar o fundo.');return;}
+    if (state.savingsLoading) {showToast('Aguarda pelo carregamento das poupanças.');return;}
+    closeHomeEmergencyFund();
+    var config = emergencyFundSettings();
+    emergencyFundDraftFamily = state.familyId;
+    emergencyFundDraftSources = state.savingsGoals.filter(function(g){return !g.archived;}).map(function(g){return Object.assign({},g,{wasIncluded:emergencyFundSourceIncluded(g)});});
+    document.getElementById('efTargetMode').value = config.targetMode;
+    document.getElementById('efTargetMonths').value = config.targetMonths;
+    document.getElementById('efTargetAmount').value = config.targetAmount || '';
+    document.getElementById('efReferenceMode').value = config.monthlyReferenceMode;
+    document.getElementById('efManualReference').value = config.manualMonthlyReference || '';
+    document.getElementById('efFormError').style.display = 'none';
+    document.getElementById('efSourceList').innerHTML = emergencyFundDraftSources.length ? emergencyFundDraftSources.map(function(g,i){
+      return '<label class="checkbox-row"><input type="checkbox" id="efSource'+i+'" '+(g.wasIncluded?'checked':'')+'><span>'+escapeHtml(g.name)+' — '+euro(savingsSavedOf(g.id))+'</span></label>';
+    }).join('') : '<div class="hint">Ainda não tens poupanças. Podes criar o fundo agora e adicionar as fontes mais tarde em Poupanças.</div>';
+    updateEmergencyFundPreview();
+    document.getElementById('emergencyFundFormOverlay').classList.add('open');
+  }
+
+  function closeEmergencyFundForm(){
+    document.getElementById('emergencyFundFormOverlay').classList.remove('open');
+    openHomeEmergencyFund();
+  }
+  [['efTargetSeg','efTargetMode'],['efReferenceSeg','efReferenceMode']].forEach(function(pair){
+    document.getElementById(pair[0]).addEventListener('click',function(ev){var button=ev.target.closest('button[data-mode]');if(button){document.getElementById(pair[1]).value=button.dataset.mode;updateEmergencyFundPreview();}});
+  });
+  document.getElementById('cancelEmergencyFundForm').addEventListener('click',closeEmergencyFundForm);
+  document.getElementById('emergencyFundFormOverlay').addEventListener('click',function(ev){if(ev.target === this) closeEmergencyFundForm();});
+  document.getElementById('emergencyFundForm').addEventListener('input',updateEmergencyFundPreview);
+  document.getElementById('emergencyFundForm').addEventListener('change',updateEmergencyFundPreview);
+  document.getElementById('emergencyFundForm').addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var button = document.getElementById('saveEmergencyFundForm'), error = document.getElementById('efFormError');
+    if (button.disabled) return;
+    try {
+      if (emergencyFundDraftFamily !== state.familyId) throw new Error('A família mudou. Reabre o formulário.');
+      var config = readEmergencyFundDraft();
+      validateEmergencyFundConfig(config);
+      var changes = emergencyFundDraftSources.map(function(g,i){return {id:g.id,included:document.getElementById('efSource'+i).checked,wasIncluded:g.wasIncluded};}).filter(function(g){return g.included !== g.wasIncluded;}).map(function(g){return {id:g.id,included:g.included};});
+      button.disabled = true;
+      saveEmergencyFundConfiguration(config,changes).then(function(){closeEmergencyFundForm();}).catch(function(err){error.textContent = 'Não foi possível confirmar a gravação. Reabre o fundo para verificar os dados e tenta novamente.';error.style.display='block';console.error(err);}).finally(function(){button.disabled=false;});
+    } catch(err){error.textContent=err.message;error.style.display='block';button.disabled=false;}
+  });
+
   // ---------- Poupanças por objetivo: criar / editar ----------
   var savingsFormOverlay = document.getElementById('savingsFormOverlay');
   var editingSavingsId = null;
@@ -8564,9 +8713,9 @@
       document.getElementById('fSavingsName').value = editGoal.name;
       document.getElementById('fSavingsGoal').value = editGoal.goalAmount || '';
       document.getElementById('fSavingsTargetDate').value = editGoal.targetDate || '';
-      document.getElementById('fSavingsIsEmergencyFund').checked = editGoal.type === 'emergency_fund';
+      document.getElementById('fSavingsIsEmergencyFund').checked = emergencyFundSourceIncluded(editGoal);
       initialField.hidden = true;
-      setSavingsMoreOptionsOpen(!!(editGoal.targetDate || editGoal.type === 'emergency_fund'));
+      setSavingsMoreOptionsOpen(!!(editGoal.targetDate || emergencyFundSourceIncluded(editGoal)));
     } else {
       editingSavingsId = null;
       document.getElementById('savingsFormTitle').textContent = prefill ? 'Criar fundo de emergência' : 'Nova poupança';
@@ -8603,12 +8752,8 @@
       return;
     }
     var data = {name:name, goalAmount:goalAmount, targetDate:targetDate};
-    // 'type' reflete sempre o estado atual da checkbox — assim é possível
-    // marcar OU desmarcar esta poupança como Fundo de Emergência, tanto ao
-    // criar como ao editar (inclui o caso de retrocompatibilidade: uma
-    // poupança "Fundo de emergência" criada antes desta funcionalidade
-    // existir, sem campo 'type', pode agora ser marcada manualmente).
-    data.type = document.getElementById('fSavingsIsEmergencyFund').checked ? 'emergency_fund' : null;
+    // Classificação explícita, independente do objetivo individual e dos movimentos.
+    data.countsTowardEmergencyFund = document.getElementById('fSavingsIsEmergencyFund').checked;
     if (!editingSavingsId){
       var initialRaw = document.getElementById('fSavingsInitial').value;
       var initial = initialRaw === '' ? 0 : parseFloat(initialRaw);
@@ -8706,10 +8851,10 @@
     if (action === 'open-emergency-fund-calc'){
       renderEmergencyFundCalc();
       emergencyFundCalcOverlay.classList.add('open');
-    } else if (action === 'create-emergency-fund'){
+    } else if (action === 'create-emergency-fund' || action === 'configure-emergency-fund'){
       var efRec = calculateEmergencyFundRecommendation();
       closeHomeEmergencyFund();
-      openSavingsForm(null, {name:'Fundo de Emergência', goalAmount: efRec.sixMonthFund, type:'emergency_fund'});
+      openEmergencyFundForm();
     }
   });
 
@@ -8894,12 +9039,13 @@
       var paymentQueries = spaceIds.map(function(sid){ return db.collection('payments').where('spaceId', '==', sid).get(); });
       var entryQueries = spaceIds.map(function(sid){ return db.collection('entries').where('spaceId', '==', sid).get(); });
       var globalQueries = GLOBAL_COLLECTIONS.map(function(name){ return db.collection(name).get(); });
-      return Promise.all([Promise.all(paymentQueries), Promise.all(entryQueries), Promise.all(globalQueries)]).then(function(res){
+      return Promise.all([Promise.all(paymentQueries), Promise.all(entryQueries), Promise.all(globalQueries), db.collection('settings').doc('emergencyFund').get()]).then(function(res){
         var toDocs = function(snap){ return snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); }); };
         var payments = [].concat.apply([], res[0].map(toDocs));
         var entries = [].concat.apply([], res[1].map(toDocs));
         var data = { exportedAt: new Date().toISOString(), app: 'MAB360', spaces: spaces, payments: payments, entries: entries };
         GLOBAL_COLLECTIONS.forEach(function(name, i){ data[name] = toDocs(res[2][i]); });
+        data.emergencyFund = res[3].exists ? res[3].data() : null;
         return data;
       });
     });
@@ -8951,7 +9097,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v50'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v52'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -10124,9 +10270,9 @@
     } else if (action === 'open-emergency-fund-calc'){
       renderEmergencyFundCalc();
       document.getElementById('emergencyFundCalcOverlay').classList.add('open');
-    } else if (action === 'create-emergency-fund'){
+    } else if (action === 'create-emergency-fund' || action === 'configure-emergency-fund'){
       var efRec = calculateEmergencyFundRecommendation();
-      openSavingsForm(null, {name:'Fundo de Emergência', goalAmount: efRec.sixMonthFund, type:'emergency_fund'});
+      openEmergencyFundForm();
     } else if (action === 'open-home-emergency-fund'){
       openHomeEmergencyFund();
     } else if (action === 'open-home-health'){
@@ -10961,11 +11107,11 @@
     loanFormOverlay:'cancelLoanForm', snapshotOverlay:'snapshotCancel', loanExtraOverlay:'loanExtraCancel',
     investmentFormOverlay:'cancelInvestmentForm', invContribOverlay:'invContribCancel', invSnapshotOverlay:'invSnapshotCancel',
     savingsFormOverlay:'cancelSavingsForm', savingsMoveOverlay:'savingsMoveCancel', sourceMoveEditOverlay:'sourceMoveEditCancel',
-    welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
+    pushSettingsOverlay:'closePushSettings', welcomeOverlay:'welcomeClose', settingsOverlay:'closeSettings', deletedOverlay:'closeDeleted',
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
     emergencyFundCalcOverlay:'closeEmergencyFundCalc',
-    homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
+    emergencyFundFormOverlay:'cancelEmergencyFundForm', homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
     feedbackHubOverlay:'closeFeedbackHub', reportProblemOverlay:'reportProblemCancel', giveFeedbackOverlay:'giveFeedbackCancel'
   };
   function topOpenOverlay(){
@@ -11035,6 +11181,26 @@
     if (window.__appSplash) window.__appSplash.ready();
   }
 
+  window.__MABPushNavigate = function(data){
+    if (!state.myUid || !db || ['home','month','movimentos','loan','poupancas'].indexOf(data.view) === -1) return;
+    if (data.spaceId && data.spaceId !== state.activeSpaceId){
+      var target = state.spaces.find(function(space){return space.id === data.spaceId;});
+      if (!target || !amIMemberOfSpace(target)) return;
+      state.activeSpaceId = target.id;
+    }
+    if (/^\d{4}-\d{2}$/.test(data.monthKey || '')) state.monthKey = data.monthKey;
+    state.view = data.view;
+    document.getElementById('pushSettingsOverlay').classList.remove('open');
+    settingsOverlay.classList.remove('open');
+    loadForView(state.view);
+  };
+  window.__MABPushToast = function(message, onClick){
+    showToast(message,{duration:7000});
+    var stack = document.getElementById('toastStack');
+    var toast = stack && stack.lastElementChild;
+    if (toast){toast.setAttribute('role','button');toast.setAttribute('tabindex','0');toast.addEventListener('click',onClick);toast.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();onClick();}});}
+  };
+
   window.__ContasApp = {
     needsSetup: function(){
       state.dbAvailable = 'setup';
@@ -11063,7 +11229,7 @@
       }).then(function(){ return loadLoans(); }).then(function(){
         return migrateExistingLoansToPayments();
       }).then(function(){
-        return Promise.all([loadDataForActiveSpace(),loadSavingsGoals(),loadInvestments(),loadEmergencyFundHistory()]);
+        return Promise.all([loadDataForActiveSpace(),loadSavingsGoals(),loadInvestments(),loadEmergencyFundHistory()]).then(function(){window.dispatchEvent(new Event('mab-data-ready'));});
       });
       upsertMyFamilyMember();
       if (isFamilyOwner()) loadMyInvites();
@@ -11104,12 +11270,14 @@
      instruções em CONFIGURAR.md para criares o projeto Firebase gratuito,
      depois substitui os valores de firebaseConfig abaixo pelos teus.
      ====================================================================== -->
+<script src="./push-config.js"></script>
+<script src="./push-policy.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where,
-    collectionGroup, orderBy, limit, startAfter, getCountFromServer
+    collectionGroup, orderBy, limit, startAfter, getCountFromServer, serverTimestamp, writeBatch
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -11213,6 +11381,12 @@
     var prefix = 'families/' + familyId + '/';
     return {
       collection: function(path){ return wrapColl(firestore, prefix + path); },
+      saveEmergencyFund: function(config, changes){
+        var batch = writeBatch(firestore);
+        batch.set(doc(firestore, prefix + 'settings/emergencyFund'), config);
+        changes.forEach(function(change){batch.update(doc(firestore, prefix + 'savingsGoals/' + change.id), {countsTowardEmergencyFund:change.included});});
+        return batch.commit();
+      },
       // Só para o painel de administração — ver nota acima.
       collectionGroup: function(name){ return wrapCollGroupQuery(firestore, name); },
       docByPath: function(path){ return wrapDoc(doc(firestore, path)); }
@@ -11252,6 +11426,29 @@
       });
       var auth = getAuth(app);
       var functions = getFunctions(app);
+      var pushClient = null;
+      var pushReady = import('./push-client.js').then(function(module){
+        return module.createPushClient({app:app,auth:auth,firestore:firestore,
+          api:{doc:doc,getDoc:getDoc,setDoc:setDoc,serverTimestamp:serverTimestamp},
+          functionsApi:{getFunctions:getFunctions,httpsCallable:httpsCallable},
+          config:window.MAB_PUSH_CONFIG,policy:window.MABPushPolicy,
+          notify:window.__MABPushToast,navigate:window.__MABPushNavigate});
+      }).then(function(client){pushClient=client;return client;}).catch(function(){
+        document.getElementById('openPushSettings').addEventListener('click',function(){document.getElementById('settingsOverlay').classList.remove('open');document.getElementById('pushSettingsOverlay').classList.add('open');});
+        document.getElementById('closePushSettings').addEventListener('click',function(){document.getElementById('pushSettingsOverlay').classList.remove('open');});
+        document.getElementById('pushSettingsBody').textContent='Não foi possível preparar as notificações. Atualiza a página para tentar novamente.';
+        return null;
+      });
+      function safePushLogout(){return pushReady.then(function(client){return client ? client.logout() : null;});}
+      var pushIntent = null;
+      var pushUrl = new URL(window.location.href);
+      if (pushUrl.searchParams.has('mabPush')){
+        pushIntent={view:pushUrl.searchParams.get('mabPush'),spaceId:pushUrl.searchParams.get('pushSpace'),monthKey:pushUrl.searchParams.get('pushMonth')};
+        ['mabPush','pushSpace','pushMonth'].forEach(function(key){pushUrl.searchParams.delete(key);});
+        history.replaceState(null,'',pushUrl.href);
+      }
+      window.addEventListener('mab-data-ready',function(){if(pushIntent){var intent=pushIntent;pushIntent=null;window.__MABPushNavigate(intent);}});
+
 
       var callCreateInvite = httpsCallable(functions, 'createFamilyInvite');
       var callRevokeInvite = httpsCallable(functions, 'revokeFamilyInvite');
@@ -11351,7 +11548,7 @@
       };
       window.__ContasApp.logout = function(){
         clearLoginMark();
-        return signOut(auth);
+        return safePushLogout().then(function(){return signOut(auth);});
       };
       window.__ContasApp.resetPassword = function(email){
         return sendPasswordResetEmail(auth, email);
@@ -11363,13 +11560,13 @@
       // para terminar sessão e voltar a entrar antes de tentar outra vez.
       window.__ContasApp.deleteAccount = function(){
         if (!auth.currentUser) return Promise.reject({code:'auth/no-current-user'});
-        return deleteUser(auth.currentUser);
+        return safePushLogout().then(function(){return deleteUser(auth.currentUser);});
       };
 
       function expireIfNeeded(){
         if (auth.currentUser && isSessionExpired()){
           clearLoginMark();
-          signOut(auth);
+          safePushLogout().then(function(){return signOut(auth);}).catch(function(){console.warn('Não foi possível encerrar notificações; tenta terminar sessão novamente.');});
         }
       }
 
@@ -11378,10 +11575,11 @@
         // a funcionar — só pede login outra vez com mais frequência.
       }).then(function(){
         onAuthStateChanged(auth, function(user){
+          pushReady.then(function(client){if(client)return client.session(user);}).catch(function(){console.warn('Notificações indisponíveis; a app continua acessível.');});
           if (user){
             if (isSessionExpired()){
               clearLoginMark();
-              signOut(auth);
+              safePushLogout().then(function(){return signOut(auth);}).catch(function(){console.warn('Não foi possível encerrar notificações; tenta terminar sessão novamente.');});
               return;
             }
             // Cada conta pertence a uma família (users/{uid} -> familyId).

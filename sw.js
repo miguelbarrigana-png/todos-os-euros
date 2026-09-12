@@ -8,11 +8,15 @@
 // Without it, phones can keep showing an old version indefinitely.
 // (The cache key name itself is an internal identifier, left as-is for
 // upgrade compatibility with installs already running v5.)
-var CACHE_NAME = 'contas-em-dia-v50';
+var CACHE_NAME = 'contas-em-dia-v52';
 var SHELL_FILES = [
   './',
   './index.html',
   './manifest.json',
+  './push-config.js',
+  './push-policy.js',
+  './push-client.js',
+  './push-worker.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/logo-mark.png',
@@ -86,3 +90,7 @@ self.addEventListener('fetch', function (event) {
     );
   }
 });
+
+// Push é complementar: não altera os handlers de instalação, atualização e cache.
+try { importScripts('./push-config.js', './push-policy.js', './push-worker.js'); }
+catch (error) { console.warn('MAB360: componente push indisponível.'); }
