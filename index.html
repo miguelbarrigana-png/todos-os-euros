@@ -1402,6 +1402,13 @@
           </label>
         </div>
       </div>
+      <div class="field" id="expensePaymentField" hidden>
+        <div class="hint" id="expensePaymentHint" aria-live="polite"></div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="fPaymentException">
+          <span id="paymentExceptionLabel">Este pagamento ainda não foi pago</span>
+        </label>
+      </div>
       <div class="field-error" id="formError"></div>
       <div class="sheet-actions">
         <button type="button" class="btn ghost" id="cancelForm">Cancelar</button>
@@ -7677,6 +7684,7 @@
   var moreOptionsPanel = document.getElementById('moreOptionsPanel');
   var selectedType = 'pontual';
   var selectedKind = 'despesa';
+  var expensePaidOverride = null;
   // Data escolhida para uma despesa/receita pontual — um Date "local puro"
   // (meia-noite local, sem hora). Nunca é substituída automaticamente
   // depois de o utilizador a escolher; só openForm/openDuplicateForm a
@@ -7688,12 +7696,45 @@
   // não são "eliminar" (ver askConfirm() mais abaixo).
   var pendingGenericConfirm = null;
 
+  // Only new expenses: local calendar date, preserving an explicit choice.
+  function expenseDefaultPaid(){
+    var date = selectedEntryDate;
+    if (selectedType === 'recorrente'){
+      var day = Number(document.getElementById('fDueDay').value);
+      if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+      date = dueDateOf({monthKey:state.monthKey,dueDay:day});
+    }
+    return date ? localDateOnly(date).getTime() <= todayLocal().getTime() : null;
+  }
+  function updateExpensePaymentDefault(){
+    var active = !state.editingPaymentId && selectedKind === 'despesa';
+    document.getElementById('expensePaymentField').hidden = !active;
+    document.getElementById('paidNowField').hidden = !!state.editingPaymentId || active;
+    if (!active) return;
+    var defaultPaid = expenseDefaultPaid();
+    var paid = expensePaidOverride === null ? defaultPaid === true : expensePaidOverride;
+    document.getElementById('fPaidNow').checked = paid;
+    var checkbox = document.getElementById('fPaymentException');
+    checkbox.disabled = defaultPaid === null;
+    checkbox.checked = defaultPaid !== null && paid !== defaultPaid;
+    document.getElementById('paymentExceptionLabel').textContent = defaultPaid === false ? 'Este pagamento já foi pago' : 'Este pagamento ainda não foi pago';
+    document.getElementById('expensePaymentHint').textContent = defaultPaid === null ? 'Escolhe o dia para definir o estado inicial.' : (paid ? 'Será guardado como pago.' : 'Será guardado como previsto, por pagar.');
+  }
+  document.getElementById('fPaymentException').addEventListener('change',function(){
+    var defaultPaid = expenseDefaultPaid();
+    if (defaultPaid === null) return;
+    expensePaidOverride = this.checked ? !defaultPaid : defaultPaid;
+    updateExpensePaymentDefault();
+  });
+  document.getElementById('fDueDay').addEventListener('input',updateExpensePaymentDefault);
+
   function updateFormTitle(){
     var editing = !!state.editingPaymentId;
     var noun = selectedKind === 'receita' ? 'receita' : 'despesa';
     document.getElementById('formTitle').textContent = (editing ? 'Editar ' : 'Nova ') + noun;
     fDueDayLabel.textContent = selectedKind === 'receita' ? 'Dia previsto' : 'Dia de vencimento';
     document.getElementById('paidNowLabel').textContent = selectedKind === 'receita' ? 'Já recebi este valor' : 'Já paguei este valor';
+    updateExpensePaymentDefault();
   }
 
   function updateCategoryOptions(){
@@ -7713,6 +7754,7 @@
     selectedEntryDate = localDateOnly(d);
     fEntryDate.value = dateToInputValue(selectedEntryDate);
     dateRowText.textContent = humanDateLabel(selectedEntryDate);
+    updateExpensePaymentDefault();
   }
 
   function setMoreOptionsOpen(open){
@@ -7729,12 +7771,14 @@
     dateField.hidden = isRecurring;
     dueDayField.hidden = !isRecurring;
     endMonthField.hidden = !isRecurring;
+    updateExpensePaymentDefault();
   }
 
   function openForm(editEntry){
     document.getElementById('formError').style.display = 'none';
     var form = document.getElementById('paymentForm');
     form.reset();
+    expensePaidOverride = null;
     var paidNowField = document.getElementById('paidNowField');
     resetEndMonthField();
     if (editEntry){
@@ -7786,6 +7830,7 @@
     document.getElementById('formError').style.display = 'none';
     var form = document.getElementById('paymentForm');
     form.reset();
+    expensePaidOverride = null;
     resetEndMonthField();
     state.editingPaymentId = null;
     document.getElementById('fName').value = entry.name;
@@ -7819,6 +7864,8 @@
     var btn = ev.target.closest('button');
     if (!btn) return;
     selectedKind = btn.dataset.kind;
+    expensePaidOverride = null;
+    document.getElementById('fPaidNow').checked = false;
     setKindButtons(selectedKind);
     updateFormTitle();
     updateCategoryOptions();
@@ -7900,6 +7947,7 @@
       dueDay = selectedEntryDate.getDate();
       entryMonthKey = monthKeyOf(selectedEntryDate);
     }
+    updateExpensePaymentDefault();
     var paidNow = !state.editingPaymentId && document.getElementById('fPaidNow').checked;
     var category = fCategory.value || 'outros';
     var hasEnd = isRecurring && document.getElementById('fHasEnd').checked;
@@ -9026,7 +9074,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v54'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v55'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
