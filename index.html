@@ -5155,59 +5155,29 @@
     return 'A tua taxa de poupança está em linha com a média dos últimos ' + mesesLabel + '.';
   }
 
-  // ---------- Taxa de Poupança Mensal — UI ----------
-  // Chamada só a partir de renderMonthView(), e só para Espaços não-
-  // temporários (ponto 8) — usa sempre sR.done/sD.done (reais), nunca
-  // sR.total/sD.total (planeado, já mostrado no cartão "Despesas" acima).
-  // sDSemSource (ponto 24 do pedido "Movimentos Comuns"): despesas reais
-  // SEM os movimentos ligados a Poupanças/Créditos/Investimentos
-  // (sourceType definido — ver createSourceMovement). Um aporte para uma
-  // Poupança, um pagamento extra de um Crédito ou um aporte a um
-  // Investimento é dinheiro que continua a construir património, não
-  // "gasto de vida" — contá-lo como despesa real aqui faria a Taxa de
-  // Poupança descer (ou até mostrar défice) exatamente quando a pessoa
-  // está a poupar/investir mais, o que seria o oposto do que esta métrica
-  // deve comunicar. Fora daqui, em todo o resto da app (sD.done normal,
-  // "Disponível para gastar", Margem após Essenciais, o cartão de
-  // Despesas), este dinheiro continua a contar como saída de caixa do mês,
-  // sem qualquer alteração — só a fórmula da Taxa de Poupança/Poupança do
-  // mês é que ignora especificamente estes movimentos.
+  // Orçamento: mesma fórmula e elegibilidade, duas bases explícitas.
+  // A Home e o histórico realizado mantêm as funções existentes.
+  function budgetSavingsRates(sR, sD, sDSemSource){
+    var eligible = sDSemSource || sD;
+    return {planned:calculateSavingsRate(sR.total, eligible.total),
+      actual:calculateSavingsRate(sR.done, eligible.done)};
+  }
   function savingsRateCardHtml(sR, sD, sDSemSource){
-    var despesasReaisParaTaxa = (sDSemSource || sD).done;
-    var rate = calculateSavingsRate(sR.done, despesasReaisParaTaxa);
-    var despesaEntries = state.entries.filter(function(e){ return kindOf(e) === 'despesa'; });
-    var essentialTotal = calculateEssentialSpending(despesaEntries);
-    var pctEssential = sR.done > 0 ? (essentialTotal / sR.done) * 100 : null;
-    var margin = sR.done > 0 ? (100 - pctEssential) : null;
-    var stats = savingsRateHistoryStats(state.monthKey);
-
-    var poupancaLabel = rate.poupanca >= 0 ? 'Poupança do mês' : 'Défice do mês';
-    var poupancaCls = rate.poupanca >= 0 ? ' positive' : ' negative';
-    var rateCls = rate.rate === null ? '' : (rate.rate >= 0 ? ' positive' : ' negative');
-    var rateValue = rate.rate === null ? 'Sem receitas registadas' : fmtPercent(rate.rate);
-
-    var html = '<div class="cat-card savings-rate-card">' +
-      '<div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
-        '<div class="trio-tile"><div class="trio-label">' + poupancaLabel + '</div><div class="trio-value mono' + poupancaCls + '">' + (rate.poupanca>=0?'+':'') + euro(rate.poupanca) + '</div></div>' +
-        '<div class="trio-tile"><div class="trio-label">Taxa de poupança</div><div class="trio-value mono' + rateCls + '">' + rateValue + '</div></div>' +
-      '</div>';
-    if (rate.rate !== null && stats.monthsCount > 0){
-      var diffPP = rate.rate - stats.averageRate;
-      html += '<div class="hint">Média ' + (stats.monthsCount===1?'1 mês':(stats.monthsCount+' meses')) + ': <span class="mono">' + fmtPercent(stats.averageRate) + '</span> · <span class="mono' + (diffPP>=0?' positive':' negative') + '">' + fmtPP(diffPP) + ' p.p.</span></div>';
-    }
-    var msg = savingsRateMessage(rate.rate, stats);
-    if (msg) html += '<div class="hint">' + escapeHtml(msg) + '</div>';
-    html += '</div>';
-
-    html += '<div class="cat-card savings-rate-card">' +
-      '<div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
-        '<div class="trio-tile"><div class="trio-label">Essenciais</div><div class="trio-value mono">' + euro(essentialTotal) + '</div>' +
-          (pctEssential !== null ? '<div class="stat-note mono">' + fmtPercent(pctEssential) + ' do rendimento</div>' : '') +
-        '</div>' +
-        '<div class="trio-tile"><div class="trio-label">Margem após essenciais</div><div class="trio-value mono">' + (margin !== null ? fmtPercent(margin) : '—') + '</div></div>' +
-      '</div>' +
-    '</div>';
-
+    var rates = budgetSavingsRates(sR, sD, sDSemSource), rate = rates.planned;
+    var value = rate.rate === null ? '—' : fmtPercent(rate.rate);
+    var cls = rate.rate === null ? '' : (rate.rate >= 0 ? ' positive' : ' negative');
+    var html = '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+      '<div class="trio-tile"><div class="trio-label">Poupança prevista</div><div class="trio-value mono'+cls+'">'+euro(rate.poupanca)+'</div></div>' +
+      '<div class="trio-tile"><div class="trio-label">Taxa de poupança prevista</div><div class="trio-value mono'+cls+'">'+value+'</div></div></div>';
+    if (rate.rate === null) html += '<div class="hint">Sem receitas previstas neste mês.</div>';
+    html += '<div class="hint">Taxa realizada: '+(rates.actual.rate === null ? 'Sem receitas recebidas' : fmtPercent(rates.actual.rate))+'</div>';
+    html += '<div class="hint">A taxa exclui aportes de poupança, investimento e abatimentos extra ligados. O disponível planeado considera todas as saídas previstas.</div></div>';
+    var essentialTotal = calculateEssentialSpending(state.entries.filter(function(e){return kindOf(e) === 'despesa';}));
+    var pctEssential = sR.done > 0 ? essentialTotal/sR.done*100 : null;
+    html += '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+      '<div class="trio-tile"><div class="trio-label">Essenciais pagos</div><div class="trio-value mono">'+euro(essentialTotal)+'</div>' +
+      (pctEssential !== null ? '<div class="stat-note mono">'+fmtPercent(pctEssential)+' do rendimento recebido</div>' : '')+'</div>' +
+      '<div class="trio-tile"><div class="trio-label">Margem realizada após essenciais</div><div class="trio-value mono">'+(pctEssential === null ? '—' : fmtPercent(100-pctEssential))+'</div></div></div></div>';
     return html;
   }
 
@@ -5565,6 +5535,9 @@
     if (state.categoryBudgetsError) return '<div class="hint">Não foi possível carregar os orçamentos deste mês. Volta a abrir esta página para tentar novamente.</div>';
     if (state.categoryBudgetsLoading) return '<div class="hint">A carregar orçamentos…</div>';
     var rows = categoryBudgetBreakdown(entries);
+    // Partição estável: mantém a ordem por valor dentro de cada grupo.
+    rows = rows.filter(function(r){return isEssentialCategory(r.def.key);}).concat(
+      rows.filter(function(r){return !isEssentialCategory(r.def.key);}));
     if (!rows.length) return '';
     return rows.map(function(r){
       var hasBudget = r.budget != null && r.budget > 0;
@@ -5651,10 +5624,10 @@
       '<div class="saldo-row"><div class="label">' + opts.saldoLabel + '</div><div class="saldo-value mono ' + saldoClass + '">' + (opts.saldo>=0?'+':'') + euro(opts.saldo) + '</div></div>' +
       banner +
       '<div class="stat-grid">' +
-        '<div class="stat-tile receita"><div class="stat-label">Receitas</div><div class="stat-value mono">' + euro(opts.receitasTotal) + '</div>' +
+        '<div class="stat-tile receita"><div class="stat-label">' + (opts.planning ? 'Receitas previstas' : 'Receitas') + '</div><div class="stat-value mono">' + euro(opts.receitasTotal) + '</div>' +
           '<div class="progress-track"><div class="progress-fill success" style="width:' + pctR + '%"></div></div>' +
           '<div class="stat-note">' + euro(opts.receitasDone) + ' recebido · ' + pctR + '%</div></div>' +
-        '<div class="stat-tile despesa"><div class="stat-label">Despesas</div><div class="stat-value mono">' + euro(opts.despesasTotal) + '</div>' +
+        '<div class="stat-tile despesa"><div class="stat-label">' + (opts.planning ? 'Despesas previstas' : 'Despesas') + '</div><div class="stat-value mono">' + euro(opts.despesasTotal) + '</div>' +
           '<div class="progress-track"><div class="progress-fill neutral" style="width:' + pctD + '%"></div></div>' +
           '<div class="stat-note">' + euro(opts.despesasDone) + ' pago · ' + pctD + '%</div></div>' +
       '</div>' +
@@ -5799,7 +5772,8 @@
     var remainingTotal = despesasPend.reduce(function(s,e){ return s + effectiveAmount(e); }, 0);
 
     var html = summaryCardHtml({
-      saldoLabel: 'Saldo previsto do mês',
+      saldoLabel: 'Disponível planeado',
+      planning: true,
       saldo: sR.total - sD.total,
       receitasTotal: sR.total, receitasDone: sR.done,
       despesasTotal: sD.total, despesasDone: sD.done,
@@ -9052,7 +9026,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v53'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v54'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
