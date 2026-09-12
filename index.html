@@ -1001,6 +1001,26 @@
   #efPreview .ef-calc-row, #homeEmergencyFundBody .ef-calc-row, #homeEmergencyFundBody .ef-row{gap:12px;flex-wrap:wrap;}
   #homeEmergencyFundBody .ef-calc-cat{min-width:0;overflow-wrap:anywhere;}
   #efPreview .mono, #homeEmergencyFundBody .mono{overflow-wrap:anywhere;}
+
+  /* v53 alert center: scoped, existing tokens and sheet. */
+  .alerts-trigger{position:relative;min-width:44px;min-height:44px;}
+  .alerts-badge{position:absolute;top:0;right:0;min-width:17px;padding:2px 4px;border-radius:99px;background:var(--accent);color:var(--surface);font-size:10px;font-weight:800;line-height:1.2;}
+  .alerts-badge[hidden]{display:none;}
+  .desktop-alert-entry{display:none;}
+  .alerts-item{padding:16px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere;}
+  .alerts-item-head{display:flex;gap:10px;align-items:flex-start;}
+  .alerts-item-head>div{min-width:0;}
+  .alerts-item-head>.icon{flex-shrink:0;color:var(--text-muted);}
+  .alerts-item.warning .alerts-item-head>.icon{color:var(--warning);}
+  .alerts-item.danger .alerts-item-head>.icon{color:var(--danger);}
+  .alerts-item p{font-size:13px;margin:8px 0;}
+  .alerts-item-actions{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .alerts-item-actions .btn,#alertCenterFilters button,.alerts-item-actions summary{min-height:44px;}
+  .alerts-item-actions summary{cursor:pointer;padding:12px;font-size:13px;color:var(--text-muted);}
+  .alerts-menu{display:flex;flex-direction:column;gap:6px;}
+  .alerts-item-actions details{max-width:100%;}
+  .home-alert-link{text-align:left;width:100%;font:inherit;}
+  @media(min-width:900px){.desktop-alert-entry{display:flex;align-items:center;gap:10px;margin-bottom:8px;width:100%;}}
 </style>
 </head>
 <body>
@@ -1134,6 +1154,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <button type="button" class="icon-btn alerts-trigger" id="openAlertCenter" aria-label="Alertas"><span class="alerts-badge" hidden></span></button>
       <div class="sync-dot" id="syncDot" title="A ligar…"></div>
       <button type="button" class="icon-btn" id="openSettings" aria-label="Definições">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.56V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.56 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.56-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.56-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.56V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.56 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.56 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.56 1z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1168,6 +1189,7 @@
 
 <nav class="bottom-nav" id="bottomNav">
   <div class="nav-brand" id="navBrand"><span class="nav-brand-mark"><img src="./icons/logo-mark.png" alt="MAB360"></span><span>MAB360</span></div>
+  <button type="button" class="btn ghost desktop-alert-entry alerts-trigger" id="openAlertCenterDesktop" aria-label="Alertas"><span class="alerts-badge" hidden></span></button>
   <button type="button" class="sidebar-space-switch" id="sidebarSpaceSwitchBtn">
     <span class="icon-badge sm" id="sidebarSpaceSwitchIcon"></span>
     <span class="sidebar-space-switch-text">
@@ -1864,6 +1886,16 @@
       <div class="field-error" id="efFormError" role="alert"></div>
       <div class="sheet-actions"><button type="button" class="btn ghost" id="cancelEmergencyFundForm">Cancelar</button><button type="submit" class="btn primary" id="saveEmergencyFundForm">Guardar</button></div>
     </form>
+  </div>
+</div>
+
+<div class="overlay" id="alertCenterOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Alertas</h2>
+    <div class="segmented" id="alertCenterFilters" role="group" aria-label="Filtrar alertas"><button type="button" data-filter="active" class="active" aria-pressed="true">Ativos</button><button type="button" data-filter="all" aria-pressed="false">Todos</button></div>
+    <div id="alertCenterBody"></div>
+    <div class="sheet-actions"><button type="button" class="btn primary" id="closeAlertCenter">Fechar</button></div>
   </div>
 </div>
 
@@ -3233,6 +3265,7 @@
           if (stale()) return;
           var applicableIds = applicable.map(function(p){return p.id;});
           state.entries = Object.values(byPaymentId).filter(function(e){return e.paid || applicableIds.indexOf(e.paymentId) !== -1;});
+          state.alertScopeLoaded = spaceId+'|'+monthKey;
           state.loading = false;
           render();
         });
@@ -4761,6 +4794,7 @@
       // Ver nota junto a loadPayments(): nunca sem filtro.
       return db.collection('entries').where('spaceId','==',spaceId).get().then(function(esnap){
         state.entries = esnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        state.alertScopeLoaded = spaceId+'|all';
         state.loading = false;
         render();
       });
@@ -5584,7 +5618,7 @@
         : '<div class="budget-cat-target-row">Sem orçamento definido — a mostrar a soma do que já foi lançado este mês. <button type="button" class="link-btn" data-action="edit-category-budget" data-key="' + r.def.key + '">Definir orçamento</button></div>';
       var itemsHtml = r.items.length ? r.items.map(itemRow).join('') :
         '<div class="budget-cat-empty">Ainda não lançaste despesas nesta categoria este mês.</div>';
-      return '<div class="budget-cat-card' + (open?' open':'') + '">' +
+      return '<div data-alert-category="'+escapeHtml(r.def.key)+'" class="budget-cat-card' + (open?' open':'') + '">' +
         '<button type="button" class="budget-cat-head" data-action="toggle-category" data-key="' + r.def.key + '">' +
           '<span class="icon-badge sm" style="' + catTint(r.def.color) + '">' + icon(categoryIconOf(r.def.key)) + '</span>' +
           '<span><span class="budget-cat-name">' + escapeHtml(r.def.label) + '</span>' +
@@ -6183,7 +6217,7 @@
         '<div style="margin-top:10px;"><button type="button" class="btn ghost" data-action="keep-space-active" data-id="' + s.id + '">Reativar</button></div></div></div>';
     }
 
-    html += extraAlertsHtml();
+    html += homeAttentionHtml(homeAttentionAlerts());
     content.innerHTML = html;
   }
 
@@ -6205,94 +6239,14 @@
   // ordenada, para a Home mostrar no máximo 1-2 sem repetir/contradizer o
   // que a página de Orçamento já mostra (usa exatamente os mesmos limiares
   // 80%/100% de budgetCategoryCardsHtml — ver "Perto"/"Acima" no Orçamento).
-  function homeAttentionAlerts(sD, disponivel, overdueList){
-    var alerts = [];
-    var rows = (state.loading || state.categoryBudgetsLoading) ? [] : categoryBudgetBreakdown(state.entries);
-    // Estado de cada categoria via getBudgetStatus() (nunca comparação de
-    // floats à mão) — ultrapassado/atingido/perto são mutuamente exclusivos
-    // por categoria, nunca duas ao mesmo tempo para a mesma categoria.
-    var overCats = [], reachedCats = [], nearCats = [];
-    rows.forEach(function(r){
-      if (r.budget == null || r.budget <= 0) return;
-      var bs = getBudgetStatus(r.done, r.budget);
-      if (bs.status === 'over') overCats.push({label: r.def.label, overAmount: bs.overAmount});
-      else if (bs.status === 'reached') reachedCats.push(r.def.label);
-      else if (bs.status === 'warning') nearCats.push({label: r.def.label, pct: bs.percentage});
-    });
-    if (overCats.length){
-      var worstOverCat = overCats.slice().sort(function(a,b){ return b.overAmount - a.overAmount; })[0];
-      var overText = overCats.length === 1
-        ? ('<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(worstOverCat.label) + ' já passou o valor definido em ' + euro(worstOverCat.overAmount) + '.')
-        : ('<strong>Orçamento ultrapassado.</strong> ' + escapeHtml(overCats.slice(0,2).map(function(c){ return c.label; }).join(', ')) + (overCats.length > 2 ? ' e outras' : '') + ' já passaram o valor definido — a maior, ' + escapeHtml(worstOverCat.label) + ', em ' + euro(worstOverCat.overAmount) + '.');
-      alerts.push({p:1, cls:'danger', iconName:'alert', text: overText, action:'goto', view:'month'});
-    } else if (disponivel < -0.005){
-      alerts.push({p:1, cls:'danger', iconName:'alert',
-        text: '<strong>Despesas acima da receita prevista.</strong> Ultrapassam em ' + euro(Math.abs(disponivel)) + ' este mês.',
-        action:'goto', view:'month'});
-    }
-    if (overdueList.length){
-      alerts.push({p:2, cls:'danger', iconName:'alert',
-        text: '<strong>' + overdueList.length + (overdueList.length === 1 ? ' pagamento atrasado.' : ' pagamentos atrasados.') + '</strong> Confirma no Orçamento.',
-        action:'goto', view:'month'});
-    }
-    // "Atingido" (100% exato) nunca aparece junto com "ultrapassado" para a
-    // mesma categoria (são estados mutuamente exclusivos); prioridade
-    // média/alta — logo a seguir a atrasos, antes de "perto do limite".
-    if (reachedCats.length){
-      alerts.push({p:3, cls:'warning', iconName:'alert',
-        text: '<strong>Orçamento atingido.</strong> ' + escapeHtml(reachedCats.slice(0,2).join(', ')) + (reachedCats.length > 2 ? ' e outras' : '') + (reachedCats.length === 1 ? ' chegou' : ' chegaram') + ' exatamente ao valor definido.',
-        action:'goto', view:'month'});
-    }
-    if (nearCats.length){
-      var worst = nearCats.sort(function(a,b){ return b.pct - a.pct; })[0];
-      alerts.push({p:4, cls:'warning', iconName:'alert',
-        text: '<strong>Perto do limite.</strong> ' + escapeHtml(worst.label) + ' já usou ' + worst.pct + '% do orçamento' + (nearCats.length > 1 ? ' (e mais ' + (nearCats.length - 1) + ')' : '') + '.',
-        action:'goto', view:'month'});
-    }
-    var reviews = state.loansLoading ? [] : upcomingReviewAlerts();
-    if (reviews.length){
-      var loanNames = reviews.map(function(r){ return r.loan.name; }).join(', ');
-      alerts.push({p:5, cls:'warning', iconName:'bell',
-        text: '<strong>Revisão de taxa a aproximar-se.</strong> ' + escapeHtml(loanNames) + (reviews.length === 1 ? ' revê a taxa' : ' revêem a taxa') + ' nos próximos 60 dias.',
-        action:'goto', view:'loan'});
-    }
-    if (!state.savingsLoading && !state.savingsLoadError){
-      var efRec = calculateEmergencyFundRecommendation();
-      var cov = calculateEmergencyFundCoverage(efRec);
-      if (cov.monthlyReference > 0){
-        if (!cov.goal || cov.current < cov.monthlyReference * 3){
-          alerts.push({p:6, cls:'info', iconName:'shield',
-            text: '<strong>Fundo de emergência abaixo do recomendado.</strong> ' + (cov.goal ? ('Tens ' + euro(cov.current) + ' — referência mínima ' + euro(cov.monthlyReference * 3) + '.') : 'Ainda não tens um a acompanhar.'),
-            action:'open-home-emergency-fund'});
-        }
-      }
-      var stalled = stalledSavingsGoals();
-      if (stalled.length){
-        alerts.push({p:7, cls:'info', iconName:'piggy',
-          text: '<strong>Poupanças paradas.</strong> ' + escapeHtml(stalled.map(function(g){ return g.name; }).join(', ')) + (stalled.length === 1 ? ' não tem' : ' não têm') + ' movimentos há mais de 2 meses.',
-          action:'goto', view:'poupancas'});
-      }
-    }
-    alerts.sort(function(a,b){ return a.p - b.p; });
-    return alerts;
+  function homeAttentionAlerts(){
+    return alertCenterStore ? alertCenterStore.model().active : [];
   }
 
   function homeAttentionHtml(alerts){
-    var html = '<div class="section-head"><h2>Precisa da tua atenção</h2></div>';
-    if (!alerts.length){
-      html += '<div class="alert-banner quiet">' + icon('check') + '<div>Está tudo controlado por agora. Sem alertas importantes.</div></div>';
-      return html;
-    }
-    var shown = alerts.slice(0, 2);
-    var extra = alerts.length - shown.length;
-    html += shown.map(function(a){
-      var attrs = a.action === 'goto' ? (' data-action="goto" data-view="' + a.view + '"') : (' data-action="' + a.action + '"');
-      return '<div class="alert-banner ' + a.cls + ' tappable"' + attrs + '>' + icon(a.iconName) + '<div>' + a.text + '</div>' + icon('chevronRight','chev') + '</div>';
-    }).join('');
-    if (extra > 0){
-      html += '<div class="home-attention-more">+' + extra + (extra === 1 ? ' outra situação a acompanhar' : ' outras situações a acompanhar') + '</div>';
-    }
-    return html;
+    var html='<div class="section-head"><h2>Precisa da tua atenção</h2><button type="button" class="link-btn" data-action="open-alert-center">Ver todos os alertas</button></div>';
+    if(!alerts.length)return html+'<div class="alert-banner quiet">'+icon('check')+'<div>Está tudo tranquilo por aqui.</div></div>';
+    return html+alerts.slice(0,2).map(function(a){var cls=a.priority==='important'?'danger':a.priority==='attention'?'warning':'info';return '<button type="button" class="alert-banner tappable home-alert-link '+cls+'" data-action="open-in-app-alert" data-alert-key="'+escapeHtml(a.key)+'">'+icon(a.iconName)+'<span><strong>'+escapeHtml(a.title)+'</strong><br>'+escapeHtml(a.message)+'</span>'+icon('chevronRight','chev')+'</button>';}).join('');
   }
 
   // "Visão financeira" — linhas clicáveis dentro de UM cartão só (em vez da
@@ -6388,7 +6342,7 @@
 
     // ---- 3. Resumo do mês (uma frase; reaproveita computeMonthSummary — se
     // houver uma 2ª mensagem, fica disponível num toque, sem ocupar espaço) ----
-    var summaryMsgs = computeMonthSummary(sR, sD, poupMes, pendentes);
+    var summaryMsgs = computeMonthSummary(sR, sD, poupMes, pendentes).filter(function(m){return m.type==='info'||m.type==='success';});
     if (summaryMsgs.length === 1){
       html += '<div class="home-summary-line ' + summaryMsgs[0].type + '">' + icon(summaryMsgs[0].icon) + '<span>' + summaryMsgs[0].text + '</span></div>';
     } else if (summaryMsgs.length > 1){
@@ -7633,6 +7587,7 @@
   var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia'];
 
   function render(){
+    updateAlertCenter();
     if (document.getElementById('emergencyFundFormOverlay').classList.contains('open')) updateEmergencyFundPreview();
     var efBody = document.getElementById('homeEmergencyFundBody');
     if (efBody && document.getElementById('homeEmergencyFundOverlay').classList.contains('open')) efBody.innerHTML = emergencyFundCardHtml();
@@ -9097,7 +9052,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v52'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v53'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -10273,6 +10228,10 @@
     } else if (action === 'create-emergency-fund' || action === 'configure-emergency-fund'){
       var efRec = calculateEmergencyFundRecommendation();
       openEmergencyFundForm();
+    } else if (action === 'open-alert-center'){
+      openAlertCenter();
+    } else if (action === 'open-in-app-alert'){
+      navigateAlert(actionEl.getAttribute('data-alert-key'));
     } else if (action === 'open-home-emergency-fund'){
       openHomeEmergencyFund();
     } else if (action === 'open-home-health'){
@@ -11111,7 +11070,7 @@
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
     emergencyFundCalcOverlay:'closeEmergencyFundCalc',
-    emergencyFundFormOverlay:'cancelEmergencyFundForm', homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
+    alertCenterOverlay:'closeAlertCenter', emergencyFundFormOverlay:'cancelEmergencyFundForm', homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
     feedbackHubOverlay:'closeFeedbackHub', reportProblemOverlay:'reportProblemCancel', giveFeedbackOverlay:'giveFeedbackCancel'
   };
   function topOpenOverlay(){
@@ -11169,6 +11128,140 @@
     });
   })();
 
+  // v53 — adapter: use existing financial detectors, never fetch other Spaces for alert generation.
+  var alertCenterStore = null, alertCenterFilter = 'active', alertWakeTimer = null;
+  function alertFacts(){
+    var E = window.MABAlerts, now = new Date(), today = new Date(now);today.setHours(0,0,0,0);
+    var spaces = (state.spaces || []).filter(function(s){return !s.archived && amIMemberOfSpace(s);});
+    var allowed = spaces.map(function(s){return s.id;});
+    if (state.familyId && !(state.archivedSpaces||[]).some(function(s){return s.id===state.familyId;})) allowed.push(state.familyId);
+    var period = activeSpaceMonthly() ? state.monthKey : 'all';
+    var ready = !!(state.alertsBootReady && state.myUid && E);
+    var scopeReady = ready && !state.loading && !state.categoryBudgetsLoading && !state.categoryBudgetsError && state.dbAvailable !== false && allowed.indexOf(state.activeSpaceId)!==-1 && state.alertScopeLoaded===state.activeSpaceId+'|'+period;
+    var globalsReady = ready && state.alertGlobalFamily === state.familyId && state.dbAvailable !== false;
+    var f = {uid:state.myUid,familyId:state.familyId,spaceId:state.activeSpaceId,monthKey:period,todayMonth:monthKeyOf(now),now:now.getTime(),ready:ready,allowedSpaces:allowed,evaluatedGroups:[],scopeReady:scopeReady,loansReady:globalsReady&&!state.loansLoading,savingsReady:globalsReady&&!state.savingsLoading&&!state.savingsLoadError,investmentsReady:globalsReady&&!state.investmentsLoading};
+    if(!ready)return f;
+    if(scopeReady){
+      f.evaluatedGroups.push(E.group('budget',f.spaceId,period),E.group('movement',f.spaceId,period));
+      var validEntries=state.entries.filter(function(e){return spaceIdOf(e)===f.spaceId&&(period==='all'||e.monthKey===period);});
+      f.budgets=categoryBudgetBreakdown(validEntries).map(function(r){return{id:r.def.key,name:r.def.label,status:getBudgetStatus(r.done,r.budget)};});
+      var split=splitByKind(validEntries),sD=summaryOf(split.despesas);
+      f.available=summaryOf(split.receitas).total-sD.total;
+      if(period===f.todayMonth&&sD.total>0)f.pace=paceMessageOf(sD,now);
+      f.entries=state.entries.filter(function(e){return spaceIdOf(e)===f.spaceId && (period==='all'||e.monthKey===period);}).map(function(e){
+        var loan=e.loanId&&state.loans.find(function(l){return l.id===e.loanId&&!l.archived;});
+        return{id:e.id,name:e.name,period:e.monthKey,paid:e.paid,example:e.example,kind:kindOf(e),loanId:e.loanId,loanActive:!!loan&&currentBalance(loan)>0.005,extra:isEmergencyFundExtra(e),overdue:isOverdue(e),daysUntil:Math.round((dueDateOf(e)-today)/86400000)};
+      });
+    }
+    if(f.loansReady){
+      f.evaluatedGroups.push(E.group('loans'));
+      var reviews=upcomingReviewAlerts();
+      f.loans=state.loans.filter(function(l){return !l.archived;}).map(function(l){var end=loanEndMonth(l,state.loanPayments[l.id]),review=reviews.find(function(r){return r.loan.id===l.id;});return{id:l.id,name:l.name,settled:Number(l.principal)>0&&currentBalance(l)<=0.005,endMonth:end,monthsToEnd:monthsBetweenKeys(f.todayMonth,end),review:review?monthKeyOf(review.date):null};});
+    }
+    if(f.savingsReady){
+      f.evaluatedGroups.push(E.group('savings'));
+      var stalled=stalledSavingsGoals().map(function(g){return g.id;});
+      f.savings=state.savingsGoals.filter(function(g){return !g.archived;}).map(function(g){var saved=savingsSavedOf(g.id),target=calculateSavingsTarget(g,saved,now);return{id:g.id,name:g.name,goalAmount:g.goalAmount,stalled:stalled.indexOf(g.id)!==-1,complete:Number(g.goalAmount)>0&&saved>=Number(g.goalAmount),target:target,pace:savingsPaceStatus(g,target)};});
+    }
+    if(f.investmentsReady){f.evaluatedGroups.push(E.group('investments'));f.investments=state.investments.filter(function(i){return !i.archived;}).map(function(i){return{id:i.id,name:i.name,stale:isInvestmentStale(i),lastUpdate:lastInvestmentUpdateDate(i)};});}
+    f.emergencyReady=f.savingsReady&&f.loansReady&&scopeReady&&isDefaultSpace(f.spaceId)&&!state.emergencyFundHistoryLoading;
+    if(f.emergencyReady){f.evaluatedGroups.push(E.group('emergency'));var cov=calculateEmergencyFundCoverage(calculateEmergencyFundRecommendation());f.emergency={goal:!!cov.goal,current:cov.current,targetAmount:cov.targetAmount,monthsCovered:cov.monthsCovered,signature:cov.config.targetMode+':'+(cov.config.targetMode==='months'?cov.config.targetMonths:cov.config.targetAmount)};}
+    return f;
+  }
+
+  function initializeAlertCenter(uid,familyId,repository){
+    if(alertCenterStore)alertCenterStore.dispose();
+    if(alertWakeTimer)clearTimeout(alertWakeTimer);
+    alertCenterStore = window.MABAlerts && window.MABAlertStore ? window.MABAlertStore.create({uid:uid,familyId:familyId,repo:repository||null,storage:localStorage,onChange:function(){render();}}) : null;
+    return alertCenterStore;
+  }
+
+  function updateAlertCenter(){
+    if(!alertCenterStore)return;
+    alertCenterStore.update(alertFacts());
+    var model=alertCenterStore.model();
+    ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var button=document.getElementById(id);if(!button)return;button.setAttribute('aria-label',model.badge ? model.badge+' alertas não lidos':'Alertas');var badge=button.querySelector('.alerts-badge');badge.hidden=!model.badge;badge.textContent=model.badge>9?'9+':String(model.badge);});
+    if(document.getElementById('alertCenterOverlay').classList.contains('open'))renderAlertCenter();
+    if(alertWakeTimer)clearTimeout(alertWakeTimer);
+    var now=Date.now(),next=new Date();next.setHours(24,0,1,0);var wake=next.getTime();
+    Object.values(alertCenterStore.records()).forEach(function(r){if(r.snoozedUntil>now)wake=Math.min(wake,r.snoozedUntil);});
+    alertWakeTimer=setTimeout(function(){render();},Math.max(1000,wake-now));
+  }
+
+  function alertItemHtml(a){
+    var st=a.state||{},status=st.dismissedAt?'Dispensado':st.snoozedUntil>Date.now()?'Adiado até '+new Date(st.snoozedUntil).toLocaleDateString('pt-PT'):st.resolvedAt?'Resolvido':a.historical?'Por verificar':st.readAt?'Lido':'Novo';
+    var space=a.spaceId&&(state.spaces||[]).find(function(s){return s.id===a.spaceId;});
+    var context=space?space.name:'Família';
+    if(a.monthKey&&/^\d{4}-\d{2}$/.test(a.monthKey))context+=' · '+monthLabelOf(a.monthKey);
+    var cls=a.priority==='important'?'danger':a.priority==='attention'?'warning':'info';
+    var label=a.priority==='important'?'Importante':a.priority==='attention'?'Atenção':'Informação';
+    var key=escapeHtml(a.key);
+    var html='<article class="alerts-item '+cls+'"><div class="alerts-item-head">'+icon(a.iconName||'bell')+'<div><strong>'+escapeHtml(a.title)+'</strong><div class="hint">'+escapeHtml(context)+' · '+label+'</div></div></div><p>'+escapeHtml(a.message)+'</p><div class="hint">'+escapeHtml(status)+' · '+new Date(st.observedAt||Date.now()).toLocaleDateString('pt-PT')+'</div>';
+    if(!a.historical){
+      html+='<div class="alerts-item-actions"><button type="button" class="btn ghost" data-alert-action="open" data-alert-key="'+key+'">'+escapeHtml(a.actionLabel)+'</button><details><summary>Gerir alerta</summary><div class="alerts-menu">';
+      if(!st.readAt)html+='<button type="button" class="btn ghost" data-alert-action="read" data-alert-key="'+key+'">Marcar como lido</button>';
+      if(!st.dismissedAt){html+='<button type="button" class="btn ghost" data-alert-action="dismiss" data-alert-key="'+key+'">Dispensar</button><span class="hint">Lembrar mais tarde</span>';
+        [[1,'Amanhã'],[3,'Em 3 dias'],[7,'Próxima semana']].forEach(function(option){html+='<button type="button" class="btn ghost" data-alert-action="snooze" data-alert-days="'+option[0]+'" data-alert-key="'+key+'">'+option[1]+'</button>';});}
+      html+='</div></details></div>';
+    }
+    return html+'</article>';
+  }
+
+  function renderAlertCenter(){
+    var model=alertCenterStore?alertCenterStore.model():{active:[],all:[],badge:0};
+    var list=alertCenterFilter==='all'?model.all:model.active;
+    var scope=activeSpace();
+    var html='<p class="hint">Orçamento e movimentos: '+escapeHtml(scope?scope.name:'Space atual')+' · '+escapeHtml(activeSpaceMonthly()?monthLabelOf(state.monthKey):'período completo')+'. Os restantes módulos usam os dados familiares carregados.</p>';
+    if(!window.MABAlerts||!window.MABAlertStore)html+='<div class="hint">Não foi possível preparar o Centro de Alertas. Atualiza a app para tentar novamente.</div>';
+    else if(!state.alertsBootReady)html+='<div class="hint">A carregar os dados para avaliar os alertas…</div>';
+    else if(!list.length)html+='<div class="empty"><h3>Está tudo tranquilo por aqui.</h3><p>Quando houver algo que mereça a tua atenção, aparece aqui.</p></div>';
+    else html+=list.map(alertItemHtml).join('');
+    if(model.error)html+='<p class="hint" role="status">'+escapeHtml(model.error)+'</p>';
+    else if(model.pending)html+='<p class="hint" role="status">Ações guardadas neste dispositivo; a aguardar sincronização.</p>';
+    if(alertCenterFilter==='all')html+='<p class="hint">Até 200 itens: alertas atuais e histórico dos últimos 90 dias. Contextos não carregados não são considerados resolvidos.</p>';
+    document.getElementById('alertCenterBody').innerHTML=html;
+    Array.prototype.forEach.call(document.querySelectorAll('#alertCenterFilters button'),function(b){b.classList.toggle('active',b.dataset.filter===alertCenterFilter);b.setAttribute('aria-pressed',String(b.dataset.filter===alertCenterFilter));});
+  }
+
+  function openAlertCenter(){
+    alertCenterFilter='active';updateAlertCenter();renderAlertCenter();document.getElementById('alertCenterOverlay').classList.add('open');
+  }
+  function closeAlertCenter(){document.getElementById('alertCenterOverlay').classList.remove('open');}
+
+  function navigateAlert(key){
+    if(!alertCenterStore)return Promise.resolve(false);
+    var a=alertCenterStore.model().active.concat(alertCenterStore.model().all).find(function(a){return a.key===key&&!a.historical;});
+    var facts=alertFacts();if(!a||!window.MABAlerts.visible(a,facts))return Promise.resolve(false);
+    var uid=state.myUid,family=state.familyId;
+    alertCenterStore.act(key,'read');closeAlertCenter();
+    var targetSpace=a.spaceId || state.familyId;
+    var change=targetSpace!==state.activeSpaceId?setActiveSpace(targetSpace):Promise.resolve();
+    return Promise.resolve(change).then(function(){
+      if(uid!==state.myUid||family!==state.familyId||!window.MABAlerts.visible(a,alertFacts()))return false;
+      if(a.monthKey&&/^\d{4}-\d{2}$/.test(a.monthKey)&&(a.entityType==='entry'||a.entityType==='category'||a.type==='loan_overdue'||a.type==='loan_upcoming'))state.monthKey=a.monthKey;
+      state.view=a.actionTarget;if(a.entityType==='category')state.openCategoryKey=a.entityId;state.searchQuery='';state.movFilter='all';document.getElementById('searchInput').value='';
+      return Promise.resolve(loadForView(state.view)).then(function(){
+        if(uid!==state.myUid||family!==state.familyId||!window.MABAlerts.visible(a,alertFacts()))return false;
+        if(a.entityType==='emergency'){openHomeEmergencyFund();return true;}
+        var attr={category:'data-alert-category',entry:'data-entry-id',loan:'data-loan-id',savings:'data-savings-id',investment:'data-investment-id'}[a.entityType];
+        var element=attr&&Array.prototype.find.call(document.querySelectorAll('#content ['+attr+']'),function(el){return el.getAttribute(attr)===a.entityId;});
+        if(element){element.setAttribute('tabindex','-1');element.focus({preventScroll:true});element.scrollIntoView({block:'center',behavior:'smooth'});}
+        else if(a.entityType!=='budget')showToast('O registo pode ter sido alterado. Estás na área correspondente.');
+        return true;
+      });
+    }).catch(function(){showToast('Não foi possível abrir o detalhe. Tenta novamente.');return false;});
+  }
+
+  document.getElementById('openAlertCenter').innerHTML=icon('bell')+'<span class="alerts-badge" hidden></span>';
+  document.getElementById('openAlertCenterDesktop').innerHTML=icon('bell')+'<span>Alertas</span><span class="alerts-badge" hidden></span>';
+  ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){document.getElementById(id).addEventListener('click',openAlertCenter);});
+  document.getElementById('closeAlertCenter').addEventListener('click',closeAlertCenter);
+  document.getElementById('alertCenterOverlay').addEventListener('click',function(ev){if(ev.target===this)closeAlertCenter();});
+  document.getElementById('alertCenterFilters').addEventListener('click',function(ev){var b=ev.target.closest('button[data-filter]');if(b){alertCenterFilter=b.dataset.filter;renderAlertCenter();}});
+  document.getElementById('alertCenterBody').addEventListener('click',function(ev){var b=ev.target.closest('[data-alert-action]');if(!b||!alertCenterStore)return;if(b.dataset.alertAction==='open')navigateAlert(b.dataset.alertKey);else{alertCenterStore.act(b.dataset.alertKey,b.dataset.alertAction,Number(b.dataset.alertDays));render();}});
+  window.addEventListener('online',function(){if(alertCenterStore)alertCenterStore.retry();});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden&&alertCenterStore){alertCenterStore.retry();render();}});
+
   // ---------- Boot bridge for the Firebase module script below ----------
   render();
   // O splash de arranque desaparece assim que soubermos o que mostrar —
@@ -11208,6 +11301,11 @@
       markSplashReady();
     },
     showLogin: function(){
+      state.alertsBootReady=false;
+      if(alertCenterStore){alertCenterStore.dispose();alertCenterStore=null;}
+      if(alertWakeTimer)clearTimeout(alertWakeTimer);
+      closeAlertCenter();
+      ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var b=document.getElementById(id);b.setAttribute('aria-label','Alertas');b.querySelector('.alerts-badge').hidden=true;});
       document.getElementById('loginScreen').hidden = false;
       markSplashReady();
     },
@@ -11218,6 +11316,10 @@
       state.familyId = familyId || null;
       state.myUid = (profile && profile.uid) || null;
       state.myEmail = (profile && profile.email) || null;
+      state.alertsBootReady = false;
+      state.alertGlobalFamily = null;
+      state.alertScopeLoaded = null;
+      initializeAlertCenter(state.myUid,state.familyId,profile && profile.alertRepository);
       state.isAdmin = !!(profile && profile.isAdmin); // custom claim — ver Admin -> Feedback
       // Placeholder seguro imediato (o Espaço por omissão tem sempre este id) —
       // loadSpaces() confirma/substitui pelo Espaço realmente ativo (guardado
@@ -11229,7 +11331,7 @@
       }).then(function(){ return loadLoans(); }).then(function(){
         return migrateExistingLoansToPayments();
       }).then(function(){
-        return Promise.all([loadDataForActiveSpace(),loadSavingsGoals(),loadInvestments(),loadEmergencyFundHistory()]).then(function(){window.dispatchEvent(new Event('mab-data-ready'));});
+        return Promise.all([loadDataForActiveSpace(),loadSavingsGoals(),loadInvestments(),loadEmergencyFundHistory()]).then(function(){state.alertGlobalFamily=familyId;state.alertsBootReady=true;render();window.dispatchEvent(new Event('mab-data-ready'));});
       });
       upsertMyFamilyMember();
       if (isFamilyOwner()) loadMyInvites();
@@ -11242,6 +11344,11 @@
       markSplashReady();
     },
     noFamily: function(email){
+      state.alertsBootReady=false;
+      if(alertCenterStore){alertCenterStore.dispose();alertCenterStore=null;}
+      if(alertWakeTimer)clearTimeout(alertWakeTimer);
+      closeAlertCenter();
+      ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var b=document.getElementById(id);b.setAttribute('aria-label','Alertas');b.querySelector('.alerts-badge').hidden=true;});
       document.getElementById('loginScreen').hidden = true;
       state.dbAvailable = 'nofamily';
       state.myEmail = email || null;
@@ -11270,6 +11377,8 @@
      instruções em CONFIGURAR.md para criares o projeto Firebase gratuito,
      depois substitui os valores de firebaseConfig abaixo pelos teus.
      ====================================================================== -->
+<script src="./alerts-engine.js"></script>
+<script src="./alerts-store.js"></script>
 <script src="./push-config.js"></script>
 <script src="./push-policy.js"></script>
 <script type="module">
@@ -11277,7 +11386,7 @@
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where,
-    collectionGroup, orderBy, limit, startAfter, getCountFromServer, serverTimestamp, writeBatch
+    collectionGroup, orderBy, limit, startAfter, getCountFromServer, serverTimestamp, writeBatch, onSnapshot
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -11374,6 +11483,15 @@
       count(){
         return getCountFromServer(this._buildQuery()).then(function(snap){ return snap.data().count; });
       }
+    };
+  }
+
+  function makeAlertRepository(firestore,uid){
+    var base=collection(firestore,'users',uid,'alertStates');
+    return {
+      get:function(key){return getDoc(doc(base,key)).then(function(s){return s.exists()?s.data():null;});},
+      set:function(key,value){return setDoc(doc(base,key),value);},
+      subscribe:function(next,error){return onSnapshot(query(base,orderBy('updatedAt','desc'),limit(200)),function(s){next(s.docs.map(function(d){return d.data();}));},error);}
     };
   }
 
@@ -11604,7 +11722,7 @@
                 return;
               }
               var isAdminClaim = !!(tokenResult && tokenResult.claims && tokenResult.claims.admin === true);
-              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email, isAdmin: isAdminClaim});
+              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email, isAdmin: isAdminClaim, alertRepository: makeAlertRepository(firestore,user.uid)});
             }).catch(function(err){
               window.__ContasApp.fail(err);
             });
