@@ -6335,7 +6335,9 @@
 
     // ---- 4. Indicadores rápidos (máx. 3, numa única linha) ----
     var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
-    var rate = calculateSavingsRate(sR.done, summaryOf(despesasSemSource).done);
+    // Home: rendimento previsto do mês menos consumo já confirmado.
+    // Mantém as exclusões sourceType e não altera o realizado nem o Orçamento.
+    var rate = calculateSavingsRate(sR.total, summaryOf(despesasSemSource).done);
     var health = computeFinancialHealth(sR, sD, poupMes, netw);
     html += '<div class="trio-grid home-indicators">' +
       '<div class="trio-tile"><div class="trio-label">Gasto</div><div class="trio-value mono">' + pctComprometido + '%</div></div>' +
@@ -9074,7 +9076,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v55'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v56'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
