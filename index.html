@@ -6389,11 +6389,31 @@
     });
 
     if (!list.length){
-      html += '<div class="kind-empty">Sem movimentos para este filtro.</div>';
+      html += '<div class="kind-empty">' + (!query && state.movFilter === 'pendente' && state.entries.some(function(e){ return kindOf(e) === 'despesa'; }) ? 'Tudo pago este mês ✓' : 'Sem movimentos para este filtro.') + '</div>';
       content.innerHTML = html;
       return;
     }
 
+    // Só as despesas pagas são recolhidas; receitas mantêm a apresentação.
+    // A pesquisa abre os resultados concluídos sem alterar os movimentos.
+    var completed = list.filter(function(e){ return kindOf(e) === 'despesa' && e.paid; });
+    var visible = list.filter(function(e){ return !(kindOf(e) === 'despesa' && e.paid); });
+    if (!query && state.movFilter !== 'receita' &&
+        !state.entries.some(function(e){ return kindOf(e) === 'despesa' && !e.paid; }) &&
+        state.entries.some(function(e){ return kindOf(e) === 'despesa' && e.paid; })){
+      html += '<div class="kind-empty">Tudo pago este mês ✓</div>';
+    }
+    html += movementDateGroupsHtml(visible);
+    if (completed.length){
+      html += '<details class="completed-payments"' + (query ? ' open' : '') + '>' +
+        '<summary class="filter-chip" style="cursor:pointer;margin:16px 0">Pagamentos concluídos (' + completed.length + ')</summary>' +
+        movementDateGroupsHtml(completed) + '</details>';
+    }
+    content.innerHTML = html;
+  }
+
+  function movementDateGroupsHtml(list){
+    var html = '';
     // Agrupa pela data real da transação (mês da vista + dia), não só pelo
     // número do dia — e mostra "Hoje" / "Ontem — 4 de setembro" / etc. em
     // vez de "Dia 4", conforme a data escolhida em cada despesa/receita.
@@ -6413,7 +6433,7 @@
         '<div class="group-list">' + items.map(itemRow).join('') + '</div>';
     });
 
-    content.innerHTML = html;
+    return html;
   }
 
   // ---------- Year view ----------
@@ -9076,7 +9096,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v56'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v57'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
