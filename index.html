@@ -1028,6 +1028,8 @@
 .inv-timeline{list-style:none;padding:0;max-height:300px;overflow-y:auto}.inv-timeline li{display:flex;flex-wrap:wrap;gap:8px;padding-block:10px;border-bottom:1px solid var(--border)}.inv-timeline time{color:var(--text-faint);font-size:12px}.inv-timeline strong{margin-left:auto}
 .inv-allocation-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-block:12px}.inv-allocation-row .progress-track{grid-column:1/-1}.inv-periods{display:flex;gap:6px;flex-wrap:wrap}.inv-periods [aria-pressed="true"]{border-color:var(--accent);font-weight:800}
 .investment-v58 .stat-tile{min-width:0}.investment-v58 .stat-value{overflow-wrap:anywhere;font-size:clamp(16px,4.6vw,24px)}.investment-v58 .loan-chart-wrap svg{width:100%;height:auto}.investment-v58 .loan-head{min-width:0;overflow-wrap:anywhere}
+
+.xtb-dialog{box-sizing:border-box;width:min(760px,96vw);max-height:92dvh;overflow-y:auto;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--text);padding:20px}.xtb-dialog::backdrop{background:rgba(0,0,0,.45)}.xtb-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.xtb-header h2{font-size:22px}.xtb-dialog label{display:grid;gap:8px;font-size:14px;margin-block:12px}.xtb-dialog input:not([type=checkbox]),.xtb-dialog select{box-sizing:border-box;max-width:100%;min-width:0;width:100%;padding:10px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px}.xtb-dialog .xtb-check{display:flex;align-items:flex-start;gap:10px}.xtb-check input{flex:none;margin-top:3px}.xtb-group{margin-block:18px;padding-block:14px;border-top:1px solid var(--border);overflow-wrap:anywhere}.xtb-group h3{font-size:17px}.xtb-numbers{display:flex;gap:14px;flex-wrap:wrap}.xtb-numbers span{display:grid;font-size:12px;gap:4px}.xtb-numbers strong{font-size:16px}.xtb-events{max-height:240px;overflow-y:auto;font-size:13px}.xtb-footer{padding-block:16px}.xtb-dialog p{overflow-wrap:anywhere}.xtb-dialog .stat-note{font-size:12px}
 </style>
 </head>
 <body>
@@ -2775,7 +2777,7 @@
     return unknownInitialDate?null:calculateXirr(flows);
   }
   function investmentMonthlyActual(id,month){
-    return (state.investmentContributions[id] || []).reduce(function(n,c){return n+(c.date && c.date.slice(0,7)===month && !investmentIsInitial(id,c) ? Math.max(0,Number(c.amount)||0):0);},0);
+    return (state.investmentContributions[id] || []).reduce(function(n,c){return n+(c.date && c.date.slice(0,7)===month && !investmentIsInitial(id,c) && (c.importSource!=='xtb'||c.xtbEventType==='purchase') ? Math.max(0,Number(c.amount)||0):0);},0);
   }
   function investmentIsInitial(id,c){
     if(c.isInitial!=null)return !!c.isInitial;
@@ -3815,12 +3817,12 @@
         subPromises.push(forDb.collection('investmentContributions').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
           list.sort(sortByDateThenCreated);
-          contributions[inv.id] = list;
+          contributions[inv.id] = list.filter(function(c){return !c.supersededBy;});
         }));
         subPromises.push(forDb.collection('investmentSnapshots').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
           list.sort(sortByDateThenCreated);
-          snapshots[inv.id] = list;
+          snapshots[inv.id] = list.filter(function(c){return !c.supersededBy;});
         }));
       });
       return Promise.all(subPromises).then(function(){
@@ -3872,7 +3874,7 @@
     var forDb=db, date=todayStr(), createdAt=new Date().toISOString();
     if(!Number.isFinite(value) || value<0) return Promise.reject(new Error('Valor inválido.'));
     return forDb.collection('investmentContributions').where('investmentId','==',investmentId).get().then(function(s){
-      var flows=s.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      var flows=s.docs.map(function(d){return Object.assign({id:d.id},d.data());}).filter(function(c){return !c.supersededBy;});
       return forDb.collection('investmentSnapshots').add({investmentId:investmentId,date:date,value:value,createdAt:createdAt,flowSignature:investmentFlowSignature(flows)});
     }).then(function(){ if(db===forDb)return loadInvestments(); });
   }
@@ -7070,7 +7072,7 @@
   }
   function buildInvestmentChart(inv){return investmentHistoryChart([inv],'all');}
   function investmentTimelineHtml(inv){
-    var events=(state.investmentContributions[inv.id]||[]).map(function(c){return {date:c.date,createdAt:c.createdAt,label:investmentIsInitial(inv.id,c)?'Capital inicial':Number(c.amount)<0?'Levantamento':'Aporte',amount:Math.abs(Number(c.amount)||0)};});
+    var events=(state.investmentContributions[inv.id]||[]).map(function(c){return {date:c.date,createdAt:c.createdAt,label:c.importSource==='xtb'?({purchase:'Compra',sale:'Venda',dividend:'Dividendo',tax:'Imposto / correção',fee:'Comissão / taxa'}[c.xtbEventType]||'Operação XTB'):investmentIsInitial(inv.id,c)?'Capital inicial':Number(c.amount)<0?'Levantamento':'Aporte',amount:Math.abs(Number(c.amount)||0)};});
     (state.investmentSnapshots[inv.id]||[]).forEach(function(s){events.push({date:s.date,createdAt:s.createdAt,label:'Avaliação',amount:Number(s.value)||0});});
     events.sort(sortByDateThenCreated).reverse();
     return '<ol class="inv-timeline">'+events.map(function(e){return '<li><time>'+escapeHtml(e.date)+'</time><span>'+e.label+'</span><strong class="mono">'+euro(e.amount)+'</strong></li>';}).join('')+'</ol>';
@@ -7118,14 +7120,16 @@
     var t=investmentTypeOf(inv),g=gainOf(inv),p=((state.investmentPlan||{}).investments||{})[inv.id]||{};
     var actual=investmentMonthlyActual(inv.id,state.monthKey),contribs=state.investmentContributions[inv.id]||[];
     return '<div class="loan-card" data-investment-id="'+escapeHtml(inv.id)+'"><div class="loan-head-row"><span class="icon-badge" style="'+catTint(t.color)+'">'+icon(investmentTypeIconOf(inv))+'</span><div class="loan-head"><h3>'+escapeHtml(inv.name)+'</h3><div class="sub">'+escapeHtml([t.label,inv.institution,inv.owner,inv.liquid===false?'não líquido':'líquido'].filter(Boolean).join(' · '))+'</div></div></div>'+
+      (inv.xtbGroupKey?'<p class="stat-note">'+escapeHtml(inv.ticker)+' · XTB …'+escapeHtml(inv.xtbAccount.slice(-4))+' · '+escapeHtml(inv.xtbProduct)+'</p><p>Participações: <strong>'+Number(inv.xtbQuantity).toLocaleString('pt-PT',{maximumFractionDigits:8})+'</strong> · Custo das posições abertas: <strong>'+euro(inv.xtbCostBasis)+'</strong></p><p class="stat-note">Posições do relatório de '+escapeHtml(inv.xtbAsOf.slice(0,10))+'. Atualiza as compras importando um novo relatório XTB.</p>':'')+
       '<div class="saldo-row"><div class="label">'+(g.quality.snapshot?'Última avaliação':'Capital registado · sem avaliação')+'</div><div class="saldo-value mono">'+euro(g.current)+'</div></div>'+investmentQualityHtml(g.quality)+
       '<div class="loan-stat-grid"><div class="stat-tile"><div class="stat-label">Capital líquido investido</div><div class="stat-value mono">'+euro(g.contributed)+'</div></div><div class="stat-tile"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">'+(g.gain==null?'—':euro(g.gain))+'</div></div></div>'+
       '<details class="inv-details"><summary>Rentabilidade, plano e histórico</summary><p>Rentabilidade total: <strong>'+investmentPercent(g.pct)+'</strong></p><p>Anualizada · XIRR: <strong>'+investmentPercent(g.xirr==null?null:g.xirr*100,true)+'</strong></p>'+
+      (inv.xtbGroupKey?'<p class="stat-note">O ganho e os fluxos líquidos incluem vendas, dividendos, impostos e correções registados. Os preços por participação mantêm a moeda do ativo; os montantes estão em euros.</p>':'')+
       (g.xirr==null?'<p class="stat-note">Dados insuficientes ou fluxos incompatíveis para calcular rentabilidade anualizada.</p>':'')+
       (p.monthlyContributionTarget!=null?'<p>Aportado em '+escapeHtml(state.monthKey)+': '+euro(actual)+' / '+euro(p.monthlyContributionTarget)+' planeados.</p><p class="stat-note">'+(actual>p.monthlyContributionTarget?'Acima do plano: '+euro(actual-p.monthlyContributionTarget):'Falta aportar: '+euro(p.monthlyContributionTarget-actual))+'</p>':'')+
       (inv.goalAmount?'<p>Objetivo: '+euro(inv.goalAmount)+' · '+Math.min(100,Math.max(0,g.current/inv.goalAmount*100)).toFixed(0)+'%</p>':'')+
       '<div class="loan-chart-wrap">'+buildInvestmentChart(inv)+'</div>'+investmentTimelineHtml(inv)+sourceHistoryHtml('investment',inv.id,contribs,'Editar aportes registados')+'</details>'+
-      '<div class="inv-actions-row">'+[['inv-contribute','Registar aporte'],['inv-snapshot','Atualizar valor'],['inv-edit','Editar'],['inv-delete','Eliminar']].map(function(a){return '<button type="button" class="btn ghost" data-action="'+a[0]+'" data-id="'+escapeHtml(inv.id)+'" data-name="'+escapeHtml(inv.name)+'">'+a[1]+'</button>';}).join('')+'</div></div>';
+      '<div class="inv-actions-row">'+[['inv-contribute','Registar aporte'],['inv-snapshot','Atualizar valor'],['inv-edit','Editar'],['inv-delete','Eliminar']].filter(function(a){return !inv.xtbGroupKey||a[0]!=='inv-contribute';}).map(function(a){return '<button type="button" class="btn ghost" data-action="'+a[0]+'" data-id="'+escapeHtml(inv.id)+'" data-name="'+escapeHtml(inv.name)+'">'+a[1]+'</button>';}).join('')+'</div></div>';
   }
   document.addEventListener('click',function(ev){
     var button=ev.target.closest('[data-inv-period]');
@@ -7288,6 +7292,108 @@
     render();
   }
 
+  // ---------- XTB import: preview first, explicit confirmation in the app ----------
+  var xtbDraft=null,xtbBusy=false;
+  function xtbImportButtonHtml(){return '<button type="button" class="btn ghost" data-action="xtb-import">Importar portefólio XTB</button>';}
+  function openXtbImport(){
+    if(xtbBusy)return;
+    var old=document.getElementById('xtbImportDialog');if(old)old.remove();
+    xtbDraft=null;
+    var dialog=document.createElement('dialog');dialog.id='xtbImportDialog';dialog.className='xtb-dialog';
+    dialog.innerHTML='<div class="xtb-header"><h2>Importar da XTB</h2><button type="button" class="btn ghost" id="xtbClose" aria-label="Fechar importação">Fechar</button></div><p>Escolhe os relatórios Excel completos de contas em euros. Os ficheiros são lidos neste dispositivo.</p><p class="stat-note">A carteira continua global à família. Compras, vendas, dividendos e impostos ficam no histórico de investimentos. Depósitos, transferências e juros do dinheiro disponível não entram nesta importação. Não cria movimentos no Orçamento.</p><label class="xtb-file">Relatórios XTB (.xlsx)<input type="file" id="xtbFiles" accept=".xlsx" multiple></label><p id="xtbStatus" role="status" aria-live="polite"></p><div id="xtbPreview"></div>';
+    document.body.appendChild(dialog);
+    dialog.querySelector('#xtbClose').addEventListener('click',function(){if(!xtbBusy){if(dialog.close)dialog.close();dialog.remove();xtbDraft=null;}});
+    dialog.addEventListener('cancel',function(ev){if(xtbBusy)ev.preventDefault();else xtbDraft=null;});
+    dialog.querySelector('#xtbFiles').addEventListener('change',function(ev){readXtbFiles(Array.from(ev.target.files||[]));});
+    if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');
+  }
+  function setXtbBusy(value){
+    xtbBusy=value;
+    var d=document.getElementById('xtbImportDialog');if(d)d.querySelectorAll('button,input,select').forEach(function(el){el.disabled=value;});
+  }
+  async function readXtbFiles(files){
+    var status=document.getElementById('xtbStatus'),preview=document.getElementById('xtbPreview');
+    if(!status)return;
+    xtbDraft=null;preview.innerHTML='';
+    if(!files.length)return;
+    if(files.length>5){status.textContent='Escolhe no máximo cinco relatórios de cada vez.';return;}
+    if(!window.MABXTB){status.textContent='O módulo de importação não foi carregado. Atualiza a aplicação.';return;}
+    var forDb=db,family=state.familyId;setXtbBusy(true);status.textContent='A ler e reconciliar os relatórios…';
+    try{
+      var reports=[],accounts=new Set();
+      for(var file of files){
+        if(!/\.xlsx$/i.test(file.name))throw new Error('Escolhe um ficheiro .xlsx exportado pela XTB.');
+        var report=window.MABXTB.parseWorkbook(await window.MABXTB.readWorkbook(await file.arrayBuffer()),file.name);
+        if(accounts.has(report.account))throw new Error('Escolhe apenas um relatório por conta nesta importação.');
+        accounts.add(report.account);reports.push(report);
+      }
+      if(db!==forDb||state.familyId!==family)throw new Error('A sessão mudou. Abre novamente a importação.');
+      xtbDraft={db:forDb,family:family,reports:reports,groups:reports.flatMap(function(r){return r.groups;}),plans:null};
+      renderXtbPreview();status.textContent='Relatórios reconciliados. Revê as associações antes de preparar a importação.';
+    }catch(err){status.textContent=err.message||'Não foi possível ler os relatórios.';}finally{setXtbBusy(false);}
+  }
+  function renderXtbPreview(){
+    var draft=xtbDraft,el=document.getElementById('xtbPreview');if(!draft||!el)return;
+    var total=draft.reports.reduce(function(n,r){return n+r.total;},0);
+    var rows=draft.groups.map(function(g,i){
+      var match=state.investments.find(function(inv){return inv.xtbGroupKey===g.key;});
+      var options='<option value="new"'+(!match?' selected':'')+'>Criar investimento separado</option>';
+      state.investments.filter(function(inv){return !inv.xtbGroupKey||inv.xtbGroupKey===g.key;}).forEach(function(inv){options+='<option value="'+escapeHtml(inv.id)+'"'+(match&&match.id===inv.id?' selected':'')+'>'+escapeHtml(inv.name)+'</option>';});
+      options+='<option value="skip">Não importar este ativo</option>';
+      return '<section class="xtb-group"><h3>'+escapeHtml(g.name)+' <span class="stat-note">'+escapeHtml(g.ticker)+'</span></h3><p class="stat-note">Conta …'+g.account.slice(-4)+' · '+escapeHtml(g.product)+' · '+g.events.length+' operações'+(!g.quantity?' · posição encerrada':'')+'</p><div class="xtb-numbers"><span>Participações <strong>'+g.quantity.toLocaleString('pt-PT',{maximumFractionDigits:8})+'</strong></span><span>Custo das posições abertas <strong>'+euro(g.costBasis)+'</strong></span><span>Valor no relatório <strong>'+euro(g.value)+'</strong></span></div><label>Associar a<select data-xtb-target="'+i+'">'+options+'</select></label><label class="xtb-check"><input type="checkbox" data-xtb-replace="'+i+'"> Se associar a um investimento manual, substituir o seu histórico pelo histórico XTB. Os registos anteriores ficam preservados, mas deixam de contar.</label><p class="stat-note">Aportes ligados ao Orçamento impedem a substituição automática. A associação é a uma única conta, produto e ticker.</p><details><summary>Ver compras e outros registos</summary><div class="xtb-events">'+g.events.map(function(e){var labels={purchase:'Compra',sale:'Venda',dividend:'Dividendo',tax:'Imposto / correção',fee:'Comissão / taxa'};return '<p>'+escapeHtml(e.date)+' · '+labels[e.kind]+' · '+euro(Math.abs(e.amount))+(e.quantity!=null?' · '+e.quantity.toLocaleString('pt-PT',{maximumFractionDigits:8})+' participações a '+e.price.toLocaleString('pt-PT',{maximumFractionDigits:6})+' (moeda do ativo)':'')+'</p>';}).join('')+'</div></details></section>';
+    }).join('');
+    el.innerHTML='<p><strong>'+euro(total)+'</strong> em posições abertas, sem saldo em dinheiro.</p>'+draft.reports.map(function(r){return '<p class="stat-note">Conta …'+r.account.slice(-4)+' · avaliação '+escapeHtml(r.asOf.slice(0,10))+' às '+escapeHtml(r.asOf.slice(11,19))+' UTC</p><label>Titular desta conta (opcional)<input data-xtb-owner="'+r.account+'" maxlength="80" placeholder="Nome do titular"></label>';}).join('')+'<p class="stat-note">Um mesmo ativo em duas contas ou produtos fica separado para permitir atualizações sem duplicação. Preços unitários podem estar na moeda do ativo; os montantes importados estão em euros.</p>'+rows+'<label class="xtb-check"><input type="checkbox" id="xtbAcknowledge"> Conferi as associações. Os investimentos existentes que não associei continuam no Património e podem duplicar posições que já registei manualmente.</label><div class="xtb-footer"><button type="button" class="btn primary" id="xtbPrepare">Preparar importação</button><div id="xtbConfirmation"></div></div>';
+    el.querySelector('#xtbPrepare').addEventListener('click',prepareXtbPreview);
+    el.addEventListener('change',function(){if(xtbDraft){xtbDraft.plans=null;var c=document.getElementById('xtbConfirmation');if(c)c.innerHTML='';}});
+  }
+  async function prepareXtbPreview(){
+    var d=xtbDraft,status=document.getElementById('xtbStatus');if(!d||xtbBusy)return;
+    if(db!==d.db||state.familyId!==d.family){status.textContent='A sessão mudou. Abre novamente a importação.';return;}
+    if(!document.getElementById('xtbAcknowledge').checked){status.textContent='Confirma que conferiste as associações e os investimentos existentes.';return;}
+    document.getElementById('xtbConfirmation').innerHTML='';setXtbBusy(true);status.textContent='A comparar com os dados guardados…';
+    try{
+      var plans=[],used=new Set();
+      for(var i=0;i<d.groups.length;i++){
+        var g=d.groups[i],choice=document.querySelector('[data-xtb-target="'+i+'"]').value;if(choice==='skip')continue;
+        var targetId=choice==='new'?g.key:choice;if(used.has(targetId))throw new Error('Não associes dois grupos XTB ao mesmo investimento.');used.add(targetId);
+        var result=await Promise.all([d.db.collection('investments').doc(targetId).get(),d.db.collection('investmentContributions').where('investmentId','==',targetId).get(),d.db.collection('investmentSnapshots').where('investmentId','==',targetId).get()]);
+        var current={investment:result[0].exists?result[0].data():null,contributions:result[1].docs.map(function(r){return Object.assign({id:r.id},r.data());}),snapshots:result[2].docs.map(function(r){return Object.assign({id:r.id},r.data());})};
+        var owner=document.querySelector('[data-xtb-owner="'+g.account+'"]').value.trim();
+        var plan=window.MABXTB.prepareGroup(g,{targetId:targetId,replaceManual:document.querySelector('[data-xtb-replace="'+i+'"]').checked,owner:owner},current,investmentFlowSignature);
+        plans.push(plan);
+      }
+      if(!plans.length)throw new Error('Seleciona pelo menos um ativo.');
+      if(db!==d.db||state.familyId!==d.family)throw new Error('A sessão mudou. Abre novamente a importação.');
+      d.plans=plans;var added=plans.reduce(function(n,p){return n+p.added;},0),duplicates=plans.reduce(function(n,p){return n+p.duplicates;},0),replaced=plans.reduce(function(n,p){return n+p.replaced;},0),writes=plans.reduce(function(n,p){return n+p.writes.length;},0);
+      var selectedValue=plans.reduce(function(n,p){return n+d.groups.find(function(g){return g.key===p.key;}).value;},0);
+      document.getElementById('xtbConfirmation').innerHTML='<p>Valor selecionado: '+euro(selectedValue)+'</p><p>'+plans.length+' investimentos · '+added+' operações novas · '+duplicates+' já importadas · '+replaced+' registos manuais substituídos.</p>'+(writes?'<button type="button" class="btn primary" id="xtbCommit">Confirmar e importar</button>':'<p>Este relatório já foi importado. Nada a alterar.</p>');
+      var button=document.getElementById('xtbCommit');if(button)button.addEventListener('click',commitXtbPreview);
+      status.textContent='Pré-visualização pronta. Ainda não foram gravadas alterações.';
+    }catch(err){d.plans=null;status.textContent=err.message||'Não foi possível preparar a importação.';}finally{setXtbBusy(false);}
+  }
+  async function commitXtbPreview(){
+    var d=xtbDraft,status=document.getElementById('xtbStatus');if(!d||!d.plans||xtbBusy)return;
+    if(db!==d.db||state.familyId!==d.family){status.textContent='A sessão mudou. Abre novamente a importação.';return;}
+    if(typeof d.db.commitInvestmentImport!=='function'){status.textContent='Atualiza a aplicação antes de importar.';return;}
+    var done=0;setXtbBusy(true);
+    try{
+      for(var p of d.plans){
+        if(db!==d.db||state.familyId!==d.family)throw new Error('A sessão mudou.');
+        if(p.writes.length)await d.db.commitInvestmentImport(p);
+        done++;status.textContent='Importados '+done+' de '+d.plans.length+' investimentos…';
+      }
+      var count=d.plans.length;d.plans=null;
+      if(db===d.db)await loadInvestments();
+      document.getElementById('xtbConfirmation').innerHTML='<p>Importação concluída. '+count+' investimentos processados.</p>';
+      status.textContent='Importação concluída. Os valores estão em Investimentos e Património.';
+    }catch(err){
+      d.plans=null;status.textContent='Foram processados '+done+' investimentos. '+(err.message||'Falha ao guardar.')+' Prepara novamente a importação para continuar; os registos já importados serão reconhecidos.';
+      document.getElementById('xtbConfirmation').innerHTML='';
+      if(db===d.db)await loadInvestments();
+    }finally{setXtbBusy(false);}
+  }
+  document.addEventListener('click',function(ev){if(ev.target.closest('[data-action="xtb-import"]'))openXtbImport();});
+
   function renderInvestmentView(content){
     var toggle = subviewToggleHtml('investment', 'Portefólio', state.investmentSubview);
     if (state.investmentSubview === 'simulator'){
@@ -7305,10 +7411,11 @@
     if (!state.investments.length){
       content.innerHTML = toggle + '<div class="empty"><h3>Ainda não há investimentos registados</h3>' +
         '<p>Toca no botão + para adicionares o primeiro investimento (PPR, ETFs, depósitos…) e acompanhares a evolução ao longo do tempo.</p>' +
-        '<button type="button" class="btn primary" data-action="empty-add" data-kind="investimento">+ Novo investimento</button></div>';
+        '<button type="button" class="btn primary" data-action="empty-add" data-kind="investimento">+ Novo investimento</button>' + xtbImportButtonHtml() + '</div>';
       return;
     }
-    content.innerHTML = toggle + '<div class="investment-v58">' + investmentOverviewHtml() + investmentAllocationHtml() + state.investments.map(investmentCardHtml).join('') + '</div>';
+    var openInvestments=state.investments.filter(function(inv){return !inv.xtbGroupKey||inv.xtbQuantity>0;}),closedInvestments=state.investments.filter(function(inv){return inv.xtbGroupKey&&inv.xtbQuantity===0;});
+    content.innerHTML = toggle + '<div class="investment-v58">' + xtbImportButtonHtml() + investmentOverviewHtml() + investmentAllocationHtml() + openInvestments.map(investmentCardHtml).join('') + (closedInvestments.length?'<details class="cat-card inv-details"><summary>Investimentos encerrados ('+closedInvestments.length+')</summary>'+closedInvestments.map(investmentCardHtml).join('')+'</details>':'') + '</div>';
   }
 
   // ---------- Poupanças por objetivo (sinking funds) view ----------
@@ -9274,7 +9381,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v58'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v59'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -11599,6 +11706,7 @@
      instruções em CONFIGURAR.md para criares o projeto Firebase gratuito,
      depois substitui os valores de firebaseConfig abaixo pelos teus.
      ====================================================================== -->
+<script src="./xtb-import.js"></script>
 <script src="./alerts-engine.js"></script>
 <script src="./alerts-store.js"></script>
 <script src="./push-config.js"></script>
@@ -11608,7 +11716,7 @@
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where,
-    collectionGroup, orderBy, limit, startAfter, getCountFromServer, serverTimestamp, writeBatch, onSnapshot
+    collectionGroup, orderBy, limit, startAfter, getCountFromServer, serverTimestamp, writeBatch, onSnapshot, runTransaction
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -11721,6 +11829,20 @@
     var prefix = 'families/' + familyId + '/';
     return {
       collection: function(path){ return wrapColl(firestore, prefix + path); },
+      commitInvestmentImport: function(plan){
+        var allowed=['investments','investmentContributions','investmentSnapshots'];
+        if(plan.writes.length>440||plan.checks.length>850||plan.writes.concat(plan.checks).some(function(r){return allowed.indexOf(r.collection)<0||!r.id||r.id.indexOf('/')>=0;}))return Promise.reject(new Error('Plano de importação inválido.'));
+        return runTransaction(firestore,async function(tx){
+          var mapRef=doc(firestore,prefix+'settings/xtbImportMap');
+          var mapSnap=await tx.get(mapRef),mapping=mapSnap.exists()?mapSnap.data():{mappings:{}};
+          mapping.mappings=mapping.mappings||{};
+          if(mapping.mappings[plan.key]&&mapping.mappings[plan.key]!==plan.targetId)throw new Error('Este grupo XTB já está associado a outro investimento. Atualiza a página.');
+          var snapshots=await Promise.all(plan.checks.map(function(c){return tx.get(doc(firestore,prefix+c.collection+'/'+c.id));}));
+          plan.checks.forEach(function(c,i){var actual=snapshots[i].exists()?window.MABXTB.canonical(snapshots[i].data()):null;if(actual!==c.expected)throw new Error('Os dados mudaram desde a pré-visualização. Prepara novamente a importação.');});
+          plan.writes.forEach(function(w){tx.set(doc(firestore,prefix+w.collection+'/'+w.id),w.data);});
+          mapping.mappings[plan.key]=plan.targetId;tx.set(mapRef,mapping);
+        });
+      },
       saveEmergencyFund: function(config, changes){
         var batch = writeBatch(firestore);
         batch.set(doc(firestore, prefix + 'settings/emergencyFund'), config);
