@@ -7414,7 +7414,8 @@
         '<button type="button" class="btn primary" data-action="empty-add" data-kind="investimento">+ Novo investimento</button>' + xtbImportButtonHtml() + '</div>';
       return;
     }
-    var openInvestments=state.investments.filter(function(inv){return !inv.xtbGroupKey||inv.xtbQuantity>0;}),closedInvestments=state.investments.filter(function(inv){return inv.xtbGroupKey&&inv.xtbQuantity===0;});
+    var orderedInvestments=state.investments.slice().sort(function(a,b){return currentValueOf(b.id)-currentValueOf(a.id);});
+    var openInvestments=orderedInvestments.filter(function(inv){return !inv.xtbGroupKey||inv.xtbQuantity>0;}),closedInvestments=orderedInvestments.filter(function(inv){return inv.xtbGroupKey&&inv.xtbQuantity===0;});
     content.innerHTML = toggle + '<div class="investment-v58">' + xtbImportButtonHtml() + investmentOverviewHtml() + investmentAllocationHtml() + openInvestments.map(investmentCardHtml).join('') + (closedInvestments.length?'<details class="cat-card inv-details"><summary>Investimentos encerrados ('+closedInvestments.length+')</summary>'+closedInvestments.map(investmentCardHtml).join('')+'</details>':'') + '</div>';
   }
 
@@ -9381,7 +9382,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v59'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v60'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
