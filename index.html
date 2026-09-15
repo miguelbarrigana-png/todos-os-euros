@@ -1460,6 +1460,14 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2>Orçamento da categoria</h2>
+    <div class="field" id="categoryBudgetChoice" hidden>
+      <label for="fCategoryBudgetKey">Categoria</label>
+      <select id="fCategoryBudgetKey"></select>
+    </div>
+    <div class="field" id="categoryBudgetNew" hidden>
+      <label for="fCategoryBudgetName">Nome da nova categoria</label>
+      <input id="fCategoryBudgetName" type="text" maxlength="24" placeholder="Ex.: Férias">
+    </div>
     <p class="hint" id="categoryBudgetHint" style="margin-bottom:14px;"></p>
     <div class="field">
       <label for="fCategoryBudgetAmount">Valor-alvo por mês (€)</label>
@@ -5985,7 +5993,7 @@
     // (ver claude/despesas-categoria-redesenho.md) — cada cartão de
     // categoria já mostra "gasto / orçamento" e o texto de restante/excesso
     // diretamente, o que tornava as tabs redundantes.
-    html += '<div class="section-head"><h2>Despesas por categoria</h2></div>';
+    html += '<div class="section-head" style="flex-wrap:wrap;gap:8px"><h2>Despesas por categoria</h2><button type="button" class="btn ghost" data-action="add-budget-category">+ Adicionar categoria</button></div>';
 
     if (visibleDespesas.length || (!query && Object.keys(state.categoryBudgets || {}).length)){
       html += budgetCategoryCardsHtml(visibleDespesas);
@@ -8395,11 +8403,13 @@
   var pendingCategoryBudgetContext = null;
 
   function openCategoryBudgetSheet(catKey){
+    document.getElementById('categoryBudgetChoice').hidden = true;
+    document.getElementById('categoryBudgetNew').hidden = true;
     var def = despesaCategoryDefByKey(catKey);
     if (!def) return;
     pendingCategoryBudgetKey = catKey;
     var current = (state.categoryBudgets || {})[catKey];
-    pendingCategoryBudgetContext = {spaceId:state.activeSpaceId, monthKey:activeSpaceMonthly() ? state.monthKey : null};
+    pendingCategoryBudgetContext = {spaceId:state.activeSpaceId, monthKey:activeSpaceMonthly() ? state.monthKey : null, db:db};
     var inherited = state.categoryBudgetSources && state.categoryBudgetSources[catKey] === 'legacy';
     document.getElementById('categoryBudgetHint').textContent = pendingCategoryBudgetContext.monthKey
       ? ('Orçamento de ' + monthLabelOf(pendingCategoryBudgetContext.monthKey) + ' para "' + def.label + '". Só este mês será alterado.' + (inherited ? ' O valor inicial vem do orçamento anterior sem mês.' : ''))
@@ -8410,15 +8420,35 @@
     categoryBudgetOverlay.classList.add('open');
   }
   function closeCategoryBudgetSheet(){ categoryBudgetOverlay.classList.remove('open'); pendingCategoryBudgetKey = null; }
+  function openAddBudgetCategory(){
+    var cats=effectiveCategories('despesa');
+    pendingCategoryBudgetContext={spaceId:state.activeSpaceId,monthKey:activeSpaceMonthly()?state.monthKey:null,db:db};
+    var select=document.getElementById('fCategoryBudgetKey');
+    select.innerHTML=cats.map(function(c){return '<option value="'+escapeHtml(c.key)+'">'+escapeHtml(c.label)+'</option>';}).join('')+'<option value="__new__">Criar nova categoria…</option>';
+    select.value=(cats.find(function(c){return !Object.prototype.hasOwnProperty.call(state.categoryBudgets||{},c.key);})||{}).key||'__new__';
+    document.getElementById('categoryBudgetChoice').hidden=false;
+    document.getElementById('fCategoryBudgetName').value='';
+    document.getElementById('categoryBudgetError').style.display='none';
+    document.getElementById('categoryBudgetHint').textContent=(pendingCategoryBudgetContext.monthKey?'Orçamento de '+monthLabelOf(pendingCategoryBudgetContext.monthKey)+'. Só este mês será alterado.':'Orçamento total deste projeto.')+' Não cria uma despesa.';
+    updateBudgetCategoryChoice();categoryBudgetOverlay.classList.add('open');
+  }
+  function updateBudgetCategoryChoice(){
+    pendingCategoryBudgetKey=document.getElementById('fCategoryBudgetKey').value;
+    document.getElementById('categoryBudgetNew').hidden=pendingCategoryBudgetKey!=='__new__';
+    var amount=(state.categoryBudgets||{})[pendingCategoryBudgetKey];
+    document.getElementById('fCategoryBudgetAmount').value=amount==null?'':amount;
+    document.getElementById('categoryBudgetRemove').hidden=true;
+  }
+  document.getElementById('fCategoryBudgetKey').addEventListener('change',updateBudgetCategoryChoice);
 
   document.getElementById('categoryBudgetCancel').addEventListener('click', closeCategoryBudgetSheet);
   categoryBudgetOverlay.addEventListener('click', function(ev){ if (ev.target === categoryBudgetOverlay) closeCategoryBudgetSheet(); });
   document.getElementById('categoryBudgetSave').addEventListener('click', function(){
-    if (!pendingCategoryBudgetKey || !db) return;
+    if (!pendingCategoryBudgetKey || !db || document.getElementById('categoryBudgetSave').disabled) return;
     var raw = document.getElementById('fCategoryBudgetAmount').value;
     var errorEl = document.getElementById('categoryBudgetError');
     var value = parseFloat(raw);
-    if (raw === '' || isNaN(value) || value <= 0){
+    if (raw === '' || !Number.isFinite(value) || value <= 0){
       errorEl.textContent = 'Introduz um valor maior do que zero (ou usa "Remover orçamento" para tirar o alvo desta categoria).';
       errorEl.style.display = 'block';
       return;
@@ -8426,13 +8456,34 @@
     var key = pendingCategoryBudgetKey;
     var context = pendingCategoryBudgetContext;
     var spaceId = context.spaceId;
+    if(context.db!==db||spaceId!==state.activeSpaceId||(context.monthKey&&context.monthKey!==state.monthKey)){
+      errorEl.textContent='O mês, Espaço ou sessão mudou. Fecha e volta a abrir o orçamento.';errorEl.style.display='block';return;
+    }
+    var categoryReady=Promise.resolve();
+    if(key==='__new__'){
+      var name=document.getElementById('fCategoryBudgetName').value.trim();
+      if(!name){errorEl.textContent='Introduz o nome da categoria.';errorEl.style.display='block';return;}
+      var existing=effectiveCategories('despesa',spaceId).find(function(c){return c.label.toLocaleLowerCase('pt-PT')===name.toLocaleLowerCase('pt-PT');});
+      if(existing){key=existing.key;}
+      else{
+        key='custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
+        var cfg=JSON.parse(JSON.stringify(categoryConfigFor(spaceId)));
+        cfg.despesaExtra.push({key:key,label:name,color:'#64748b'});
+        categoryReady=context.db.collection('settings').doc(categoriesDocIdFor(spaceId)).set(cfg).then(function(){settingsCategoryConfigBySpace[spaceId]=cfg;});
+      }
+    }
+    var saveButton=document.getElementById('categoryBudgetSave');saveButton.disabled=true;
     // spaceId e categoryKey gravados explicitamente no próprio documento
     // (antes só existiam embutidos no ID, "spaceId__categoria") — o ID
     // composto mantém-se (evita duplicados e continua a ser a forma como se
     // lê o documento, ver loadCategoryBudgets()), mas os dados deixam de
     // depender só do parsing do ID para quem precisar de os interpretar
     // diretamente (ex.: uma futura exportação, ou depuração na consola).
-    saveCategoryBudgetForMonth(spaceId, context.monthKey, key, value).then(function(){
+    categoryReady.then(function(){
+      if(context.db!==db||spaceId!==state.activeSpaceId||(context.monthKey&&context.monthKey!==state.monthKey))throw new Error('Contexto alterado');
+      pendingCategoryBudgetKey=key;
+      return saveCategoryBudgetForMonth(spaceId, context.monthKey, key, value);
+    }).then(function(){
       return loadCategoryBudgets();
     }).then(function(){
       closeCategoryBudgetSheet();
@@ -8441,7 +8492,7 @@
       console.error('save categoryBudget failed', err);
       errorEl.textContent = 'Não foi possível guardar. Tenta novamente.';
       errorEl.style.display = 'block';
-    });
+    }).finally(function(){saveButton.disabled=false;});
   });
   document.getElementById('categoryBudgetRemove').addEventListener('click', function(){
     if (!pendingCategoryBudgetKey || !db) return;
@@ -9382,7 +9433,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v60'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v61'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -10616,6 +10667,8 @@
       render();
     } else if (action === 'edit-category-budget'){
       openCategoryBudgetSheet(actionEl.getAttribute('data-key'));
+    } else if (action === 'add-budget-category'){
+      openAddBudgetCategory();
     } else if (action === 'mov-filter'){
       state.movFilter = actionEl.getAttribute('data-filter');
       render();
