@@ -1021,6 +1021,13 @@
   .alerts-item-actions details{max-width:100%;}
   .home-alert-link{text-align:left;width:100%;font:inherit;}
   @media(min-width:900px){.desktop-alert-entry{display:flex;align-items:center;gap:10px;margin-bottom:8px;width:100%;}}
+
+.inv-details{margin-block:12px;min-width:0}.inv-details summary{cursor:pointer;font-weight:700;padding-block:10px}.inv-details p,.inv-details span,.inv-timeline{overflow-wrap:anywhere}
+.inv-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px}.inv-fields label{display:grid;gap:6px;font-size:13px;min-width:0}.inv-fields input{width:100%;min-width:0;box-sizing:border-box;padding:10px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.inv-plan-form fieldset{min-width:0;margin-block:14px;border:1px solid var(--border);border-radius:12px;padding:12px}.inv-plan-form legend{overflow-wrap:anywhere;max-width:100%}
+.inv-timeline{list-style:none;padding:0;max-height:300px;overflow-y:auto}.inv-timeline li{display:flex;flex-wrap:wrap;gap:8px;padding-block:10px;border-bottom:1px solid var(--border)}.inv-timeline time{color:var(--text-faint);font-size:12px}.inv-timeline strong{margin-left:auto}
+.inv-allocation-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-block:12px}.inv-allocation-row .progress-track{grid-column:1/-1}.inv-periods{display:flex;gap:6px;flex-wrap:wrap}.inv-periods [aria-pressed="true"]{border-color:var(--accent);font-weight:800}
+.investment-v58 .stat-tile{min-width:0}.investment-v58 .stat-value{overflow-wrap:anywhere;font-size:clamp(16px,4.6vw,24px)}.investment-v58 .loan-chart-wrap svg{width:100%;height:auto}.investment-v58 .loan-head{min-width:0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -2214,6 +2221,9 @@
     investments: [],
     investmentContributions: {}, // investmentId -> [{id,date,amount}] sorted by date
     investmentSnapshots: {},     // investmentId -> [{id,date,value}] sorted by date
+    investmentPlan: {},          // optional family-wide settings, matching investment scope
+    investmentHistoryPeriod: 'all',
+    investmentPlanError: false,
     investmentsLoading: true,
     savingsGoals: [],
     savingsMovements: {},   // goalId -> [{id,date,amount}] sorted by date — amount can be negative (retirada)
@@ -2686,30 +2696,158 @@
   }
 
   // ---------- Investment (Investir) math ----------
+  // v58: valuation coverage is explicit for new snapshots; legacy records are
+  // assessed conservatively using economic dates and recording timestamps.
+  function investmentDateMs(date){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return NaN;
+    var ms = Date.parse(date+'T00:00:00Z');
+    return Number.isFinite(ms) && new Date(ms).toISOString().slice(0,10) === date ? ms : NaN;
+  }
+  function investmentFlowSignature(list){
+    return JSON.stringify(list.map(function(c){return [String(c.id),c.date,Number(c.amount)];}).sort(function(a,b){return a[0].localeCompare(b[0]);}));
+  }
+  function investmentQuality(id){
+    var s = latestValidInvestmentSnapshot(id);
+    var flows = state.investmentContributions[id] || [];
+    var valid = !!s && flows.length>0 && Number.isFinite(investmentDateMs(s.date)) && Number.isFinite(Number(s.value)) && Number(s.value) >= 0 && s.date <= todayStr();
+    var later = [], uncertain = false;
+    flows.forEach(function(c){
+      if(!Number.isFinite(investmentDateMs(c.date)) || c.amount==null || c.amount==='' || !Number.isFinite(Number(c.amount))) valid = false;
+      if(!s) return;
+      if(c.date > s.date || (c.createdAt && s.createdAt && c.createdAt > s.createdAt)) later.push(c);
+      else if(c.date === s.date && (!c.createdAt || !s.createdAt)) uncertain = true;
+    });
+    if(s && typeof s.flowSignature === 'string'){
+      valid = valid && s.flowSignature === investmentFlowSignature(flows) && flows.every(function(c){return c.date <= s.date;});
+      uncertain = false;
+    } else valid = valid && !later.length && !uncertain;
+    return {valid:valid,snapshot:s,uncertain:uncertain,laterAmount:later.reduce(function(n,c){return n+Math.max(0,Number(c.amount)||0);},0),age:s?Math.max(0,Math.floor((investmentDateMs(todayStr())-investmentDateMs(s.date))/86400000)):null};
+  }
+  // Solve in log(1+r), bounded work; refuse ambiguous/non-conventional flows.
+  function calculateXirr(flows){
+    if(!Array.isArray(flows) || flows.length < 2 || flows.length > 20000) return null;
+    var grouped = {}, invalid = false;
+    flows.forEach(function(f){
+      var date = investmentDateMs(f.date), amount = Number(f.amount);
+      if(!Number.isFinite(date) || f.amount==null || f.amount==='' || !Number.isFinite(amount)) invalid = true;
+      else grouped[date] = (grouped[date] || 0) + amount;
+    });
+    if(invalid) return null;
+    var keys = Object.keys(grouped).map(Number).sort(function(a,b){return a-b;}).filter(function(k){return grouped[k] !== 0;});
+    if(keys.length < 2 || grouped[keys[0]] >= 0 || grouped[keys[keys.length-1]] <= 0) return null;
+    var seenPositive = false;
+    for(var k=0;k<keys.length;k++){
+      if(grouped[keys[k]] > 0) seenPositive = true;
+      else if(seenPositive) return null; // Multiple roots may exist: never pick one silently.
+    }
+    var scale = keys.reduce(function(n,k){return Math.max(n,Math.abs(grouped[k]));},1);
+    var terms = keys.map(function(k){return {t:(k-keys[0])/86400000/365,a:grouped[k]/scale};});
+    function npv(logRate){
+      var exponents = terms.map(function(t){return -t.t*logRate;});
+      var max = Math.max.apply(null,exponents);
+      return terms.reduce(function(n,t,i){return n+t.a*Math.exp(exponents[i]-max);},0);
+    }
+    var lo = -18, hi = 18, a = npv(lo), b = npv(hi);
+    if(!Number.isFinite(a) || !Number.isFinite(b) || a*b >= 0) return null;
+    for(var i=0;i<100;i++){
+      var mid=(lo+hi)/2, m=npv(mid);
+      if(m === 0){lo=hi=mid;break;}
+      if((m>0) === (a>0)){lo=mid;a=m;} else hi=mid;
+    }
+    var result = Math.expm1((lo+hi)/2);
+    return Number.isFinite(result) ? result : null;
+  }
+  function investmentXirr(investments,date){
+    var flows=[], terminal=0, unknownInitialDate=false;
+    investments.forEach(function(inv){
+      (state.investmentContributions[inv.id] || []).forEach(function(c){
+        if(investmentIsInitial(inv.id,c) && Number(c.amount)>0){
+          var initialSnapshot=(state.investmentSnapshots[inv.id]||[]).slice().sort(sortByDateThenCreated).find(function(s){return s.date===c.date;});
+          // A pre-existing gain at registration cannot be annualised from the
+          // registration date as if it were the original purchase date.
+          if(!initialSnapshot || Math.abs(Number(initialSnapshot.value)-Number(c.amount))>0.005) unknownInitialDate=true;
+        }
+        flows.push({date:c.date,amount:-Number(c.amount)});
+      });
+      terminal+=currentValueOf(inv.id);
+    });
+    flows.push({date:date,amount:terminal});
+    return unknownInitialDate?null:calculateXirr(flows);
+  }
+  function investmentMonthlyActual(id,month){
+    return (state.investmentContributions[id] || []).reduce(function(n,c){return n+(c.date && c.date.slice(0,7)===month && !investmentIsInitial(id,c) ? Math.max(0,Number(c.amount)||0):0);},0);
+  }
+  function investmentIsInitial(id,c){
+    if(c.isInitial!=null)return !!c.isInitial;
+    var inv=state.investments.find(function(i){return i.id===id;});
+    // Legacy creation wrote a standalone contribution immediately after the asset.
+    // Only identify that exact pattern; never guess from amount alone.
+    var delta=inv?Date.parse(c.createdAt)-Date.parse(inv.createdAt):NaN;
+    return !c.entryId && Number.isFinite(delta) && delta>=0 && delta<5000 && c.date===String(inv.createdAt).slice(0,10) && (state.investmentContributions[id]||[]).slice().sort(sortByDateThenCreated)[0]===c;
+  }
+  function investmentMonthlyPlan(){
+    var config=state.investmentPlan || {}, plans=config.investments || {}, actual=0,planned=0,hasPlan=false;
+    state.investments.forEach(function(inv){
+      actual+=investmentMonthlyActual(inv.id,state.monthKey);
+      var p=plans[inv.id];
+      if(p && p.monthlyContributionTarget != null){hasPlan=true;planned+=Number(p.monthlyContributionTarget)||0;}
+    });
+    return {actual:actual,planned:planned,hasPlan:hasPlan,remaining:Math.max(0,planned-actual),extra:Math.max(0,actual-planned)};
+  }
+  function investmentRequiredMonthly(current,goal,date,rate){
+    if(!Number.isFinite(investmentDateMs(date)) || date <= todayStr() || !Number.isFinite(rate) || rate <= -100 || rate > 100 || !Number.isFinite(goal) || goal <= 0) return null;
+    var from=todayStr().split('-').map(Number), to=date.split('-').map(Number);
+    var months=(to[0]-from[0])*12+to[1]-from[1]-(to[2]<from[2]?1:0);
+    if(months<1 || months>600) return null;
+    var base=calculateInvestmentProjection({initialAmount:current,monthlyContribution:0,annualReturnPct:rate,months:months});
+    var unit=calculateInvestmentProjection({initialAmount:0,monthlyContribution:1,annualReturnPct:rate,months:months});
+    return {amount:Math.max(0,(goal-base.futureValue)/unit.futureValue),months:months};
+  }
+  function investmentAllocationTargets(config){
+    var plans=(config || state.investmentPlan || {}).investments || {}, sum=0,any=false;
+    var rows=state.investments.map(function(inv){
+      var target=(plans[inv.id] || {}).targetAllocationPercent;
+      if(target != null){any=true;sum+=Number(target);}
+      return {id:inv.id,name:inv.name,target:target==null?0:Number(target),value:currentValueOf(inv.id)};
+    });
+    return {rows:rows,valid:any && Math.abs(sum-100)<0.000001 && rows.every(function(r){return Number.isFinite(r.target)&&r.target>=0&&r.target<=100;}),any:any,sum:sum};
+  }
+  function investmentRebalance(){
+    var a=investmentAllocationTargets(), total=portfolioTotals();
+    if(!a.valid || !total.valid || total.current<=0) return [];
+    return a.rows.map(function(r){return {name:r.name,gap:r.target-r.value/total.current*100};}).filter(function(r){return r.gap>0.05;}).sort(function(a,b){return b.gap-a.gap;});
+  }
   function totalContributedOf(investmentId){
     var list = state.investmentContributions[investmentId] || [];
     return list.reduce(function(sum, c){ return sum + (Number(c.amount)||0); }, 0);
   }
   function currentValueOf(investmentId){
-    var snaps = state.investmentSnapshots[investmentId] || [];
-    if (snaps.length) return Number(snaps[snaps.length-1].value)||0;
+    var snapshot = latestValidInvestmentSnapshot(investmentId);
+    if (snapshot) return Number(snapshot.value);
     return totalContributedOf(investmentId);
+  }
+  function latestValidInvestmentSnapshot(id){
+    var snaps=(state.investmentSnapshots[id]||[]).filter(function(s){return Number.isFinite(investmentDateMs(s.date)) && s.date<=todayStr() && s.value!=null && s.value!=='' && Number.isFinite(Number(s.value)) && Number(s.value)>=0;}).slice().sort(sortByDateThenCreated);
+    return snaps.length?snaps[snaps.length-1]:null;
   }
   function gainOf(inv){
     var contributed = totalContributedOf(inv.id);
     var current = currentValueOf(inv.id);
-    var gain = current - contributed;
-    var pct = contributed > 0 ? (gain/contributed)*100 : 0;
-    return {contributed:contributed, current:current, gain:gain, pct:pct};
+    var quality = investmentQuality(inv.id);
+    var gross = (state.investmentContributions[inv.id] || []).reduce(function(s,c){return s + Math.max(0,Number(c.amount)||0);},0);
+    var gain = quality.valid ? current - contributed : null;
+    var pct = gain !== null && gross > 0 ? gain/gross*100 : null;
+    return {contributed:contributed, current:current, gain:gain, pct:pct, quality:quality,
+      xirr:quality.valid ? investmentXirr([inv],quality.snapshot.date) : null};
   }
   function lastInvestmentUpdateDate(inv){
-    var snaps = state.investmentSnapshots[inv.id] || [];
-    return snaps.length ? snaps[snaps.length-1].date : null;
+    var s = latestValidInvestmentSnapshot(inv.id);
+    return s ? s.date : null;
   }
   function isInvestmentStale(inv){
     var last = lastInvestmentUpdateDate(inv);
     if (!last) return false;
-    return daysBetween(last, todayStr()) > 90;
+    return daysBetween(last, todayStr()) > 30;
   }
   function investmentValueAtMonth(inv, monthKey){
     var snaps = (state.investmentSnapshots[inv.id] || []).filter(function(s){ return s.date.slice(0,7) <= monthKey; });
@@ -2842,14 +2980,21 @@
   }
 
   function portfolioTotals(){
-    var contributed = 0, current = 0;
+    var contributed = 0, current = 0, gross = 0, valid = state.investments.length > 0, dates = [];
     state.investments.forEach(function(inv){
       contributed += totalContributedOf(inv.id);
       current += currentValueOf(inv.id);
+      (state.investmentContributions[inv.id] || []).forEach(function(c){gross += Math.max(0,Number(c.amount)||0);});
+      var q = investmentQuality(inv.id);
+      valid = valid && q.valid;
+      if(q.snapshot) dates.push(q.snapshot.date);
     });
-    var gain = current - contributed;
-    var pct = contributed > 0 ? (gain/contributed)*100 : 0;
-    return {contributed:contributed, current:current, gain:gain, pct:pct};
+    var sameDate = dates.length === state.investments.length && dates.every(function(d){return d === dates[0];});
+    valid = valid && sameDate;
+    var gain = valid ? current - contributed : null;
+    var pct = gain !== null && gross > 0 ? gain/gross*100 : null;
+    return {contributed:contributed, current:current, gain:gain, pct:pct, valid:valid, sameDate:sameDate,
+      xirr:valid ? investmentXirr(state.investments,dates[0]) : null};
   }
 
   // Net worth summary — same math as the Património page, factored out so the
@@ -3657,30 +3802,40 @@
   }
 
   function loadInvestments(){
+    var forDb = db, requestId = (state.investmentsRequestId || 0)+1;
+    state.investmentsRequestId=requestId;
     state.investmentsLoading = true;
     render();
-    return db.collection('investments').get().then(function(snap){
+    return Promise.all([forDb.collection('investments').get(),forDb.collection('settings').doc('investmentPlan').get()]).then(function(result){
+      var snap=result[0], plan=result[1].exists ? result[1].data() : {};
       var all = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      state.investments = all.filter(function(i){ return !i.archived; });
+      var investments = all.filter(function(i){ return !i.archived; }), contributions={}, snapshots={};
       var subPromises = [];
-      state.investments.forEach(function(inv){
-        subPromises.push(db.collection('investmentContributions').where('investmentId','==',inv.id).get().then(function(s){
+      investments.forEach(function(inv){
+        subPromises.push(forDb.collection('investmentContributions').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
           list.sort(sortByDateThenCreated);
-          state.investmentContributions[inv.id] = list;
+          contributions[inv.id] = list;
         }));
-        subPromises.push(db.collection('investmentSnapshots').where('investmentId','==',inv.id).get().then(function(s){
+        subPromises.push(forDb.collection('investmentSnapshots').where('investmentId','==',inv.id).get().then(function(s){
           var list = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
           list.sort(sortByDateThenCreated);
-          state.investmentSnapshots[inv.id] = list;
+          snapshots[inv.id] = list;
         }));
       });
-      return Promise.all(subPromises);
+      return Promise.all(subPromises).then(function(){
+        if(db!==forDb || requestId!==state.investmentsRequestId) return;
+        state.investments=investments; state.investmentContributions=contributions; state.investmentSnapshots=snapshots;
+        state.investmentPlan=plan; state.investmentPlanError=false;
+      });
     }).then(function(){
+      if(db!==forDb || requestId!==state.investmentsRequestId) return;
       state.investmentsLoading = false;
       render();
     }).catch(function(err){
+      if(db!==forDb || requestId!==state.investmentsRequestId) return;
       console.error('loadInvestments failed', err);
+      state.investmentPlanError=true;
       state.investmentsLoading = false;
       state.dbAvailable = false;
       render();
@@ -3698,11 +3853,10 @@
     payload.createdAt = new Date().toISOString();
     return db.collection('investments').add(payload).then(function(ref){
       var today = todayStr();
-      var ops = [
-        db.collection('investmentContributions').add({investmentId:ref.id, date:today, amount:data.contributed, createdAt:new Date().toISOString()}),
-        db.collection('investmentSnapshots').add({investmentId:ref.id, date:today, value:data.value, createdAt:new Date().toISOString()})
-      ];
-      return Promise.all(ops);
+      var initial={investmentId:ref.id,date:today,amount:data.contributed,isInitial:true,createdAt:new Date().toISOString()};
+      return db.collection('investmentContributions').add(initial).then(function(flowRef){
+        return db.collection('investmentSnapshots').add({investmentId:ref.id,date:today,value:data.value,createdAt:new Date().toISOString(),flowSignature:investmentFlowSignature([Object.assign({id:flowRef.id},initial)])});
+      });
     }).then(function(){ return loadInvestments(); });
   }
 
@@ -3715,7 +3869,26 @@
   }
 
   function addInvestmentSnapshot(investmentId, value){
-    return db.collection('investmentSnapshots').add({investmentId:investmentId, date:todayStr(), value:value, createdAt:new Date().toISOString()}).then(function(){ return loadInvestments(); });
+    var forDb=db, date=todayStr(), createdAt=new Date().toISOString();
+    if(!Number.isFinite(value) || value<0) return Promise.reject(new Error('Valor inválido.'));
+    return forDb.collection('investmentContributions').where('investmentId','==',investmentId).get().then(function(s){
+      var flows=s.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      return forDb.collection('investmentSnapshots').add({investmentId:investmentId,date:date,value:value,createdAt:createdAt,flowSignature:investmentFlowSignature(flows)});
+    }).then(function(){ if(db===forDb)return loadInvestments(); });
+  }
+
+  function saveInvestmentPlan(config){
+    if(state.investmentPlanError) return Promise.reject(new Error('Volta a carregar os investimentos antes de guardar.'));
+    var goal=Number(config.portfolioGoalAmount), date=config.portfolioGoalDate;
+    if(config.portfolioGoalAmount!=null && (!Number.isFinite(goal)||goal<=0||!Number.isFinite(investmentDateMs(date)))) return Promise.reject(new Error('Indica um objetivo positivo e uma data válida.'));
+    var rate=config.expectedAnnualReturn;
+    if(rate!=null && (!Number.isFinite(rate)||rate<=-100||rate>100)) return Promise.reject(new Error('A taxa estimada deve ser superior a -100% e até 100%.'));
+    var plans=config.investments || {};
+    if(Object.keys(plans).some(function(id){var n=plans[id].monthlyContributionTarget;return n!=null && (!Number.isFinite(n)||n<0);})) return Promise.reject(new Error('Os aportes planeados devem ser positivos ou zero.'));
+    var allocation=investmentAllocationTargets(config);
+    if(allocation.any && !allocation.valid) return Promise.reject(new Error('A alocação objetivo deve somar 100%.'));
+    var forDb=db;
+    return forDb.collection('settings').doc('investmentPlan').set(config).then(function(){if(db===forDb){state.investmentPlan=config;render();}});
   }
 
   function loadSavingsGoals(){
@@ -6255,7 +6428,7 @@
     }
     if (state.investments.length){
       var port = portfolioTotals();
-      rows.push({attrs:' data-action="goto" data-view="investment"', iconName:'trending', label:'Investimentos', value: euro(port.current), cls: port.gain >= 0 ? 'positive' : 'negative', note: (port.gain >= 0 ? '+' : '') + port.pct.toFixed(1) + '%'});
+      rows.push({attrs:' data-action="goto" data-view="investment"', iconName:'trending', label:'Investimentos', value: euro(port.current), cls: port.gain == null ? '' : port.gain >= 0 ? 'positive' : 'negative', note: port.pct == null ? 'Avaliação a atualizar' : investmentPercent(port.pct)});
     }
     if (!rows.length) return '';
     var body = rows.map(function(r){
@@ -6848,129 +7021,133 @@
   }
 
   // ---------- Investir (investment) view ----------
-  function buildInvestmentChart(inv){
-    var W = 520, H = 200, padTop = 22, padBottom = 28, padLeft = 6, padRight = 6;
-    var plotW = W - padLeft - padRight, plotH = H - padTop - padBottom;
-    var contribs = state.investmentContributions[inv.id] || [];
-    var snaps = state.investmentSnapshots[inv.id] || [];
-    var today = todayStr();
-    var allDates = contribs.map(function(c){ return c.date; }).concat(snaps.map(function(s){ return s.date; }));
-    var minDate = allDates.length ? allDates.reduce(function(m,d){ return d < m ? d : m; }) : today;
-    var spanDays = Math.max(1, daysBetween(minDate, today));
-
-    function xOf(dateStr){
-      var t = Math.max(0, Math.min(1, daysBetween(minDate, dateStr) / spanDays));
-      return padLeft + t*plotW;
-    }
-
-    var maxVal = 1;
-    var contribCum = 0, contribPts = [];
-    contribs.forEach(function(c){ contribCum += Number(c.amount)||0; contribPts.push({date:c.date, value:contribCum}); maxVal = Math.max(maxVal, contribCum); });
-    var valuePts = snaps.map(function(s){ var v = Number(s.value)||0; maxVal = Math.max(maxVal, v); return {date:s.date, value:v}; });
-    maxVal = maxVal * 1.08;
-
-    function yOf(v){ return padTop + (1 - Math.max(0, Math.min(1, v/maxVal)))*plotH; }
-
-    var contribPath = contribPts.length > 1 ? contribPts.map(function(p, idx){ return (idx===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(p.value).toFixed(1); }).join(' ') : '';
-    var valuePath = valuePts.length > 1 ? valuePts.map(function(p, idx){ return (idx===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(p.value).toFixed(1); }).join(' ') : '';
-    var dots = valuePts.map(function(p){ return '<circle cx="' + xOf(p.date).toFixed(1) + '" cy="' + yOf(p.value).toFixed(1) + '" r="3" fill="var(--success)"/>'; }).join('');
-
-    var g = gainOf(inv);
-    // Position "today" the same way every other point is placed (xOf), so it lines up
-    // with the last snapshot dot instead of always snapping to the right edge —
-    // matters when everything (creation + first update) happened on the same day.
-    var todayX = xOf(today);
-    var todayY = yOf(g.current);
-    var placeBelow = (todayY - padTop) < 24;
-    var todayLabelY = placeBelow ? Math.min(H-padBottom-6, todayY+16) : (todayY-9);
-    var todayAnchor = 'end', todayLabelX = todayX;
-    if (todayX < 40){ todayAnchor = 'start'; todayLabelX = todayX + 8; }
-    else if (todayX > W-40){ todayAnchor = 'end'; todayLabelX = todayX - 8; }
-    else { todayAnchor = 'middle'; }
-
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Evolução do investimento">' +
-      '<line x1="' + padLeft + '" y1="' + (H-padBottom) + '" x2="' + (W-padRight) + '" y2="' + (H-padBottom) + '" stroke="var(--border)" stroke-width="1"/>' +
-      (contribPath ? '<path d="' + contribPath + '" fill="none" stroke="var(--text-faint)" stroke-width="1.6" stroke-dasharray="4 3"/>' : '') +
-      (valuePath ? '<path d="' + valuePath + '" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linejoin="round"/>' : '') +
-      dots +
-      '<circle cx="' + todayX.toFixed(1) + '" cy="' + todayY.toFixed(1) + '" r="4" fill="var(--success)"/>' +
-      '<text x="' + padLeft + '" y="' + (padTop-8) + '" font-size="10.5" font-family="Manrope, sans-serif" fill="var(--text-faint)">investido: ' + euro(g.contributed) + '</text>' +
-      '<text x="' + todayLabelX.toFixed(1) + '" y="' + todayLabelY.toFixed(1) + '" text-anchor="' + todayAnchor + '" font-size="10.5" font-family="Manrope, sans-serif" font-weight="700" fill="var(--success-ink)">' + euro(g.current) + '</text>' +
-    '</svg>';
+  function investmentPercent(value,annual){
+    return value==null ? 'Não disponível' : (value>=0?'+':'')+value.toFixed(1)+(annual?'%/ano':'%');
   }
-
-  function investmentAllocationHtml(){
-    var totals = {};
-    var order = [];
-    state.investments.forEach(function(inv){
-      var t = investmentTypeOf(inv);
-      var val = currentValueOf(inv.id);
-      if (!totals[t.key]){ totals[t.key] = {def:t, total:0}; order.push(t.key); }
-      totals[t.key].total += val;
+  function investmentQualityHtml(q){
+    if(!q.snapshot) return '<p class="stat-note">Sem avaliação guardada. O valor apresentado corresponde ao capital registado.</p>';
+    var text=q.age===0?'Atualizado hoje':'Última avaliação há '+q.age+' dias';
+    return '<p class="stat-note">Avaliada em '+escapeHtml(q.snapshot.date)+' · '+text+'</p>'+
+      (!q.valid?'<div class="loan-review-chip">Avaliação desatualizada'+(q.laterAmount?' · + '+euro(q.laterAmount)+' em aportes desde então':'')+'. Atualiza o valor atual para veres a rentabilidade correta.</div>':q.age>30?'<div class="loan-review-chip">Atualiza a avaliação para manteres a análise atual.</div>':'');
+  }
+  function investmentHistoryData(investments,period){
+    var dates={}, changes={}, valuations={}, points=[], today=todayStr();
+    investments.forEach(function(inv){
+      (state.investmentContributions[inv.id]||[]).forEach(function(c){if(Number.isFinite(investmentDateMs(c.date))&&c.date<=today){changes[c.date]=(changes[c.date]||0)+(Number(c.amount)||0);dates[c.date]=true;}});
+      valuations[inv.id]={};
+      (state.investmentSnapshots[inv.id]||[]).slice().sort(sortByDateThenCreated).forEach(function(s){if(Number.isFinite(investmentDateMs(s.date))&&s.date<=today&&s.value!=null&&s.value!==''&&Number.isFinite(Number(s.value))&&Number(s.value)>=0){dates[s.date]=true;valuations[inv.id][s.date]=Number(s.value);}});
     });
-    var rows = order.map(function(k){ return totals[k]; }).sort(function(a,b){ return b.total - a.total; });
-    if (!rows.length) return '';
-    var max = rows.reduce(function(m,r){ return Math.max(m, r.total); }, 0) || 1;
-    var body = rows.map(function(r){
-      var pct = Math.max(4, Math.round((r.total/max)*100));
-      return '<div class="cat-bar-row">' +
-        '<span class="cat-bar-label"><span class="cat-dot" style="background:' + r.def.color + '"></span>' + escapeHtml(r.def.label) + '</span>' +
-        '<span class="cat-bar-track"><span class="cat-bar-fill" style="width:' + pct + '%; background:' + r.def.color + '"></span></span>' +
-        '<span class="cat-bar-amount mono">' + euro(r.total) + '</span>' +
-      '</div>';
-    }).join('');
-    return '<div class="cat-card"><h3>Alocação por tipo</h3>' + body + '</div>';
+    var cumulative=0;
+    var sorted=Object.keys(dates).sort(), cutoff=period==='all'?0:investmentDateMs(today)-Number(period)*365.25*86400000;
+    sorted.forEach(function(date){
+      cumulative+=changes[date]||0;
+      var value=0, complete=investments.length>0;
+      investments.forEach(function(inv){
+        // Only sum actual valuations made on this date. No forward-fill/interpolation.
+        if(valuations[inv.id][date]==null)complete=false;else value+=valuations[inv.id][date];
+      });
+      if(investmentDateMs(date)>=cutoff)points.push({date:date,contributed:cumulative,value:complete?value:null});
+    });
+    return points;
   }
-
-  function investmentCardHtml(inv){
-    var t = investmentTypeOf(inv);
-    var g = gainOf(inv);
-    var gainClass = g.gain >= 0 ? 'gain-pos' : 'gain-neg';
-    var metaParts = [t.label];
-    if (inv.institution) metaParts.push(inv.institution);
-    if (inv.owner) metaParts.push(inv.owner);
-    metaParts.push(inv.liquid === false ? 'não líquido' : 'líquido');
-    var staleHtml = isInvestmentStale(inv) ? '<div class="loan-review-chip">Sem atualizar o valor há mais de 3 meses</div>' : '';
-    var goalHtml = '';
-    if (inv.goalAmount){
-      var goalPct = Math.min(100, Math.round((g.current/inv.goalAmount)*100));
-      goalHtml = '<div class="loan-progress-label"><span>' + goalPct + '% do objetivo</span><span>' + euro(inv.goalAmount) + '</span></div>' +
-        '<div class="progress-track"><div class="progress-fill accent" style="width:' + goalPct + '%"></div></div>';
+  function investmentHistoryChart(investments,period){
+    var points=investmentHistoryData(investments,period);
+    if(!points.length)return '<p class="stat-note">Sem registos neste período.</p>';
+    var W=520,H=190,left=12,right=508,top=26,bottom=164;
+    var minDate=investmentDateMs(points[0].date),span=Math.max(86400000,investmentDateMs(points[points.length-1].date)-minDate);
+    var min=Math.min(0,Math.min.apply(null,points.map(function(p){return p.contributed;})));
+    var max=Math.max(1,Math.max.apply(null,points.map(function(p){return Math.max(p.contributed,p.value||0);}))), range=max-min;
+    function x(p){return left+(investmentDateMs(p.date)-minDate)/span*(right-left);}
+    function y(v){return bottom-(v-min)/range*(bottom-top);}
+    var path=points.map(function(p,i){return i?'H'+x(p).toFixed(1)+' V'+y(p.contributed).toFixed(1):'M'+x(p).toFixed(1)+','+y(p.contributed).toFixed(1);}).join(' ');
+    var dots=points.filter(function(p){return p.value!==null;}).map(function(p){return '<circle cx="'+x(p).toFixed(1)+'" cy="'+y(p.value).toFixed(1)+'" r="4" fill="var(--success)"><title>'+escapeHtml(p.date+' · '+euro(p.value))+'</title></circle>';}).join('');
+    return '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Histórico: linha em degraus de capital investido e pontos de avaliações guardadas">'+
+      '<text x="12" y="15" font-size="11" fill="var(--text-faint)">'+escapeHtml(euro(max))+'</text>'+
+      '<path d="'+path+'" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-dasharray="4 3"/>'+dots+
+      '<text x="12" y="185" font-size="11" fill="var(--text-faint)">'+points[0].date+'</text><text x="508" y="185" text-anchor="end" font-size="11" fill="var(--text-faint)">'+points[points.length-1].date+'</text></svg>'+
+      '<p class="stat-note">Tracejado: capital líquido investido. Pontos: avaliações guardadas'+(investments.length>1?' na mesma data para todos os ativos':'')+'. Sem estimativas entre avaliações.</p>'+
+      (!dots?'<p class="stat-note">Sem avaliações '+(investments.length>1?'simultâneas ':'')+'neste período.</p>':'');
+  }
+  function buildInvestmentChart(inv){return investmentHistoryChart([inv],'all');}
+  function investmentTimelineHtml(inv){
+    var events=(state.investmentContributions[inv.id]||[]).map(function(c){return {date:c.date,createdAt:c.createdAt,label:investmentIsInitial(inv.id,c)?'Capital inicial':Number(c.amount)<0?'Levantamento':'Aporte',amount:Math.abs(Number(c.amount)||0)};});
+    (state.investmentSnapshots[inv.id]||[]).forEach(function(s){events.push({date:s.date,createdAt:s.createdAt,label:'Avaliação',amount:Number(s.value)||0});});
+    events.sort(sortByDateThenCreated).reverse();
+    return '<ol class="inv-timeline">'+events.map(function(e){return '<li><time>'+escapeHtml(e.date)+'</time><span>'+e.label+'</span><strong class="mono">'+euro(e.amount)+'</strong></li>';}).join('')+'</ol>';
+  }
+  function investmentAllocationHtml(){
+    var total=portfolioTotals().current;
+    if(total<=0)return '';
+    function groupHtml(byInstitution){
+      var groups=new Map();
+      state.investments.forEach(function(inv){var label=byInstitution?(inv.institution||'Sem instituição'):investmentTypeOf(inv).label;groups.set(label,(groups.get(label)||0)+currentValueOf(inv.id));});
+      return Array.from(groups.entries()).sort(function(a,b){return b[1]-a[1];}).map(function(r){var pct=r[1]/total*100;return '<div class="inv-allocation-row"><span>'+escapeHtml(r[0])+'</span><strong class="mono">'+pct.toFixed(1)+'%</strong><div class="progress-track"><div class="progress-fill accent" style="width:'+Math.max(0,Math.min(100,pct))+'%"></div></div></div>';}).join('');
     }
-    var contribs = state.investmentContributions[inv.id] || [];
-    var linkedContribs = contribs.filter(function(c){ return !!c.entryId; });
-    var lastLinked = linkedContribs.length ? linkedContribs[linkedContribs.length-1] : null;
-    var lastContribHtml = lastLinked ? '<div class="loan-review-chip">Último aporte: ' + euro(lastLinked.amount) + ' — ' + lastLinked.date.split('-').reverse().join('/') + '</div>' : '';
-    var contribHistoryHtml = sourceHistoryHtml('investment', inv.id, contribs, 'Histórico de aportes');
-    return '<div class="loan-card" data-investment-id="' + inv.id + '">' +
-      '<div class="loan-head-row"><span class="icon-badge" style="' + catTint(t.color) + '">' + icon(investmentTypeIconOf(inv)) + '</span>' +
-      '<div class="loan-head"><h3>' + escapeHtml(inv.name) + '</h3>' +
-        '<div class="sub">' + escapeHtml(metaParts.join(' · ')) + '</div></div></div>' +
-      '<div class="saldo-row"><div class="label">Valor atual</div><div class="saldo-value mono">' + euro(g.current) + '</div></div>' +
-      goalHtml + lastContribHtml +
-      '<div class="loan-chart-wrap">' + buildInvestmentChart(inv) + '</div>' +
-      '<div class="loan-stat-grid">' +
-        '<div class="stat-tile"><div class="stat-label">Total investido</div><div class="stat-value mono">' + euro(g.contributed) + '</div></div>' +
-        '<div class="stat-tile ' + gainClass + '"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">' + (g.gain>=0?'+':'') + euro(g.gain) + '</div><div class="stat-note mono">' + (g.gain>=0?'+':'') + g.pct.toFixed(1) + '%</div></div>' +
-      '</div>' +
-      staleHtml +
-      contribHistoryHtml +
-      '<div class="inv-actions-row">' +
-        '<button type="button" class="btn ghost" data-action="inv-contribute" data-id="' + inv.id + '">Registar aporte</button>' +
-        '<button type="button" class="btn ghost" data-action="inv-snapshot" data-id="' + inv.id + '">Atualizar valor</button>' +
-        '<button type="button" class="btn ghost" data-action="inv-edit" data-id="' + inv.id + '">Editar</button>' +
-        '<button type="button" class="btn ghost" data-action="inv-delete" data-id="' + inv.id + '" data-name="' + escapeHtml(inv.name) + '">Eliminar</button>' +
-      '</div>' +
-    '</div>';
+    var targets=investmentAllocationTargets(),rebalance=investmentRebalance();
+    var targetHtml=targets.valid?'<h4>Atual / objetivo</h4>'+targets.rows.map(function(r){return '<div class="inv-allocation-row"><span>'+escapeHtml(r.name)+'</span><strong class="mono">'+(r.value/total*100).toFixed(1)+'% / '+r.target+'%</strong></div>';}).join(''):targets.any?'<p class="stat-note">Revê a alocação objetivo: os ativos atuais devem somar 100%.</p>':'';
+    return '<details class="cat-card inv-details"><summary>Distribuição da carteira</summary><p class="stat-note">Com base nos últimos valores guardados. As datas podem ser diferentes.</p><h4>Por tipo</h4>'+groupHtml(false)+'<h4>Por instituição</h4>'+groupHtml(true)+targetHtml+
+      (rebalance.length?'<p class="stat-note">Para te aproximares da alocação objetivo que definiste, os próximos aportes podem privilegiar '+escapeHtml(rebalance.map(function(r){return r.name;}).join(', '))+'.</p>':'')+'</details>';
   }
+  function investmentPlanFormHtml(){
+    var config=state.investmentPlan||{},plans=config.investments||{};
+    function field(label,name,type,value,extra){return '<label>'+label+'<input name="'+name+'" type="'+type+'" value="'+escapeHtml(value==null?'':String(value))+'" '+(extra||'')+'></label>';}
+    return '<details class="cat-card inv-details"><summary>Objetivo e plano de aportes</summary><form id="investmentPlanForm" class="inv-plan-form"><p class="stat-note">Metas opcionais da carteira. Guardar o plano não cria movimentos.</p><div class="inv-fields">'+
+      field('Objetivo da carteira (€)','goal','number',config.portfolioGoalAmount,'min="0.01" step="0.01"')+field('Data objetivo','date','date',config.portfolioGoalDate)+field('Retorno anual estimado (%)','rate','number',config.expectedAnnualReturn,'min="-99.99" max="100" step="0.01"')+'</div>'+
+      '<p class="stat-note">Taxa opcional, usada apenas na simulação. Deixa os objetivos de alocação vazios para não os usar; se os definires, a soma deve ser 100%.</p>'+
+      state.investments.map(function(inv,i){var p=plans[inv.id]||{};return '<fieldset><legend>'+escapeHtml(inv.name)+'</legend><div class="inv-fields">'+field('Aporte mensal (€)','monthly'+i,'number',p.monthlyContributionTarget,'min="0" step="0.01"')+field('Alocação objetivo (%)','target'+i,'number',p.targetAllocationPercent,'min="0" max="100" step="0.01"')+'</div></fieldset>';}).join('')+
+      '<p role="status" class="stat-note inv-plan-error">'+(state.investmentPlanError?'Não foi possível carregar o plano. Atualiza a página.':'')+'</p><button class="btn primary" type="submit" '+(state.investmentPlanError?'disabled':'')+'>Guardar plano</button></form></details>';
+  }
+  function investmentOverviewHtml(){
+    var t=portfolioTotals(),plan=investmentMonthlyPlan(),config=state.investmentPlan||{};
+    var goal=Number(config.portfolioGoalAmount)||0, period=state.investmentHistoryPeriod||'all';
+    var goalHtml='';
+    if(goal>0){
+      var pct=Math.max(0,Math.min(100,t.current/goal*100)), required=config.expectedAnnualReturn==null?null:investmentRequiredMonthly(t.current,goal,config.portfolioGoalDate,config.expectedAnnualReturn);
+      goalHtml='<div class="cat-card"><h3>Objetivo da carteira</h3><p>'+euro(t.current)+' / '+euro(goal)+' · '+pct.toFixed(0)+'%</p><div class="progress-track"><div class="progress-fill accent" style="width:'+pct+'%"></div></div><p class="stat-note">Data objetivo: '+escapeHtml(config.portfolioGoalDate||'')+'. Progresso com base nos últimos valores guardados.</p>'+
+        (required?'<p>Aporte necessário estimado: <strong>'+euro(required.amount)+'/mês</strong></p><p class="stat-note">Simulação a '+config.expectedAnnualReturn+'%/ano durante '+required.months+' meses, a partir dos últimos valores guardados. Não é uma garantia de retorno.</p>':'<p class="stat-note">Para estimar o aporte necessário, indica uma taxa e um prazo entre 1 e 600 meses.</p>')+'</div>';
+    }
+    return '<div class="summary"><div class="saldo-row"><div class="label">Últimos valores da carteira</div><div class="saldo-value mono">'+euro(t.current)+'</div></div><div class="loan-stat-grid">'+
+      '<div class="stat-tile"><div class="stat-label">Capital líquido investido</div><div class="stat-value mono">'+euro(t.contributed)+'</div></div><div class="stat-tile"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">'+(t.gain==null?'—':euro(t.gain))+'</div></div>'+
+      '<div class="stat-tile"><div class="stat-label">Rentabilidade total</div><div class="stat-value mono">'+investmentPercent(t.pct)+'</div></div><div class="stat-tile"><div class="stat-label">Anualizada · XIRR</div><div class="stat-value mono">'+investmentPercent(t.xirr==null?null:t.xirr*100,true)+'</div></div></div>'+
+      (!t.valid?'<p class="stat-note">Atualiza os valores de todos os investimentos na mesma data, após os aportes, para calcular a rentabilidade da carteira.</p>':t.xirr==null?'<p class="stat-note">Dados insuficientes ou fluxos incompatíveis para calcular rentabilidade anualizada.</p>':'')+
+      '<p>Aportado em '+escapeHtml(state.monthKey)+': <strong>'+euro(plan.actual)+'</strong>'+(plan.hasPlan?' / '+euro(plan.planned)+' planeados':'')+'</p>'+
+      (plan.hasPlan?'<p class="stat-note">'+(plan.extra?'Acima do plano: '+euro(plan.extra):'Falta aportar: '+euro(plan.remaining))+'</p>':'')+'</div>'+goalHtml+
+      '<div class="cat-card"><h3>Evolução da carteira</h3><div class="inv-periods" role="group" aria-label="Período do histórico">'+[['1','1A'],['3','3A'],['5','5A'],['all','Tudo']].map(function(p){return '<button class="btn ghost" type="button" data-inv-period="'+p[0]+'" aria-pressed="'+(period===p[0])+'">'+p[1]+'</button>';}).join('')+'</div><div class="loan-chart-wrap">'+investmentHistoryChart(state.investments,period)+'</div></div>'+investmentPlanFormHtml();
+  }
+  function investmentCardHtml(inv){
+    var t=investmentTypeOf(inv),g=gainOf(inv),p=((state.investmentPlan||{}).investments||{})[inv.id]||{};
+    var actual=investmentMonthlyActual(inv.id,state.monthKey),contribs=state.investmentContributions[inv.id]||[];
+    return '<div class="loan-card" data-investment-id="'+escapeHtml(inv.id)+'"><div class="loan-head-row"><span class="icon-badge" style="'+catTint(t.color)+'">'+icon(investmentTypeIconOf(inv))+'</span><div class="loan-head"><h3>'+escapeHtml(inv.name)+'</h3><div class="sub">'+escapeHtml([t.label,inv.institution,inv.owner,inv.liquid===false?'não líquido':'líquido'].filter(Boolean).join(' · '))+'</div></div></div>'+
+      '<div class="saldo-row"><div class="label">'+(g.quality.snapshot?'Última avaliação':'Capital registado · sem avaliação')+'</div><div class="saldo-value mono">'+euro(g.current)+'</div></div>'+investmentQualityHtml(g.quality)+
+      '<div class="loan-stat-grid"><div class="stat-tile"><div class="stat-label">Capital líquido investido</div><div class="stat-value mono">'+euro(g.contributed)+'</div></div><div class="stat-tile"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">'+(g.gain==null?'—':euro(g.gain))+'</div></div></div>'+
+      '<details class="inv-details"><summary>Rentabilidade, plano e histórico</summary><p>Rentabilidade total: <strong>'+investmentPercent(g.pct)+'</strong></p><p>Anualizada · XIRR: <strong>'+investmentPercent(g.xirr==null?null:g.xirr*100,true)+'</strong></p>'+
+      (g.xirr==null?'<p class="stat-note">Dados insuficientes ou fluxos incompatíveis para calcular rentabilidade anualizada.</p>':'')+
+      (p.monthlyContributionTarget!=null?'<p>Aportado em '+escapeHtml(state.monthKey)+': '+euro(actual)+' / '+euro(p.monthlyContributionTarget)+' planeados.</p><p class="stat-note">'+(actual>p.monthlyContributionTarget?'Acima do plano: '+euro(actual-p.monthlyContributionTarget):'Falta aportar: '+euro(p.monthlyContributionTarget-actual))+'</p>':'')+
+      (inv.goalAmount?'<p>Objetivo: '+euro(inv.goalAmount)+' · '+Math.min(100,Math.max(0,g.current/inv.goalAmount*100)).toFixed(0)+'%</p>':'')+
+      '<div class="loan-chart-wrap">'+buildInvestmentChart(inv)+'</div>'+investmentTimelineHtml(inv)+sourceHistoryHtml('investment',inv.id,contribs,'Editar aportes registados')+'</details>'+
+      '<div class="inv-actions-row">'+[['inv-contribute','Registar aporte'],['inv-snapshot','Atualizar valor'],['inv-edit','Editar'],['inv-delete','Eliminar']].map(function(a){return '<button type="button" class="btn ghost" data-action="'+a[0]+'" data-id="'+escapeHtml(inv.id)+'" data-name="'+escapeHtml(inv.name)+'">'+a[1]+'</button>';}).join('')+'</div></div>';
+  }
+  document.addEventListener('click',function(ev){
+    var button=ev.target.closest('[data-inv-period]');
+    if(!button)return;
+    state.investmentHistoryPeriod=button.getAttribute('data-inv-period');render();
+  });
+  document.addEventListener('submit',function(ev){
+    if(ev.target.id!=='investmentPlanForm')return;
+    ev.preventDefault();var form=ev.target,button=form.querySelector('button[type="submit"]');
+    if(button.disabled)return;
+    function number(name){var value=form.elements[name].value;return value===''?null:Number(value);}
+    var config={portfolioGoalAmount:number('goal'),portfolioGoalDate:form.elements.date.value||null,expectedAnnualReturn:number('rate'),investments:{}};
+    state.investments.forEach(function(inv,i){config.investments[inv.id]={monthlyContributionTarget:number('monthly'+i),targetAllocationPercent:number('target'+i)};});
+    button.disabled=true;
+    saveInvestmentPlan(config).then(function(){showToast('Plano guardado',{icon:'check'});}).catch(function(err){button.disabled=false;form.querySelector('.inv-plan-error').textContent=err.message||'Não foi possível guardar o plano.';});
+  });
 
-  // ---------- Simulador de investimento (UI) — não lê nem escreve em state.investments; usa só as funções puras acima ----------
   var investmentSimInputs = {
     initial:'', monthly:'', annualReturn:'', years:'', startDate:todayStr(),
     scenariosEnabled:false, rateConservador:'', rateEsperado:'', rateOtimista:'',
     error:null, lastResult:null
   };
-
   function syncInvestmentSimInputsFromDom(){
     var ids = {
       initial:'simInvInitial', monthly:'simInvMonthly', annualReturn:'simInvReturn',
@@ -7121,21 +7298,17 @@
       content.innerHTML = toggle + '<div class="skeleton">A carregar os investimentos…</div>';
       return;
     }
+    if(state.investmentPlanError){
+      content.innerHTML=toggle+'<div class="empty"><p>Não foi possível carregar os investimentos. Atualiza a página para tentar novamente.</p></div>';
+      return;
+    }
     if (!state.investments.length){
       content.innerHTML = toggle + '<div class="empty"><h3>Ainda não há investimentos registados</h3>' +
         '<p>Toca no botão + para adicionares o primeiro investimento (PPR, ETFs, depósitos…) e acompanhares a evolução ao longo do tempo.</p>' +
         '<button type="button" class="btn primary" data-action="empty-add" data-kind="investimento">+ Novo investimento</button></div>';
       return;
     }
-    var totals = portfolioTotals();
-    var summaryHtml = '<div class="summary">' +
-      '<div class="saldo-row"><div class="label">Valor atual do portefólio</div><div class="saldo-value mono ' + (totals.gain>=0?'positive':'negative') + '">' + euro(totals.current) + '</div></div>' +
-      '<div class="stat-grid">' +
-        '<div class="stat-tile"><div class="stat-label">Total investido</div><div class="stat-value mono">' + euro(totals.contributed) + '</div></div>' +
-        '<div class="stat-tile ' + (totals.gain>=0?'gain-pos':'gain-neg') + '"><div class="stat-label">Ganho/perda</div><div class="stat-value mono">' + (totals.gain>=0?'+':'') + euro(totals.gain) + '</div><div class="stat-note mono">' + (totals.gain>=0?'+':'') + totals.pct.toFixed(1) + '%</div></div>' +
-      '</div>' +
-    '</div>';
-    content.innerHTML = toggle + summaryHtml + investmentAllocationHtml() + state.investments.map(investmentCardHtml).join('');
+    content.innerHTML = toggle + '<div class="investment-v58">' + investmentOverviewHtml() + investmentAllocationHtml() + state.investments.map(investmentCardHtml).join('') + '</div>';
   }
 
   // ---------- Poupanças por objetivo (sinking funds) view ----------
@@ -8572,19 +8745,23 @@
   document.getElementById('invSnapshotCancel').addEventListener('click', closeInvSnapshotSheet);
   invSnapshotOverlay.addEventListener('click', function(ev){ if (ev.target === invSnapshotOverlay) closeInvSnapshotSheet(); });
   document.getElementById('invSnapshotSave').addEventListener('click', function(){
-    if (!pendingInvSnapshotId) return;
+    var button=document.getElementById('invSnapshotSave');
+    if (!pendingInvSnapshotId || button.disabled) return;
     var raw = document.getElementById('fInvSnapshotValue').value;
     var errorEl = document.getElementById('invSnapshotError');
     var value = parseFloat(raw);
-    if (isNaN(value) || value < 0){
+    if (!Number.isFinite(value) || value < 0){
       errorEl.textContent = 'Introduz um valor válido.';
       errorEl.style.display = 'block';
       return;
     }
     var investmentId = pendingInvSnapshotId;
-    closeInvSnapshotSheet();
-    addInvestmentSnapshot(investmentId, value);
-    showToast('Valor atualizado', {icon:'check'});
+    button.disabled=true;errorEl.style.display='none';
+    addInvestmentSnapshot(investmentId, value).then(function(){
+      closeInvSnapshotSheet();showToast('Valor atualizado', {icon:'check'});
+    }).catch(function(){
+      errorEl.textContent='Não foi possível guardar a avaliação. Tenta novamente.';errorEl.style.display='block';
+    }).then(function(){button.disabled=false;});
   });
 
   // v52: one settings document per family; balances live only in savingsMovements.
@@ -9038,13 +9215,14 @@
       var paymentQueries = spaceIds.map(function(sid){ return db.collection('payments').where('spaceId', '==', sid).get(); });
       var entryQueries = spaceIds.map(function(sid){ return db.collection('entries').where('spaceId', '==', sid).get(); });
       var globalQueries = GLOBAL_COLLECTIONS.map(function(name){ return db.collection(name).get(); });
-      return Promise.all([Promise.all(paymentQueries), Promise.all(entryQueries), Promise.all(globalQueries), db.collection('settings').doc('emergencyFund').get()]).then(function(res){
+      return Promise.all([Promise.all(paymentQueries), Promise.all(entryQueries), Promise.all(globalQueries), db.collection('settings').doc('emergencyFund').get(), db.collection('settings').doc('investmentPlan').get()]).then(function(res){
         var toDocs = function(snap){ return snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); }); };
         var payments = [].concat.apply([], res[0].map(toDocs));
         var entries = [].concat.apply([], res[1].map(toDocs));
         var data = { exportedAt: new Date().toISOString(), app: 'MAB360', spaces: spaces, payments: payments, entries: entries };
         GLOBAL_COLLECTIONS.forEach(function(name, i){ data[name] = toDocs(res[2][i]); });
         data.emergencyFund = res[3].exists ? res[3].data() : null;
+        data.investmentPlan = res[4].exists ? res[4].data() : null;
         return data;
       });
     });
@@ -9096,7 +9274,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v57'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v58'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
