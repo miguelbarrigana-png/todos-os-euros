@@ -5459,13 +5459,17 @@
 
   // Orçamento: mesma fórmula e elegibilidade, duas bases explícitas.
   // A Home e o histórico realizado mantêm as funções existentes.
-  function budgetSavingsRates(sR, sD, sDSemSource){
+  // `plannedEligibleTotal` (opcional): a versão já consciente do orçamento
+  // por categoria (ver plannedOutflowTotal, excludeSourceLinked=true) — só
+  // afeta a taxa PREVISTA; a REALIZADA (abaixo, eligible.done) continua a
+  // ser sempre o que já foi mesmo pago, nunca o orçamento.
+  function budgetSavingsRates(sR, sD, sDSemSource, plannedEligibleTotal){
     var eligible = sDSemSource || sD;
-    return {planned:calculateSavingsRate(sR.total, eligible.total),
+    return {planned:calculateSavingsRate(sR.total, plannedEligibleTotal != null ? plannedEligibleTotal : eligible.total),
       actual:calculateSavingsRate(sR.done, eligible.done)};
   }
-  function savingsRateCardHtml(sR, sD, sDSemSource){
-    var rates = budgetSavingsRates(sR, sD, sDSemSource), rate = rates.planned;
+  function savingsRateCardHtml(sR, sD, sDSemSource, plannedEligibleTotal){
+    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedEligibleTotal), rate = rates.planned;
     var value = rate.rate === null ? '—' : fmtPercent(rate.rate);
     var cls = rate.rate === null ? '' : (rate.rate >= 0 ? ' positive' : ' negative');
     var html = '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
@@ -5473,7 +5477,7 @@
       '<div class="trio-tile"><div class="trio-label">Taxa de poupança prevista</div><div class="trio-value mono'+cls+'">'+value+'</div></div></div>';
     if (rate.rate === null) html += '<div class="hint">Sem receitas previstas neste mês.</div>';
     html += '<div class="hint">Taxa realizada: '+(rates.actual.rate === null ? 'Sem receitas recebidas' : fmtPercent(rates.actual.rate))+'</div>';
-    html += '<div class="hint">A taxa exclui aportes de poupança, investimento e abatimentos extra ligados. O disponível planeado considera todas as saídas previstas.</div></div>';
+    html += '<div class="hint">A taxa exclui aportes de poupança, investimento e abatimentos extra ligados. O disponível planeado considera, por categoria, o maior entre o orçamento definido e o que já foi lançado.</div></div>';
     var essentialTotal = calculateEssentialSpending(state.entries.filter(function(e){return kindOf(e) === 'despesa';}));
     var pctEssential = sR.done > 0 ? essentialTotal/sR.done*100 : null;
     html += '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
@@ -5824,6 +5828,45 @@
     });
   }
 
+  // "Disponível planeado" (e a Taxa de poupança prevista) passam a ter em
+  // conta o orçamento definido por categoria, não só as despesas já
+  // lançadas — pedido do utilizador: sem isto, "Disponível planeado" era
+  // sempre exatamente Receitas previstas − Despesas previstas, um número
+  // redundante com os dois cartões logo ao lado (dava para calcular de
+  // cabeça, sem o orçamento entrar em nada). Reaproveita
+  // categoryBudgetBreakdown() — a MESMA função já usada pelos cartões
+  // "Despesas por categoria" — nunca uma segunda leitura de
+  // state.categoryBudgets.
+  //
+  // Por categoria, conta o MAIOR entre o orçamento definido e o que já foi
+  // lançado (nunca o orçamento sozinho): reserva o orçamento mesmo antes de
+  // qualquer lançamento (o ponto de ter um orçamento), mas nunca esconde
+  // dinheiro já comprometido para além dele — mesmo critério "maior dos
+  // dois" já usado no Fundo de Emergência (ver essentialMonthlyAverage).
+  // Categorias sem orçamento definido continuam a contar exactamente o que
+  // já foi lançado, tal como sempre foi.
+  //
+  // `excludeSourceLinked` (usado só pela Taxa de poupança prevista, que já
+  // excluía aportes de poupança/investimento/abatimentos extra ligados
+  // antes desta alteração — ver budgetSavingsRates): dentro de cada
+  // categoria, só conta a parte SEM sourceType. Limitação conhecida e
+  // aceite: um orçamento definido numa categoria só de movimentos ligados
+  // (ex.: "Poupança") que AINDA não tenha nenhum lançamento este mês não
+  // tem, à partida, como distinguir-se de uma categoria de despesa normal —
+  // nesse caso raro, esse orçamento por lançar ainda reduz ligeiramente a
+  // Taxa de poupança prevista, até haver o primeiro aporte real.
+  function plannedOutflowTotal(entries, excludeSourceLinked){
+    var rows = categoryBudgetBreakdown(entries);
+    var total = 0;
+    rows.forEach(function(r){
+      var effectiveTotal = excludeSourceLinked
+        ? r.items.reduce(function(s,e){ return s + (e.sourceType ? 0 : effectiveAmount(e)); }, 0)
+        : r.total;
+      total += (r.budget != null) ? Math.max(r.budget, effectiveTotal) : effectiveTotal;
+    });
+    return total;
+  }
+
   function catTint(color){ return 'background:color-mix(in srgb, ' + color + ' 16%, transparent); color:' + color + ';'; }
 
   // Redesenho "Despesas por categoria" (ver claude/despesas-categoria-
@@ -5937,22 +5980,24 @@
     '</div>';
   }
 
-  // Zero-based budget indicator ("orçamento a zero", à EveryDollar): compares the
-  // month's planned income against planned expenses plus what's already been set
-  // aside in savings goals, so every euro ends up with a job.
-  function zeroBudgetBannerHtml(receitasTotal, despesasTotal){
+  // Zero-based budget indicator ("orçamento a zero", à EveryDollar): compares
+  // the month's planned income against `plannedOutflow` — já consciente do
+  // orçamento por categoria (ver plannedOutflowTotal), não só das despesas
+  // lançadas — para que "atribuir" inclua também uma categoria já
+  // orçamentada, mesmo antes de lá lançares a despesa em concreto.
+  function zeroBudgetBannerHtml(receitasTotal, plannedOutflow){
     if (state.savingsLoading) return '';
-    var sobra = receitasTotal - despesasTotal; // Uma única dedução por movimento.
+    var sobra = receitasTotal - plannedOutflow; // Uma única dedução por movimento.
     var cls, text;
     if (Math.abs(sobra) < 0.005){
       cls = 'success';
-      text = 'Já deste um destino a toda a receita prevista deste mês — despesas e poupanças somam o total da receita.';
+      text = 'Já deste um destino a toda a receita prevista deste mês — despesas, poupanças e orçamentos definidos somam o total da receita.';
     } else if (sobra > 0){
       cls = 'accent';
-      text = 'Ainda tens <strong>' + euro(sobra) + '</strong> por atribuir este mês. Dá-lhe um destino: uma despesa nova ou uma contribuição para uma poupança por objetivo.';
+      text = 'Ainda tens <strong>' + euro(sobra) + '</strong> por atribuir este mês. Dá-lhe um destino: uma despesa nova, um orçamento de categoria ou uma contribuição para uma poupança por objetivo.';
     } else {
       cls = 'danger';
-      text = 'As despesas e as poupanças deste mês ultrapassam a receita prevista em <strong>' + euro(Math.abs(sobra)) + '</strong>.';
+      text = 'As despesas, os orçamentos definidos e as poupanças deste mês ultrapassam a receita prevista em <strong>' + euro(Math.abs(sobra)) + '</strong>.';
     }
     return '<div class="zero-budget-banner ' + cls + '">' +
       '<div class="zero-budget-label">Orçamento a zero</div>' +
@@ -6072,11 +6117,18 @@
     var despesasPend = split.despesas.filter(function(e){ return !e.paid; });
     var overdueList = despesasPend.filter(isOverdue);
     var remainingTotal = despesasPend.reduce(function(s,e){ return s + effectiveAmount(e); }, 0);
+    // "Disponível planeado" passa a ter em conta o orçamento por categoria
+    // (ver plannedOutflowTotal) — a soma das despesas já lançadas (sD.total)
+    // continua a ser mostrada tal e qual no stat tile "Despesas previstas"
+    // logo abaixo, para as duas leituras (o que já lancei vs. o que já
+    // planeei/orçamentei) ficarem lado a lado, em vez de seres obrigado a
+    // fazer as contas de cabeça a partir do mesmo número duas vezes.
+    var plannedOutflow = plannedOutflowTotal(split.despesas, false);
 
     var html = summaryCardHtml({
       saldoLabel: 'Disponível planeado',
       planning: true,
-      saldo: sR.total - sD.total,
+      saldo: sR.total - plannedOutflow,
       receitasTotal: sR.total, receitasDone: sR.done,
       despesasTotal: sD.total, despesasDone: sD.done,
       remainingCount: despesasPend.length, remainingTotal: remainingTotal, overdueCount: overdueList.length,
@@ -6090,10 +6142,10 @@
     var activeSpTV = activeSpace();
     if (!activeSpTV || activeSpTV.type !== 'temporario'){
       var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
-      html += savingsRateCardHtml(sR, sD, summaryOf(despesasSemSource));
+      html += savingsRateCardHtml(sR, sD, summaryOf(despesasSemSource), plannedOutflowTotal(split.despesas, true));
     }
 
-    html += zeroBudgetBannerHtml(sR.total, sD.total);
+    html += zeroBudgetBannerHtml(sR.total, plannedOutflow);
 
     var query = (state.searchQuery||'').trim().toLowerCase();
     var visibleEntries = query ? state.entries.filter(function(e){ return e.name.toLowerCase().indexOf(query) !== -1; }) : state.entries;
@@ -9623,7 +9675,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v62'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v63'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
