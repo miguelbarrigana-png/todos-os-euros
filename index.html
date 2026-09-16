@@ -1511,6 +1511,7 @@
           <input type="number" id="fLoanRate" placeholder="3.50" step="0.01" min="0" required>
         </div>
       </div>
+      <div class="hint" id="loanTermRateEditHint" style="display:none;margin-top:-8px;margin-bottom:14px;"></div>
       <!-- P1-06 (auditoria UX 2026-09-09): era a ação menos frequente das 7
            auditadas mas com a maior contagem de campos simultâneos (8), sem
            nenhum "Mais opções". Tipo de taxa (por omissão "Variável") +
@@ -1561,6 +1562,22 @@
     <div class="field">
       <label for="fSnapshotValue">Capital em dívida agora (€)</label>
       <input type="number" id="fSnapshotValue" step="0.01" min="0">
+    </div>
+    <button type="button" class="more-options-toggle" id="snapshotMoreOptionsToggle" aria-expanded="false">
+      <span>O banco também mudou a taxa ou o prazo?</span><span class="chevron">⌄</span>
+    </button>
+    <div class="more-options" id="snapshotMoreOptionsPanel" hidden>
+      <div class="row-2">
+        <div class="field">
+          <label for="fSnapshotRate">Nova taxa de juro anual (%)</label>
+          <input type="number" id="fSnapshotRate" placeholder="Deixa em branco se não mudou" step="0.01" min="0">
+        </div>
+        <div class="field">
+          <label for="fSnapshotRemainingYears">Novo prazo restante (anos)</label>
+          <input type="number" id="fSnapshotRemainingYears" placeholder="Deixa em branco se não mudou" min="1" max="50">
+        </div>
+      </div>
+      <div class="hint">A prestação mensal e o fim previsto são recalculados a partir de hoje, com o capital acima. Prestações já confirmadas como pagas nunca são alteradas.</div>
     </div>
     <div class="field-error" id="snapshotError"></div>
     <div class="sheet-actions">
@@ -2566,6 +2583,38 @@
     var snaps = state.loanSnapshots[loan.id] || [];
     if (snaps.length) return Number(snaps[snaps.length-1].value)||0;
     return theoreticalBalance(loan, monthsElapsed(loan));
+  }
+
+  // Soma o capital já amortizado provado pelo livro-razão (loanSnapshots):
+  // a parte de capital de cada prestação normal paga (principalPart, ver
+  // loanInstallmentSplit) + cada pagamento extra (amount, sempre o valor
+  // total desse abatimento). Nunca conta o mesmo tipo duas vezes, nunca lê
+  // loan.principal — só o que está realmente registado.
+  function loanAmortizedTotal(loan){
+    var snaps = state.loanSnapshots[loan.id] || [];
+    var total = 0;
+    snaps.forEach(function(snap){
+      if (snap.type === 'installment') total += Number(snap.principalPart)||0;
+      else if (snap.type === 'extra_payment') total += Number(snap.amount)||0;
+    });
+    return total;
+  }
+
+  // "Capital inicial" a usar para a % amortizada e para o rótulo "inicial"
+  // do cartão. Normalmente é só loan.principal (o valor gravado na criação
+  // do crédito) — mas se o livro-razão prova ter havido mais amortização do
+  // que loan.principal - saldo atual sugere (ex.: loan.principal foi
+  // sobrescrito por engano numa edição, ficando igual ao saldo atual — ver
+  // relatório de créditos), usa o valor reconstruído a partir do livro-razão
+  // em vez de mostrar "0% amortizado" com dados que já provam o contrário.
+  // Sem histórico no livro-razão (crédito novo, ou nunca confirmado nenhuma
+  // prestação/abatimento), confia sempre em loan.principal tal e qual.
+  function loanReferencePrincipal(loan){
+    var stored = Number(loan.principal)||0;
+    var amortized = loanAmortizedTotal(loan);
+    if (amortized <= 0.005) return stored;
+    var reconstructed = currentBalance(loan) + amortized;
+    return Math.max(stored, reconstructed);
   }
 
   function nextReviewDate(loan){
@@ -4571,12 +4620,18 @@
   // cobre revisão de taxa sem tocar prestações já confirmadas. Sobre um
   // crédito sem ligação, cria a partir do mês ATUAL (nunca retroativo ao
   // startMonth histórico do crédito).
-  function ensureLoanPayment(loan){
+  // `overrideEndMonth` (opcional): só passado por quem edita EXPLICITAMENTE
+  // o Prazo no formulário "Editar crédito" (ver o submit de loanForm) —
+  // sem isto, loanEndMonth() prefere sempre payment.endMonth já existente
+  // (para nunca desfazer silenciosamente um "reduzir prazo" de um
+  // abatimento extra só porque o nome ou o imóvel foram editados); com
+  // isto, este novo fim passa a ser a fonte de verdade a partir de agora.
+  function ensureLoanPayment(loan, overrideEndMonth){
     var spaceId = defaultSpaceId();
     var now = monthKeyOf(new Date());
     return db.collection('payments').where('loanId','==',loan.id).where('spaceId','==',spaceId).get().then(function(snap){
       var payment = snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).find(function(p){return !p.archived;});
-      var end = loanEndMonth(loan,payment);
+      var end = overrideEndMonth || loanEndMonth(loan,payment);
       var balance = currentBalance(loan);
       if (balance <= 0.005 || end < now) return reconcileLoanPaymentEnd(loan,payment);
       if (payment){
@@ -4594,6 +4649,63 @@
         startMonth:loan.startMonth > now ? loan.startMonth : now, endMonth:end, archived:false,createdAt:new Date().toISOString(),spaceId:spaceId,loanId:loan.id};
       return db.collection('payments').add(payload).then(function(ref){state.loanPayments[loan.id] = Object.assign({id:ref.id},payload);});
     });
+  }
+
+  // ---------- Crédito: renegociação de condições (taxa/prazo) ----------
+  // Aplica uma mudança REAL de taxa e/ou prazo restante a partir de hoje —
+  // usada tanto por "Atualizar valor" (quando o banco renegoceia) como por
+  // "Editar crédito" (quando o Prazo é explicitamente alterado). Reaproveita
+  // installmentFor/loanEndMonth/propagateTemplateChanges/
+  // deleteFutureUnpaidEntriesAfter — as MESMAS funções já usadas por
+  // ensureLoanPayment e por applyExtraPaymentTermEffect (abatimento extra) —
+  // nunca duplica a fórmula da prestação. loan.principal/startMonth NUNCA
+  // são tocados aqui: preservam o histórico usado por loanReferencePrincipal
+  // (% amortizado) e pela etiqueta "X anos desde Y" do cabeçalho. Sempre
+  // skipPaid:true — nunca reescreve uma prestação já confirmada como paga.
+  // opts: {newRate, newRateType, newReviewMonths, newRemainingMonths, balance}
+  // Devolve {applied:false, reason:'no_linked_payment'|'insufficient'} quando
+  // não há o que ajustar (crédito ainda sem prestação ligada, ou já
+  // essencialmente liquidado) — o capital/taxa gravados ficam à mesma.
+  function applyLoanRenegotiation(loanId, opts){
+    opts = opts || {};
+    var spaceId = defaultSpaceId();
+    var fromMonth = monthKeyOf(new Date());
+    return getLoanFresh(loanId).then(function(loan){
+      var loanChanges = {};
+      if (opts.newRate != null && !isNaN(opts.newRate)) loanChanges.rate = opts.newRate;
+      if (opts.newRateType) loanChanges.rateType = opts.newRateType;
+      if (loanChanges.rateType === 'fixa') loanChanges.reviewMonths = null;
+      else if (opts.newReviewMonths != null) loanChanges.reviewMonths = opts.newReviewMonths;
+      var loanUpdate = Object.keys(loanChanges).length ? db.collection('loans').doc(loanId).update(loanChanges) : Promise.resolve();
+      return loanUpdate.then(function(){
+        Object.assign(loan, loanChanges);
+        return getLoanPaymentFresh(loanId).then(function(payment){
+          var balancePromise = opts.balance != null ? Promise.resolve(Number(opts.balance)||0) : getCurrentBalanceFresh(loanId);
+          return balancePromise.then(function(balance){
+            if (!payment) return {applied:false, reason:'no_linked_payment'};
+            var previousEnd = loanEndMonth(loan, payment);
+            var end = opts.newRemainingMonths ? monthKeyAdd(fromMonth, Math.max(1, Math.round(opts.newRemainingMonths)) - 1) : previousEnd;
+            var remaining = Math.max(0, monthsBetweenKeys(fromMonth, end) + 1);
+            if (balance <= 0.005 || remaining <= 0) return {applied:false, reason:'insufficient'};
+            var newPayment = Math.round(installmentFor(balance, monthlyRate(loan.rate), remaining) * 100) / 100;
+            var previous = {monthlyPayment:Number(payment.amount)||0, endMonth:previousEnd};
+            var changes = {amount:newPayment, endMonth:end, category:'creditos'};
+            return db.collection('payments').doc(payment.id).update(changes).then(function(){
+              return propagateTemplateChanges(payment.id, fromMonth, changes, spaceId, true);
+            }).then(function(){
+              return deleteFutureUnpaidEntriesAfter(payment.id, spaceId, end);
+            }).then(function(){
+              Object.assign(payment, changes); state.loanPayments[loanId] = payment;
+              return db.collection('loanSnapshots').add({
+                loanId:loanId, date:todayStr(), type:'renegotiation', value:balance,
+                previous:previous, next:{monthlyPayment:newPayment, endMonth:end},
+                createdAt:new Date().toISOString()
+              });
+            }).then(function(){ return {applied:true, newPayment:newPayment, endMonth:end}; });
+          });
+        });
+      });
+    }).then(function(result){ return loadLoans().then(function(){ return result; }); });
   }
 
   // Migração best-effort, uma única vez por telemóvel (mesmo padrão de
@@ -6826,7 +6938,7 @@
   }
 
   function loanCardHtml(loan){
-    var P = Number(loan.principal)||0;
+    var P = loanReferencePrincipal(loan);
     var balance = currentBalance(loan);
     var paidPctNumber = P > 0 ? Math.max(0,Math.min(100,((P-balance)/P)*100)) : 0;
     var paidPct = paidPctNumber > 0 && paidPctNumber < 0.01 ? '<0,01' : paidPctNumber.toLocaleString('pt-PT',{maximumFractionDigits:2});
@@ -8550,6 +8662,7 @@
     var form = document.getElementById('loanForm');
     form.reset();
     document.getElementById('fLoanEmergencyFund').checked = !editLoan || editLoan.includeInEmergencyFund !== false;
+    var termRateHint = document.getElementById('loanTermRateEditHint');
     if (editLoan){
       editingLoanId = editLoan.id;
       document.getElementById('loanFormTitle').textContent = 'Editar crédito';
@@ -8562,12 +8675,19 @@
       document.getElementById('fLoanReview').value = String(editLoan.reviewMonths || 6);
       document.getElementById('fLoanPropertyValue').value = editLoan.propertyValue || '';
       setLoanMoreOptionsOpen(true);
+      // Renegociação real: mudar a taxa aqui já atualiza a prestação a
+      // partir de hoje; mudar o Prazo (o total desde o início) recalcula
+      // também o fim previsto e a prestação a partir de hoje — nenhum dos
+      // dois toca em prestações já confirmadas como pagas.
+      termRateHint.textContent = 'Se o banco renegociou o teu crédito, muda aqui a taxa e/ou o prazo — a prestação e o fim previsto são recalculados a partir de hoje. O capital inicial acima é só o valor histórico do contrato; para o saldo em dívida atual usa "Atualizar valor".';
+      termRateHint.style.display = 'block';
     } else {
       editingLoanId = null;
       document.getElementById('loanFormTitle').textContent = 'Novo crédito';
       selectedLoanRateType = 'variavel';
       document.getElementById('fLoanReview').value = '6';
       setLoanMoreOptionsOpen(false);
+      termRateHint.style.display = 'none';
     }
     Array.prototype.forEach.call(loanRateTypeSeg.querySelectorAll('button'), function(b){ b.classList.toggle('active', b.dataset.rateType === selectedLoanRateType); });
     updateLoanReviewVisibility();
@@ -8599,6 +8719,21 @@
       errorEl.style.display = 'block';
       return;
     }
+    // Renegociação (ponto pedido pelo utilizador): alterar o Prazo numa
+    // edição muda o CONTRATO (anos totais desde o início) — só entra em
+    // ação (recalcula a prestação/fim reais a partir de hoje, ver
+    // ensureLoanPayment) quando este número muda mesmo em relação ao que já
+    // estava guardado. Editar só o nome/capital/imóvel/etc. sem tocar no
+    // Prazo nunca mexe na prestação já ligada nem desfaz um "reduzir prazo"
+    // de um abatimento extra anterior.
+    var previousLoan = editingLoanId ? state.loans.find(function(l){ return l.id === editingLoanId; }) : null;
+    var termChanged = !!previousLoan && Number(previousLoan.termMonths) !== years*12;
+    var newTheoreticalEnd = termChanged ? monthKeyAdd(start, years*12 - 1) : null;
+    if (termChanged && monthsBetweenKeys(monthKeyOf(new Date()), newTheoreticalEnd) + 1 <= 0){
+      errorEl.textContent = 'Com este prazo, o crédito já teria terminado no passado. Confirma o número de anos.';
+      errorEl.style.display = 'block';
+      return;
+    }
     var submitBtn = document.getElementById('submitLoanForm');
     submitBtn.disabled = true;
     submitLoan({
@@ -8607,9 +8742,12 @@
     }, editingLoanId).then(function(loanId){
       // Cria ou sincroniza a prestação mensal no Orçamento/Movimentos (ver
       // ensureLoanPayment) — cobre tanto um crédito novo como uma edição
-      // (ex.: revisão de taxa muda o valor da prestação futura).
+      // (ex.: revisão de taxa muda o valor da prestação futura). Quando o
+      // Prazo foi mesmo alterado, passa o novo fim teórico explicitamente —
+      // sem isto, ensureLoanPayment mantém sempre o fim já ligado (ver nota
+      // junto a essa função).
       var savedLoan = state.loans.find(function(l){ return l.id === loanId; });
-      var ensured = savedLoan ? ensureLoanPayment(savedLoan) : Promise.resolve();
+      var ensured = savedLoan ? ensureLoanPayment(savedLoan, newTheoreticalEnd) : Promise.resolve();
       return ensured.then(function(){
         if (state.view === 'month' || state.view === 'movimentos') return loadMonth(state.monthKey);
       }).catch(function(err){
@@ -8626,14 +8764,26 @@
     });
   });
 
-  // ---------- Crédito: atualizar capital em dívida ----------
+  // ---------- Crédito: atualizar capital em dívida (+ renegociação opcional) ----------
   var snapshotOverlay = document.getElementById('snapshotOverlay');
   var pendingSnapshotLoanId = null;
+  var snapshotSaving = false;
+
+  function setSnapshotMoreOptionsOpen(open){
+    document.getElementById('snapshotMoreOptionsPanel').hidden = !open;
+    document.getElementById('snapshotMoreOptionsToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  document.getElementById('snapshotMoreOptionsToggle').addEventListener('click', function(){
+    setSnapshotMoreOptionsOpen(document.getElementById('snapshotMoreOptionsPanel').hidden);
+  });
 
   function openSnapshotSheet(loan){
     pendingSnapshotLoanId = loan.id;
     document.getElementById('snapshotHint').textContent = 'Valor atual estimado: ' + euro(currentBalance(loan)) + '. Vai ficar registado com a data de hoje.';
     document.getElementById('fSnapshotValue').value = Math.round(currentBalance(loan)*100)/100;
+    document.getElementById('fSnapshotRate').value = '';
+    document.getElementById('fSnapshotRemainingYears').value = '';
+    setSnapshotMoreOptionsOpen(false);
     document.getElementById('snapshotError').style.display = 'none';
     snapshotOverlay.classList.add('open');
   }
@@ -8642,7 +8792,7 @@
   document.getElementById('snapshotCancel').addEventListener('click', closeSnapshotSheet);
   snapshotOverlay.addEventListener('click', function(ev){ if (ev.target === snapshotOverlay) closeSnapshotSheet(); });
   document.getElementById('snapshotSave').addEventListener('click', function(){
-    if (!pendingSnapshotLoanId) return;
+    if (!pendingSnapshotLoanId || snapshotSaving) return;
     var raw = document.getElementById('fSnapshotValue').value;
     var errorEl = document.getElementById('snapshotError');
     var value = parseFloat(raw);
@@ -8651,11 +8801,51 @@
       errorEl.style.display = 'block';
       return;
     }
+    // Taxa/prazo (renegociação): ambos opcionais — em branco significa "não
+    // mudou". Reaproveita applyLoanRenegotiation (mesmas fórmulas do
+    // simulador/abatimento extra), nunca uma fórmula paralela.
+    var rateRaw = document.getElementById('fSnapshotRate').value;
+    var remainingRaw = document.getElementById('fSnapshotRemainingYears').value;
+    var newRate = rateRaw === '' ? null : parseFloat(rateRaw);
+    var newRemainingYears = remainingRaw === '' ? null : parseInt(remainingRaw, 10);
+    if (rateRaw !== '' && (isNaN(newRate) || newRate < 0)){
+      errorEl.textContent = 'A nova taxa tem de ser um número válido.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (remainingRaw !== '' && (isNaN(newRemainingYears) || newRemainingYears <= 0)){
+      errorEl.textContent = 'O novo prazo restante tem de ser um número de anos válido.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
     var loanId = pendingSnapshotLoanId;
-    var todayStr = new Date().toISOString().slice(0,10);
-    closeSnapshotSheet();
-    addLoanSnapshot(loanId, todayStr, value);
-    showToast('Valor atualizado', {icon:'check'});
+    var hasRenegotiation = newRate != null || newRemainingYears != null;
+    var todayIso = new Date().toISOString().slice(0,10);
+    snapshotSaving = true;
+    addLoanSnapshot(loanId, todayIso, value).then(function(){
+      if (!hasRenegotiation) return null;
+      return applyLoanRenegotiation(loanId, {
+        newRate: newRate,
+        newRemainingMonths: newRemainingYears ? newRemainingYears*12 : null,
+        balance: value
+      });
+    }).then(function(result){
+      snapshotSaving = false;
+      closeSnapshotSheet();
+      if (hasRenegotiation && result && !result.applied){
+        showToast(result.reason === 'no_linked_payment'
+          ? 'Valor atualizado. A taxa/prazo ficaram guardados, mas este crédito ainda não tem prestação ligada ao Orçamento para recalcular.'
+          : 'Valor atualizado. Não foi possível recalcular a prestação com estes dados — confirma a taxa e o prazo.', {icon:'alert'});
+      } else {
+        showToast('Valor atualizado', {icon:'check'});
+      }
+    }).catch(function(err){
+      snapshotSaving = false;
+      console.error('Atualizar valor/condições do crédito falhou', err);
+      errorEl.textContent = 'Não foi possível guardar. Tenta novamente.';
+      errorEl.style.display = 'block';
+    });
   });
 
   // ---------- Crédito: pagamento extra / amortização extraordinária ----------
@@ -9433,7 +9623,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v61'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v62'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
