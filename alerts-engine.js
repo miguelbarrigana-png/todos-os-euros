@@ -2,7 +2,7 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.MABAlerts=api;})(typeof self!=='undefined'?self:this,function(){
  'use strict';
  const priorities={important:0,attention:1,info:2};
- const titles={budget_deficit:'Despesas acima da receita prevista',savings_stalled:'Poupança sem movimentos recentes',budget_warning:'Categoria perto do limite',budget_reached:'Orçamento atingido',budget_exceeded:'Orçamento ultrapassado',spending_pace:'Ritmo de despesas elevado',expense_overdue:'Despesa por confirmar',income_overdue:'Receita por confirmar',loan_upcoming:'Prestação próxima',loan_overdue:'Prestação vencida',loan_ending:'Crédito perto do fim',loan_settled:'Crédito liquidado',loan_review:'Revisão de taxa próxima',ef_below:'Reserva abaixo do objetivo',ef_milestone:'Marco do Fundo de Emergência',ef_complete:'Objetivo do fundo atingido',savings_complete:'Objetivo de poupança atingido',savings_behind:'Poupança abaixo do ritmo necessário',savings_due:'Data objetivo próxima',investment_stale:'Valor do investimento por atualizar'};
+ const titles={budget_deficit:'Despesas acima da receita prevista',savings_stalled:'Poupança sem movimentos recentes',budget_warning:'Categoria perto do limite',budget_reached:'Orçamento atingido',budget_exceeded:'Orçamento ultrapassado',spending_pace:'Ritmo de despesas elevado',expense_overdue:'Despesa por confirmar',income_overdue:'Receita por confirmar',loan_upcoming:'Prestação próxima',loan_overdue:'Prestação vencida',loan_ending:'Crédito perto do fim',loan_settled:'Crédito liquidado',loan_review:'Revisão de taxa próxima',ef_below:'Reserva abaixo do objetivo',ef_milestone:'Marco do Fundo de Emergência',ef_complete:'Objetivo do fundo atingido',savings_complete:'Objetivo de poupança atingido',savings_behind:'Poupança abaixo do ritmo necessário',savings_due:'Data objetivo próxima',investment_stale:'Valor do investimento por atualizar',report_ready:'O teu relatório está pronto'};
  const key=(...parts)=>parts.map(v=>encodeURIComponent(String(v??'')).replace(/~/g,'%7E')).join('~');
  const group=(domain,space='',period='')=>key(domain,space,period);
  const milestoneKeys=family=>[1,3,6].map(n=>key(family,'ef_milestone','',String(n),''));
@@ -51,6 +51,10 @@
    if(n && !(ef.targetAmount>0&&ef.current>=ef.targetAmount))add('ef_milestone','emergency',String(n),null,null,'info','A reserva cobre pelo menos '+n+(n===1?' mês.':' meses.'),{group:group('emergency'),view:'home',actionLabel:'Ver fundo',icon:'shield',milestone:true,pushEligible:n>=3});
   }
   if(f.investmentsReady)for(const i of f.investments||[])if(i.stale)add('investment_stale','investment',i.id,null,i.lastUpdate,'attention',i.name+' está há mais de 90 dias sem atualização de valor.',{group:group('investments'),view:'investment',actionLabel:'Ver investimento',icon:'trending',urgency:80});
+  // Relatório Mensal: uma vez por mês (a key inclui o mês, como ef_milestone/
+  // savings_complete) — dispensar fica permanente para essa key, uma nova
+  // chave só aparece quando um novo mês passa a ter relatório disponível.
+  if(f.reportAvailable)add('report_ready','report',f.reportMonthKey,space,f.reportMonthKey,'info','O teu relatório de '+f.reportMonthLabel+' está pronto.',{group:group('report',space,f.reportMonthKey),view:'relatorio',actionLabel:'Ver relatório',icon:'report',milestone:true,pushEligible:false});
   // One key is one condition. Priorities/urgency order is independent of presentation.
   return [...new Map(out.map(a=>[a.key,a])).values()].sort(compare);
  }
@@ -61,3 +65,4 @@
  function suppressedMilestone(a,records){return a.type==='ef_milestone'&&Object.values(records).some(r=>r.familyId===a.familyId&&r.type==='ef_milestone'&&Number(r.entityId)>Number(a.entityId));}
  return{buildAlerts,key,group,milestoneKeys,compare,descriptor,visible,active,suppressedMilestone,titles,priorities};
 });
+ 
