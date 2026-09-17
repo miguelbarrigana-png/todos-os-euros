@@ -2303,7 +2303,16 @@
     // documentada no relatório final, nunca aplicada ao valor já EFETIVADO
     // (esse já não depende disto, só da soma dos próprios registos).
     // Chave: sourceType ('savings'|'credit'|'investment') + ':' + sourceId.
-    pendingSourceEntries: {}
+    pendingSourceEntries: {},
+
+    // ---------- Relatório Mensal ----------
+    // Independente de monthKey (o mês da página Orçamento) — navegar no
+    // histórico do relatório nunca deve mexer no resto da app. null até à
+    // primeira abertura, altura em que é inicializado por defaultReportMonthKey().
+    reportMonthKey: null,
+    reportData: null,        // último {report, monthKey, spaceId} calculado por buildMonthlyReport — cache, invalidado ao mudar de mês/Espaço
+    reportLoading: false,
+    reportError: false
   };
 
   var MONTHS_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -2347,7 +2356,9 @@
     trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>',
     // ---------- Ajuda e Feedback ----------
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.8 2.8 0 1 1 3.9 2.6c-1 .5-1.7 1.1-1.7 2.3"/><circle cx="12" cy="17.2" r=".9"/>',
-    message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 4V6a1 1 0 0 1 1-1z"/>'
+    message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 4V6a1 1 0 0 1 1-1z"/>',
+    // ---------- Relatório Mensal ----------
+    report: '<path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/><path d="M8 12.5h8M8 15.5h8M8 9.5h3"/>'
   };
   function icon(name, cls){
     var d = ICON_PATHS[name] || ICON_PATHS.tag;
@@ -2844,10 +2855,11 @@
     var delta=inv?Date.parse(c.createdAt)-Date.parse(inv.createdAt):NaN;
     return !c.entryId && Number.isFinite(delta) && delta>=0 && delta<5000 && c.date===String(inv.createdAt).slice(0,10) && (state.investmentContributions[id]||[]).slice().sort(sortByDateThenCreated)[0]===c;
   }
-  function investmentMonthlyPlan(){
+  function investmentMonthlyPlan(monthKey){
+    monthKey = monthKey || state.monthKey;
     var config=state.investmentPlan || {}, plans=config.investments || {}, actual=0,planned=0,hasPlan=false;
     state.investments.forEach(function(inv){
-      actual+=investmentMonthlyActual(inv.id,state.monthKey);
+      actual+=investmentMonthlyActual(inv.id,monthKey);
       var p=plans[inv.id];
       if(p && p.monthlyContributionTarget != null){hasPlan=true;planned+=Number(p.monthlyContributionTarget)||0;}
     });
@@ -3066,6 +3078,209 @@
     return {assets:assetsTotal, liabilities:liabilitiesTotal, net:assetsTotal-liabilitiesTotal, savingsTotal:savingsTotal};
   }
 
+  // ---------- Relatório Mensal — cálculo (função pura, fonte única de verdade) ----------
+  // Nunca lê/escreve Firestore aqui — só `ctx` (preparado por loadReportData,
+  // só leitura) e `state.loans`/`state.investments`/`state.savingsGoals`/etc.
+  // já carregados por loadLoans()/loadInvestments()/loadSavingsGoals(),
+  // exatamente como qualquer outra página (Património, Créditos, ...) já os
+  // reaproveita. Cada número sai de uma função já existente e usada noutras
+  // páginas — ver a tabela "Reaproveita" no plano. UI (renderRelatorioView)
+  // é um renderizador puro deste objeto — nunca recalcula nada.
+  function buildMonthlyReport(monthKey, spaceId, ctx){
+    var months = ctx.months; // [monthKey-2, monthKey-1, monthKey]
+    var prevMonthKey = months[1];
+    var entries = ctx.entriesByMonth[monthKey] || [];
+    var prevEntries = ctx.entriesByMonth[prevMonthKey] || [];
+    var budgets = ctx.budgetsByMonth[monthKey] || {};
+
+    var split = splitByKind(entries);
+    var sR = summaryOf(split.receitas), sD = summaryOf(split.despesas);
+    var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
+    var sDSemSource = summaryOf(despesasSemSource);
+    var plannedOutflow = plannedOutflowTotal(split.despesas, false, budgets);
+    var plannedOutflowSemSource = plannedOutflowTotal(split.despesas, true, budgets);
+    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedOutflowSemSource);
+
+    var hasRealData = entries.some(function(e){ return !e.virtual; });
+    var prevApplicable = computeApplicable(ctx.payments, prevMonthKey);
+    var hasComparableMonth = prevApplicable.length > 0 || prevEntries.some(function(e){ return !e.virtual; });
+
+    var summary = {
+      monthKey:monthKey, monthLabel:monthLabelOf(monthKey), hasData:hasRealData,
+      receitasPrevistas:sR.total, receitasRealizadas:sR.done,
+      despesasPrevistas:sD.total, despesasRealizadas:sD.done,
+      disponivelPlaneado: sR.total - plannedOutflow,
+      saldoRealizado: sR.done - sD.done,
+      taxaPoupancaPrevista: rates.planned.rate, taxaPoupancaRealizada: rates.actual.rate
+    };
+
+    // ---- Orçamento por categoria + maiores desvios ----
+    var budgetRows = categoryBudgetBreakdown(entries, budgets).map(function(r){
+      var status = getBudgetStatus(r.done, r.budget);
+      return {key:r.def.key, label:r.def.label, color:r.def.color, budget:r.budget, gasto:r.done, previsto:r.total,
+        status:status.status, percentage:status.percentage, overAmount:status.overAmount};
+    });
+    var deviations = budgetRows.filter(function(r){ return r.budget != null; })
+      .map(function(r){ return {key:r.key, label:r.label, budget:r.budget, gasto:r.gasto, deviation:r.gasto - r.budget}; })
+      .sort(function(a,b){ return Math.abs(b.deviation) - Math.abs(a.deviation); })
+      .slice(0,5);
+
+    // ---- 3 meses seguidos acima do orçamento na mesma categoria (deteção simples de padrão) ----
+    var streakCategories = budgetRows.filter(function(r){
+      if (r.budget == null || r.status !== 'over') return false;
+      return months.slice(0,2).every(function(mk){
+        var rows = categoryBudgetBreakdown(ctx.entriesByMonth[mk] || [], ctx.budgetsByMonth[mk] || {});
+        var row = rows.filter(function(x){ return x.def.key === r.key; })[0];
+        var st = row ? getBudgetStatus(row.done, row.budget) : null;
+        return st && st.status === 'over';
+      });
+    }).map(function(r){ return {key:r.key, label:r.label}; });
+
+    var budget = {rows:budgetRows, deviations:deviations, streakCategories:streakCategories};
+
+    // ---- Essenciais vs. não-essenciais + Top-5 despesas ----
+    var essentialTotal = calculateEssentialSpending(split.despesas);
+    var topDespesas = split.despesas.filter(function(e){ return e.paid && !e.sourceType; })
+      .sort(function(a,b){ return effectiveAmount(b) - effectiveAmount(a); })
+      .slice(0,5)
+      .map(function(e){ return {name:e.name, category:categoryOf(e).label, amount:effectiveAmount(e)}; });
+    var categories = {
+      essentialTotal:essentialTotal,
+      nonEssentialTotal: Math.max(0, sD.done - essentialTotal),
+      topDespesas:topDespesas
+    };
+
+    // ---- Poupanças ----
+    var savingsRows = (state.savingsGoals || []).map(function(g){
+      var movsInMonth = (state.savingsMovements[g.id] || []).filter(function(m){ return m.date.slice(0,7) === monthKey; });
+      var deposited = movsInMonth.reduce(function(s,m){ return s + Math.max(0, Number(m.amount)||0); }, 0);
+      var withdrawn = movsInMonth.reduce(function(s,m){ return s + Math.min(0, Number(m.amount)||0); }, 0);
+      var savedStart = savingsValueAtMonth(g, prevMonthKey);
+      var savedEnd = savingsValueAtMonth(g, monthKey);
+      var goalAmount = Number(g.goalAmount) || 0;
+      var completedThisMonth = goalAmount > 0 && savedEnd >= goalAmount && savedStart < goalAmount;
+      return {id:g.id, name:g.name, deposited:deposited, withdrawn:withdrawn, net:deposited+withdrawn,
+        savedStart:savedStart, savedEnd:savedEnd, goalAmount: goalAmount || null, completedThisMonth:completedThisMonth};
+    });
+    var savings = {
+      rows:savingsRows,
+      netTotal: savingsRows.reduce(function(s,r){ return s + r.net; }, 0),
+      completedGoals: savingsRows.filter(function(r){ return r.completedThisMonth; })
+    };
+
+    // ---- Fundo de Emergência ----
+    // Referência = média das despesas essenciais REALIZADAS (mesma regra de
+    // inclusão que emergencyFundEntryIncluded/calculateEssentialSpending já
+    // usam em produção) dos até 2 meses anteriores já carregados por
+    // loadReportData — versão mais simples do que essentialMonthlyAverage()
+    // (que também considera o orçamento e uma janela de 6 meses a partir de
+    // "hoje"), porque aqui a referência tem de estar ancorada ao MÊS DO
+    // RELATÓRIO, nunca a "hoje" — ver nota no plano. Limitação conhecida e
+    // documentada: janela mais curta (até 2 meses) do que o cartão "Fundo de
+    // Emergência" da Home (até 6 meses, a partir de hoje).
+    var efHistoryMonths = months.slice(0,2).filter(function(mk){ return (ctx.entriesByMonth[mk]||[]).some(function(e){ return !e.virtual; }); });
+    var efReference = efHistoryMonths.length
+      ? efHistoryMonths.reduce(function(sum, mk){ return sum + calculateEssentialSpending(splitByKind(ctx.entriesByMonth[mk]).despesas); }, 0) / efHistoryMonths.length
+      : 0;
+    var efConfig = emergencyFundSettings();
+    var efSources = state.savingsGoals.filter(emergencyFundSourceIncluded);
+    var efReferenceFinal = efConfig.monthlyReferenceMode === 'manual' ? (efConfig.manualMonthlyReference || 0) : efReference;
+    var efStart = efSources.reduce(function(s,g){ return s + savingsValueAtMonth(g, prevMonthKey); }, 0);
+    var efEnd = efSources.reduce(function(s,g){ return s + savingsValueAtMonth(g, monthKey); }, 0);
+    var efTarget = efConfig.targetMode === 'months'
+      ? (efReferenceFinal > 0 ? Math.round(efReferenceFinal * efConfig.targetMonths * 100)/100 : null)
+      : efConfig.targetAmount;
+    var emergencyFund = efSources.length ? {
+      hasSource:true,
+      startBalance:efStart, endBalance:efEnd,
+      monthlyReference:efReferenceFinal,
+      monthsCoveredStart: efReferenceFinal>0 ? efStart/efReferenceFinal : null,
+      monthsCoveredEnd: efReferenceFinal>0 ? efEnd/efReferenceFinal : null,
+      targetAmount:efTarget
+    } : {hasSource:false};
+
+    // ---- Créditos ----
+    var loanRows = state.loans.filter(function(l){ return !l.archived; }).map(function(l){
+      var saldoInicial = loanBalanceAtMonth(l, prevMonthKey);
+      var saldoFinal = loanBalanceAtMonth(l, monthKey);
+      var snaps = state.loanSnapshots[l.id] || [];
+      var jurosPagos = snaps.filter(function(s){ return s.type === 'installment' && s.date.slice(0,7) === monthKey; })
+        .reduce(function(s,x){ return s + (Number(x.interestPart)||0); }, 0);
+      var extras = snaps.filter(function(s){ return s.type === 'extra_payment' && s.date.slice(0,7) === monthKey; })
+        .reduce(function(s,x){ return s + (Number(x.amount)||0); }, 0);
+      return {id:l.id, name:l.name, saldoInicial:saldoInicial, saldoFinal:saldoFinal,
+        capitalAmortizado: Math.max(0, saldoInicial - saldoFinal), jurosPagos:jurosPagos, extras:extras};
+    });
+    var loans = {
+      rows:loanRows,
+      totalCapitalAmortizado: loanRows.reduce(function(s,r){ return s + r.capitalAmortizado; }, 0),
+      totalJuros: loanRows.reduce(function(s,r){ return s + r.jurosPagos; }, 0),
+      totalExtras: loanRows.reduce(function(s,r){ return s + r.extras; }, 0)
+    };
+
+    // ---- Investimentos ----
+    var invActual = 0;
+    var invRows = state.investments.filter(function(i){ return !i.archived; }).map(function(inv){
+      var actual = investmentMonthlyActual(inv.id, monthKey);
+      invActual += actual;
+      var q = investmentQuality(inv.id);
+      return {id:inv.id, name:inv.name, aporteMes:actual, valorAtual:currentValueOf(inv.id),
+        ultimaAvaliacao: lastInvestmentUpdateDate(inv), avaliacaoFiavel: q.valid};
+    });
+    var plan = investmentMonthlyPlan(monthKey);
+    var investments = {rows:invRows, aportesTotal:invActual, planoTotal:plan.planned, hasPlan:plan.hasPlan,
+      cumprimentoPct: plan.planned > 0 ? Math.min(999, Math.round(invActual/plan.planned*100)) : null};
+
+    // ---- Património início/fim + decomposição ----
+    function investAt(mk){ return state.investments.reduce(function(s,inv){ return s + investmentValueAtMonth(inv, mk); }, 0); }
+    function propAt(mk){ return state.loans.reduce(function(s,l){ return s + propertyValueAtMonth(l, mk); }, 0); }
+    function savAt(mk){ return state.savingsGoals.reduce(function(s,g){ return s + savingsValueAtMonth(g, mk); }, 0); }
+    function liabAt(mk){ return state.loans.reduce(function(s,l){ return s + loanBalanceAtMonth(l, mk); }, 0); }
+    var assetsStart = investAt(prevMonthKey) + propAt(prevMonthKey) + savAt(prevMonthKey);
+    var assetsEnd = investAt(monthKey) + propAt(monthKey) + savAt(monthKey);
+    var liabStart = liabAt(prevMonthKey), liabEnd = liabAt(monthKey);
+    var netStart = assetsStart - liabStart, netEnd = assetsEnd - liabEnd;
+    var netDelta = netEnd - netStart;
+    var poupancaDelta = savAt(monthKey) - savAt(prevMonthKey);
+    var investimentosDelta = investAt(monthKey) - investAt(prevMonthKey);
+    var reducaoDividaDelta = liabStart - liabEnd; // saldo em dívida a descer = ganho de património
+    var outrosDelta = netDelta - poupancaDelta - investimentosDelta - reducaoDividaDelta;
+    var netWorth = {
+      start:netStart, end:netEnd, delta:netDelta,
+      decomposicao: hasComparableMonth ? {poupanca:poupancaDelta, investimentos:investimentosDelta, reducaoDivida:reducaoDividaDelta, outros:outrosDelta} : null
+    };
+
+    // ---- Pontos positivos / a melhorar / recomendações (regras determinísticas, tom não-punitivo) ----
+    var highlights = [], improvements = [], recommendations = [];
+    budgetRows.forEach(function(r){
+      if (r.budget == null) return;
+      if (r.status === 'over') improvements.push(r.label + ' ficou ' + euro(r.overAmount) + ' acima do orçamento.');
+      else if (r.status === 'normal' || r.status === 'reached') highlights.push(r.label + ' manteve-se dentro do orçamento (' + euro(r.gasto) + ' de ' + euro(r.budget) + ').');
+    });
+    savingsRows.forEach(function(r){
+      if (r.completedThisMonth) highlights.push('Meta "' + r.name + '" foi concluída este mês.');
+    });
+    if (emergencyFund.hasSource && emergencyFund.endBalance > emergencyFund.startBalance){
+      highlights.push('O Fundo de Emergência aumentou ' + euro(emergencyFund.endBalance - emergencyFund.startBalance) + ' este mês.');
+    }
+    if (loans.totalCapitalAmortizado > 0){
+      highlights.push('Reduziste ' + euro(loans.totalCapitalAmortizado) + ' de capital em dívida este mês.');
+    }
+    streakCategories.forEach(function(r){
+      recommendations.push(r.label + ' esteve acima do orçamento durante 3 meses seguidos — considera rever o valor definido.');
+    });
+    if (emergencyFund.hasSource && emergencyFund.targetAmount > 0 && emergencyFund.endBalance < emergencyFund.targetAmount){
+      recommendations.push('O Fundo de Emergência ainda está abaixo do objetivo definido — continuar as contribuições ajuda a fechar essa distância.');
+    }
+
+    return {
+      meta:{monthKey:monthKey, spaceId:spaceId, hasComparableMonth:hasComparableMonth},
+      summary:summary, budget:budget, categories:categories, savings:savings,
+      emergencyFund:emergencyFund, loans:loans, investments:investments, netWorth:netWorth,
+      highlights:highlights, improvements:improvements, recommendations:recommendations
+    };
+  }
+
   // ---------- Simuladores (Créditos / Investimentos) ----------
   // Funções puras, sem qualquer leitura/escrita no Firestore e sem tocar em
   // `state` — usadas pelos simuladores em "Créditos → Simulador" e
@@ -3195,6 +3410,13 @@
   function monthLabelOf(key){
     var parts = key.split('-'); var y = parseInt(parts[0],10); var m = parseInt(parts[1],10)-1;
     return MONTHS_PT[m] + ' ' + y;
+  }
+  // Relatório Mensal: mês por omissão ao abrir a página — o mês anterior ao
+  // corrente, nunca o mês em curso (incompleto por definição). Usa a data
+  // real do dispositivo, não state.monthKey (que é o mês da página
+  // Orçamento e pode estar noutro mês por navegação prévia).
+  function defaultReportMonthKey(){
+    return monthKeyAdd(monthKeyOf(new Date()), -1);
   }
   function euro(n){
     var v = Number(n)||0;
@@ -3552,6 +3774,87 @@
       console.error('loadYear failed', err);
       state.yearLoading = false;
       state.dbAvailable = false;
+      render();
+    });
+  }
+
+  // ---------- Relatório Mensal — carregamento (só leitura, nunca escreve) ----------
+  // Mesmo padrão de query "janela de meses" que loadYear()/loadEmergencyFundHistory()/
+  // loadSavingsRateHistory() já usam (where monthKey>=...<=..., where spaceId==...),
+  // e a mesma "materialização" de entries em falta que loadMonth()/loadYear() já
+  // fazem a partir de computeApplicable()+entrySnapshot() (ambas puras) — só que
+  // aqui NUNCA se chama .set(): a entry em falta fica só em memória, porque o
+  // relatório é sobre um mês fechado que o utilizador pode nunca ter aberto no
+  // Orçamento, e gerar o relatório nunca pode criar/alterar dados (ponto 34).
+  function loadReportData(monthKey, spaceId){
+    var generation = (state.reportLoadGeneration || 0) + 1;
+    state.reportLoadGeneration = generation;
+    function stale(){ return state.reportLoadGeneration !== generation || state.reportMonthKey !== monthKey || state.activeSpaceId !== spaceId; }
+    state.reportLoading = true;
+    state.reportError = false;
+    render();
+
+    var sp = (state.spaces||[]).find(function(s){return s.id===spaceId;}) || activeSpace();
+    if (sp && sp.type === 'temporario'){
+      // Este Espaço não é organizado por mês — o relatório fica indisponível
+      // (ver Modelo de Spaces no plano); não gasta nenhuma leitura.
+      state.reportData = {monthKey:monthKey, spaceId:spaceId, report:null, unavailableReason:'temporario'};
+      state.reportLoading = false;
+      render();
+      return Promise.resolve();
+    }
+
+    var months = [monthKeyAdd(monthKey,-2), monthKeyAdd(monthKey,-1), monthKey];
+    var startKey = months[0], endKey = months[2];
+    var keys = effectiveCategories('despesa', spaceId).map(function(c){ return c.key; });
+
+    return Promise.all([
+      loadPayments(spaceId),
+      db.collection('entries').where('monthKey','>=',startKey).where('monthKey','<=',endKey).where('spaceId','==',spaceId).get(),
+      Promise.all(months.map(function(mk){ return readCategoryBudgetsForMonth(spaceId, mk, keys).then(function(r){ return {monthKey:mk, amounts:r.amounts}; }); })),
+      loadLoans(), loadInvestments(), loadSavingsGoals()
+    ]).then(function(results){
+      if (stale()) return;
+      var payments = results[0], esnap = results[1], budgetRows = results[2];
+      var byMonth = {};
+      months.forEach(function(mk){ byMonth[mk] = {}; });
+      esnap.docs.forEach(function(d){
+        var data = d.data();
+        if (spaceIdOf(data) !== spaceId) return; // mesma cautela que loadEmergencyFundHistory/loadSavingsRateHistory já aplicam
+        if (!byMonth[data.monthKey]) byMonth[data.monthKey] = {};
+        byMonth[data.monthKey][data.paymentId] = Object.assign({id:d.id}, data);
+      });
+      // Materialização virtual — NUNCA escrita no Firestore, só em memória.
+      var entriesByMonth = {};
+      var budgetsByMonth = {};
+      months.forEach(function(mk){
+        var applicable = computeApplicable(payments, mk);
+        var map = byMonth[mk] || {};
+        applicable.forEach(function(p){
+          if (!map[p.id]) map[p.id] = Object.assign({id:'virtual:'+mk+':'+p.id, virtual:true}, entrySnapshot(mk, p));
+        });
+        var applicableIds = applicable.map(function(p){return p.id;});
+        entriesByMonth[mk] = Object.values(map).filter(function(e){ return e.paid || applicableIds.indexOf(e.paymentId) !== -1; });
+      });
+      budgetRows.forEach(function(row){ budgetsByMonth[row.monthKey] = row.amounts; });
+
+      // Só o que é NOVO/específico deste relatório (entries/orçamentos por
+      // mês, payments) vai no ctx. Créditos/Investimentos/Poupanças/Fundo de
+      // Emergência já vivem em `state.*` (carregados acima por
+      // loadLoans()/loadInvestments()/loadSavingsGoals(), tal como qualquer
+      // outra página) — buildMonthlyReport reaproveita-os diretamente, tal
+      // como todas as outras páginas já fazem, em vez de os duplicar aqui.
+      var ctx = {months:months, entriesByMonth:entriesByMonth, budgetsByMonth:budgetsByMonth, payments:payments};
+      var report = buildMonthlyReport(monthKey, spaceId, ctx);
+      if (stale()) return;
+      state.reportData = {monthKey:monthKey, spaceId:spaceId, report:report};
+    }).catch(function(err){
+      if (stale()) return;
+      console.error('loadReportData failed', err);
+      state.reportError = true;
+    }).then(function(){
+      if (stale()) return;
+      state.reportLoading = false;
       render();
     });
   }
@@ -5788,10 +6091,16 @@
   // same underlying entries/effectiveAmount() math as categoryBreakdown() above,
   // just also keeping the "done" (paid) portion and the entries themselves so
   // each category can expand into its own list.
-  function categoryBudgetBreakdown(entries){
+  // `budgetsOverride` (opcional): usado pelo Relatório Mensal para passar os
+  // orçamentos DO MÊS DO RELATÓRIO (via readCategoryBudgetsForMonth), nunca
+  // os do mês corrente em state.categoryBudgets — sem isto, o relatório de um
+  // mês passado mostraria sempre o orçamento ATUAL, não o que estava
+  // definido nesse mês. Todos os chamadores existentes continuam a omitir
+  // este parâmetro e a usar state.categoryBudgets, comportamento inalterado.
+  function categoryBudgetBreakdown(entries, budgetsOverride){
     var totals = {};
     var order = [];
-    var budgets = state.categoryBudgets || {};
+    var budgets = budgetsOverride || state.categoryBudgets || {};
     // Semeia primeiro uma linha para cada categoria que já tem um
     // orçamento-alvo definido manualmente — mesmo que ainda não tenha
     // nenhuma despesa lançada este mês. É o que permite definir "Alimentação
@@ -5855,8 +6164,10 @@
   // tem, à partida, como distinguir-se de uma categoria de despesa normal —
   // nesse caso raro, esse orçamento por lançar ainda reduz ligeiramente a
   // Taxa de poupança prevista, até haver o primeiro aporte real.
-  function plannedOutflowTotal(entries, excludeSourceLinked){
-    var rows = categoryBudgetBreakdown(entries);
+  // `budgetsOverride`: ver nota em categoryBudgetBreakdown — o Relatório
+  // Mensal precisa do orçamento do MÊS DO RELATÓRIO, não do mês corrente.
+  function plannedOutflowTotal(entries, excludeSourceLinked, budgetsOverride){
+    var rows = categoryBudgetBreakdown(entries, budgetsOverride);
     var total = 0;
     rows.forEach(function(r){
       var effectiveTotal = excludeSourceLinked
@@ -7755,6 +8066,168 @@
       patrimonyBreakdownHtml('Passivos', passivosRows, 'var(--info)');
   }
 
+  // ---------- Relatório Mensal — UI (renderizador puro de buildMonthlyReport) ----------
+  function relatorioMonthOptionsHtml(selected){
+    var opts = '';
+    var mk = defaultReportMonthKey();
+    for (var i = 0; i < 24; i++){
+      opts += '<option value="' + mk + '"' + (mk === selected ? ' selected' : '') + '>' + escapeHtml(monthLabelOf(mk)) + '</option>';
+      mk = monthKeyAdd(mk, -1);
+    }
+    return opts;
+  }
+  function relatorioHeaderMessage(report){
+    if (!report.summary.hasData) return 'Ainda não há dados suficientes para este mês.';
+    var rate = report.summary.taxaPoupancaRealizada;
+    if (rate === null) return 'Fechaste ' + monthLabelOf(report.meta.monthKey) + ' sem receitas recebidas registadas.';
+    return 'Fechaste ' + monthLabelOf(report.meta.monthKey) + ' com uma taxa de poupança de ' + fmtPercent(rate) + '.';
+  }
+  function relatorioTrioTile(label, value, cls){
+    return '<div class="trio-tile"><div class="trio-label">' + escapeHtml(label) + '</div><div class="trio-value mono' + (cls?' '+cls:'') + '">' + value + '</div></div>';
+  }
+  function relatorioBudgetRowsHtml(rows){
+    if (!rows.length) return '<p class="hint">Sem categorias com orçamento definido este mês.</p>';
+    return rows.map(function(r){
+      var pill = r.budget == null ? '' :
+        (r.status === 'over' ? '<span class="budget-status-pill danger">Ultrapassado</span>' :
+         r.status === 'reached' ? '<span class="budget-status-pill warning">Atingido</span>' :
+         r.status === 'warning' ? '<span class="budget-status-pill warning">Perto</span>' :
+         '<span class="budget-status-pill success">Dentro</span>');
+      return '<div class="cat-bar-row"><span class="cat-bar-label"><span class="cat-dot" style="background:' + r.color + '"></span>' + escapeHtml(r.label) + pill + '</span>' +
+        '<span class="cat-bar-amount mono">' + euro(r.gasto) + (r.budget != null ? ' / ' + euro(r.budget) : '') + '</span></div>';
+    }).join('');
+  }
+  function renderRelatorioView(content){
+    if (!state.reportMonthKey) state.reportMonthKey = defaultReportMonthKey();
+    var monthNav = '<div class="month-switch" style="margin-bottom:12px;">' +
+      '<button type="button" data-action="relatorio-nav" data-delta="-1" aria-label="Mês anterior">‹</button>' +
+      '<div class="month-label">' + escapeHtml(monthLabelOf(state.reportMonthKey)) + '</div>' +
+      '<button type="button" data-action="relatorio-nav" data-delta="1" aria-label="Mês seguinte">›</button>' +
+    '</div>' +
+    '<select data-action="relatorio-goto-month" aria-label="Saltar para um mês" style="width:100%; margin-bottom:16px;">' + relatorioMonthOptionsHtml(state.reportMonthKey) + '</select>';
+
+    if (state.reportLoading){
+      content.innerHTML = monthNav + '<div class="skeleton">A preparar o relatório…</div>';
+      return;
+    }
+    if (state.reportError){
+      content.innerHTML = monthNav + '<div class="empty"><h3>Não foi possível preparar o relatório</h3><p>Tenta novamente dentro de momentos.</p></div>';
+      return;
+    }
+    var rd = state.reportData;
+    if (!rd || rd.monthKey !== state.reportMonthKey || rd.spaceId !== state.activeSpaceId){
+      content.innerHTML = monthNav + '<div class="skeleton">A preparar o relatório…</div>';
+      return;
+    }
+    if (rd.unavailableReason === 'temporario'){
+      content.innerHTML = '<div class="empty"><h3>Relatório indisponível</h3><p>Este Espaço não é organizado por mês, por isso não tem relatório mensal.</p></div>';
+      return;
+    }
+    var r = rd.report;
+    if (!r.summary.hasData){
+      content.innerHTML = monthNav + '<div class="empty"><h3>Ainda não há dados suficientes</h3>' +
+        '<p>Não encontrámos movimentos para ' + escapeHtml(monthLabelOf(r.meta.monthKey)) + ' neste Espaço.</p></div>';
+      return;
+    }
+
+    var html = monthNav;
+    html += '<p class="hint">' + escapeHtml(relatorioHeaderMessage(r)) + '</p>';
+
+    // Resumo previsto vs. realizado
+    html += '<div class="cat-card"><h3>Resumo do mês</h3><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+      relatorioTrioTile('Receitas realizadas', euro(r.summary.receitasRealizadas), 'positive') +
+      relatorioTrioTile('Despesas realizadas', euro(r.summary.despesasRealizadas)) +
+      relatorioTrioTile('Saldo realizado', (r.summary.saldoRealizado>=0?'+':'')+euro(r.summary.saldoRealizado), r.summary.saldoRealizado>=0?'positive':'negative') +
+      relatorioTrioTile('Taxa de poupança', r.summary.taxaPoupancaRealizada===null?'—':fmtPercent(r.summary.taxaPoupancaRealizada)) +
+    '</div><div class="hint">Previsto: receitas ' + euro(r.summary.receitasPrevistas) + ' · despesas ' + euro(r.summary.despesasPrevistas) + ' · disponível planeado ' + euro(r.summary.disponivelPlaneado) + '</div></div>';
+
+    // Orçamento por categoria
+    html += '<div class="cat-card"><h3>Orçamento por categoria</h3>' + relatorioBudgetRowsHtml(r.budget.rows) + '</div>';
+
+    // Essenciais vs. não-essenciais + Top-5
+    html += '<div class="cat-card"><h3>Essenciais vs. não-essenciais</h3><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+      relatorioTrioTile('Essenciais', euro(r.categories.essentialTotal)) +
+      relatorioTrioTile('Não-essenciais', euro(r.categories.nonEssentialTotal)) +
+    '</div></div>';
+    if (r.categories.topDespesas.length){
+      html += '<div class="cat-card"><h3>Maiores despesas</h3>' + r.categories.topDespesas.map(function(e){
+        return '<div class="cat-bar-row"><span class="cat-bar-label">' + escapeHtml(e.name) + ' <span class="hint">· ' + escapeHtml(e.category) + '</span></span><span class="cat-bar-amount mono">' + euro(e.amount) + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    // Maiores desvios
+    if (r.budget.deviations.length){
+      html += '<div class="cat-card"><h3>Maiores desvios ao orçamento</h3>' + r.budget.deviations.map(function(d){
+        var cls = d.deviation > 0 ? 'negative' : 'positive';
+        return '<div class="cat-bar-row"><span class="cat-bar-label">' + escapeHtml(d.label) + '</span><span class="cat-bar-amount mono ' + cls + '">' + (d.deviation>0?'+':'') + euro(d.deviation) + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    // Poupanças
+    if (r.savings.rows.length){
+      html += '<div class="cat-card"><h3>Poupanças</h3>' + r.savings.rows.map(function(g){
+        var badge = g.completedThisMonth ? '<span class="budget-status-pill success">Meta concluída</span>' : '';
+        return '<div class="cat-bar-row"><span class="cat-bar-label">' + escapeHtml(g.name) + badge + '</span><span class="cat-bar-amount mono ' + (g.net>=0?'positive':'negative') + '">' + (g.net>=0?'+':'') + euro(g.net) + '</span></div>';
+      }).join('') + '<div class="hint">Líquido total: ' + euro(r.savings.netTotal) + '</div></div>';
+    }
+
+    // Fundo de Emergência
+    if (r.emergencyFund.hasSource){
+      var ef = r.emergencyFund;
+      html += '<div class="cat-card"><h3>Fundo de Emergência</h3><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+        relatorioTrioTile('Saldo no início', euro(ef.startBalance)) +
+        relatorioTrioTile('Saldo no fim', euro(ef.endBalance)) +
+        relatorioTrioTile('Cobertura no início', ef.monthsCoveredStart===null?'—':(ef.monthsCoveredStart.toFixed(1)+' meses')) +
+        relatorioTrioTile('Cobertura no fim', ef.monthsCoveredEnd===null?'—':(ef.monthsCoveredEnd.toFixed(1)+' meses')) +
+      '</div>' + (ef.targetAmount>0 ? '<div class="hint">Objetivo: ' + euro(ef.targetAmount) + '</div>' : '') + '</div>';
+    }
+
+    // Créditos
+    if (r.loans.rows.length){
+      html += '<div class="cat-card"><h3>Créditos</h3>' + r.loans.rows.map(function(l){
+        return '<div class="loan-head-row" style="margin-bottom:6px;"><div class="loan-head"><h3 style="font-size:14px;">' + escapeHtml(l.name) + '</h3>' +
+          '<div class="sub">Saldo ' + euro(l.saldoInicial) + ' → ' + euro(l.saldoFinal) + ' · capital amortizado ' + euro(l.capitalAmortizado) + ' · juros ' + euro(l.jurosPagos) + (l.extras>0 ? ' · extra ' + euro(l.extras) : '') + '</div></div></div>';
+      }).join('') + (r.loans.rows.length>1 ? '<div class="hint">Redução total de capital: ' + euro(r.loans.totalCapitalAmortizado) + '</div>' : '') + '</div>';
+    }
+
+    // Investimentos
+    if (r.investments.rows.length){
+      html += '<div class="cat-card"><h3>Investimentos</h3><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+        relatorioTrioTile('Aportes do mês', euro(r.investments.aportesTotal)) +
+        relatorioTrioTile('Plano mensal', r.investments.hasPlan ? euro(r.investments.planoTotal) : '—') +
+      '</div>' + r.investments.rows.map(function(inv){
+        return '<div class="cat-bar-row"><span class="cat-bar-label">' + escapeHtml(inv.name) + '</span><span class="cat-bar-amount mono">' + euro(inv.valorAtual) +
+          (inv.avaliacaoFiavel ? '' : ' <span class="hint">(por atualizar)</span>') + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    // Património
+    html += '<div class="cat-card"><h3>Património</h3><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
+      relatorioTrioTile('Início do mês', euro(r.netWorth.start)) +
+      relatorioTrioTile('Fim do mês', euro(r.netWorth.end)) +
+    '</div>';
+    if (r.netWorth.decomposicao){
+      var d = r.netWorth.decomposicao;
+      html += '<div class="hint">Variação ' + (r.netWorth.delta>=0?'+':'') + euro(r.netWorth.delta) + ' — poupança ' + euro(d.poupanca) + ' · investimentos ' + euro(d.investimentos) + ' · redução de dívida ' + euro(d.reducaoDivida) + ' · outros ' + euro(d.outros) + '</div>';
+    }
+    html += '</div>';
+
+    // Pontos positivos / a melhorar / recomendações
+    if (r.highlights.length) html += '<div class="cat-card"><h3>O que correu bem</h3>' + r.highlights.map(function(h){ return '<p class="hint">' + escapeHtml(h) + '</p>'; }).join('') + '</div>';
+    if (r.improvements.length) html += '<div class="cat-card"><h3>Pontos a melhorar</h3>' + r.improvements.map(function(h){ return '<p class="hint">' + escapeHtml(h) + '</p>'; }).join('') + '</div>';
+    if (r.recommendations.length) html += '<div class="cat-card"><h3>Recomendações para o próximo mês</h3>' + r.recommendations.map(function(h){ return '<p class="hint">' + escapeHtml(h) + '</p>'; }).join('') + '</div>';
+
+    // Comparação com o mês anterior — só quando existe mês comparável
+    if (!r.meta.hasComparableMonth){
+      html += '<p class="hint">Sem mês anterior comparável ainda.</p>';
+    }
+
+    // Exportar (preparado, desativado nesta versão)
+    html += '<button type="button" class="btn ghost" disabled style="width:100%; margin-top:4px;">Exportar relatório <span class="hint">(brevemente)</span></button>';
+
+    content.innerHTML = html;
+  }
+
   // ---------- Recorrências (gestão dedicada) ----------
   function recurrenceStatusOf(p){
     var nowKey = monthKeyOf(new Date());
@@ -8038,9 +8511,9 @@
   var VIEW_LABELS = {
     home:'Início', month:'Orçamento', movimentos:'Movimentos', patrimonio:'Património',
     year:'Visão anual', loan:'Créditos', investment:'Investimentos', poupancas:'Poupanças',
-    recorrencias:'Recorrências', familia:'Família'
+    recorrencias:'Recorrências', familia:'Família', relatorio:'Relatório Mensal'
   };
-  var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia'];
+  var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia','relatorio'];
 
   function render(){
     updateAlertCenter();
@@ -8057,6 +8530,7 @@
     var isMonth = state.view === 'month';
     var isRecorrencias = state.view === 'recorrencias';
     var isFamilia = state.view === 'familia';
+    var isRelatorio = state.view === 'relatorio';
 
     document.getElementById('periodLabel').textContent = isYear ? String(state.year) : monthLabelOf(state.monthKey);
     var headerSubtitle = document.getElementById('headerSubtitle');
@@ -8117,7 +8591,7 @@
       return;
     }
 
-    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia ||
+    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia || isRelatorio ||
       (isLoan && state.loanSubview === 'simulator') || (isInvestment && state.investmentSubview === 'simulator');
 
     if (isHome){
@@ -8138,6 +8612,8 @@
       renderRecorrenciasView(content);
     } else if (isFamilia){
       renderFamiliaView(content);
+    } else if (isRelatorio){
+      renderRelatorioView(content);
     } else {
       renderMonthView(content);
     }
@@ -9675,7 +10151,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v63'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v64'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -11036,6 +11512,23 @@
       });
     } else if (action === 'nofamily-logout'){
       window.__ContasApp.logout();
+    } else if (action === 'relatorio-nav'){
+      var delta = parseInt(actionEl.getAttribute('data-delta'), 10) || 0;
+      state.reportMonthKey = monthKeyAdd(state.reportMonthKey || defaultReportMonthKey(), delta);
+      if (db) loadReportData(state.reportMonthKey, state.activeSpaceId); else render();
+    }
+  });
+
+  // Seletor "saltar para o mês" do Relatório Mensal — único <select> dentro
+  // de #content, por isso um listener de 'change' delegado à parte do
+  // listener de 'click' acima (que não recebe eventos 'change').
+  document.getElementById('content').addEventListener('change', function(ev){
+    var sel = ev.target.closest('select[data-action="relatorio-goto-month"]');
+    if (!sel) return;
+    var wantedMonth = sel.value;
+    if (wantedMonth && wantedMonth !== state.reportMonthKey){
+      state.reportMonthKey = wantedMonth;
+      if (db) loadReportData(state.reportMonthKey, state.activeSpaceId); else render();
     }
   });
 
@@ -11333,6 +11826,7 @@
     {nav:'loan', icon:'landmark', label:'Créditos'},
     {nav:'investment', icon:'trending', label:'Investimentos'},
     {nav:'poupancas', icon:'piggy', label:'Poupanças por objetivo'},
+    {nav:'relatorio', icon:'report', label:'Relatórios'},
     {nav:'recorrencias', icon:'refresh', label:'Recorrências'},
     {nav:'familia', icon:'users', label:'Família'},
     {nav:'ajuda', icon:'help', label:'Ajuda e Feedback'},
@@ -11450,6 +11944,10 @@
       }
     }
     else if (view === 'familia'){ if (db) return loadFamilyMembers(); }
+    else if (view === 'relatorio'){
+      if (!state.reportMonthKey) state.reportMonthKey = defaultReportMonthKey();
+      if (db) return loadReportData(state.reportMonthKey, state.activeSpaceId);
+    }
     render();
   }
 
@@ -11791,6 +12289,11 @@
     if(f.investmentsReady){f.evaluatedGroups.push(E.group('investments'));f.investments=state.investments.filter(function(i){return !i.archived;}).map(function(i){return{id:i.id,name:i.name,stale:isInvestmentStale(i),lastUpdate:lastInvestmentUpdateDate(i)};});}
     f.emergencyReady=f.savingsReady&&f.loansReady&&scopeReady&&isDefaultSpace(f.spaceId)&&!state.emergencyFundHistoryLoading;
     if(f.emergencyReady){f.evaluatedGroups.push(E.group('emergency'));var cov=calculateEmergencyFundCoverage(calculateEmergencyFundRecommendation());f.emergency={goal:!!cov.goal,current:cov.current,targetAmount:cov.targetAmount,monthsCovered:cov.monthsCovered,signature:cov.config.targetMode+':'+(cov.config.targetMode==='months'?cov.config.targetMonths:cov.config.targetAmount)};}
+    // Relatório Mensal: só decide SE o alerta "está pronto" deve existir —
+    // nunca calcula o relatório inteiro aqui (ver loadReportData), só o mês
+    // que ficaria disponível. Indisponível para Espaços temporários, tal
+    // como a própria página (ver Modelo de Spaces no plano).
+    if(f.scopeReady&&activeSpaceMonthly()){f.reportAvailable=true;f.reportMonthKey=defaultReportMonthKey();f.reportMonthLabel=monthLabelOf(f.reportMonthKey);}
     return f;
   }
 
@@ -11864,6 +12367,7 @@
     return Promise.resolve(change).then(function(){
       if(uid!==state.myUid||family!==state.familyId||!window.MABAlerts.visible(a,alertFacts()))return false;
       if(a.monthKey&&/^\d{4}-\d{2}$/.test(a.monthKey)&&(a.entityType==='entry'||a.entityType==='category'||a.type==='loan_overdue'||a.type==='loan_upcoming'))state.monthKey=a.monthKey;
+      if(a.entityType==='report'&&a.monthKey&&/^\d{4}-\d{2}$/.test(a.monthKey))state.reportMonthKey=a.monthKey;
       state.view=a.actionTarget;if(a.entityType==='category')state.openCategoryKey=a.entityId;state.searchQuery='';state.movFilter='all';document.getElementById('searchInput').value='';
       return Promise.resolve(loadForView(state.view)).then(function(){
         if(uid!==state.myUid||family!==state.familyId||!window.MABAlerts.visible(a,alertFacts()))return false;
@@ -11871,7 +12375,7 @@
         var attr={category:'data-alert-category',entry:'data-entry-id',loan:'data-loan-id',savings:'data-savings-id',investment:'data-investment-id'}[a.entityType];
         var element=attr&&Array.prototype.find.call(document.querySelectorAll('#content ['+attr+']'),function(el){return el.getAttribute(attr)===a.entityId;});
         if(element){element.setAttribute('tabindex','-1');element.focus({preventScroll:true});element.scrollIntoView({block:'center',behavior:'smooth'});}
-        else if(a.entityType!=='budget')showToast('O registo pode ter sido alterado. Estás na área correspondente.');
+        else if(a.entityType!=='budget'&&a.entityType!=='report')showToast('O registo pode ter sido alterado. Estás na área correspondente.');
         return true;
       });
     }).catch(function(){showToast('Não foi possível abrir o detalhe. Tenta novamente.');return false;});
