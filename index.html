@@ -1933,7 +1933,8 @@
 <div class="overlay" id="alertCenterOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <h2>Alertas</h2>
+    <h2>Centro de notificações</h2>
+    <div class="segmented" id="alertCenterTabs" role="group" aria-label="Alertas ou atividade familiar"><button type="button" data-tab="alerts" class="active" aria-pressed="true">Alertas</button><button type="button" data-tab="activity" aria-pressed="false">Atividade</button></div>
     <div class="segmented" id="alertCenterFilters" role="group" aria-label="Filtrar alertas"><button type="button" data-filter="active" class="active" aria-pressed="true">Ativos</button><button type="button" data-filter="all" aria-pressed="false">Todos</button></div>
     <div id="alertCenterBody"></div>
     <div class="sheet-actions"><button type="button" class="btn primary" id="closeAlertCenter">Fechar</button></div>
@@ -1959,6 +1960,11 @@
       <label for="fMyName">O meu nome</label>
       <input type="text" id="fMyName" placeholder="Ex.: o teu nome" maxlength="30">
       <div class="hint">Fica guardado só neste telemóvel — vai ser usado para marcar quem pagou cada conta numa próxima atualização.</div>
+    </div>
+
+    <div class="field">
+      <label><input type="checkbox" id="fActivityPushPref" checked> Atividade de outros membros</label>
+      <div class="hint">Quando um membro da família cria uma despesa ou receita num Space partilhado contigo, fica registado em Alertas → Atividade. Esta opção só controla as notificações push desse aviso — a app ainda não as envia (a funcionalidade de notificações push está preparada, mas não construída); o histórico em Atividade fica sempre disponível, esteja esta opção ligada ou não.</div>
     </div>
 
     <div class="field">
@@ -2259,6 +2265,7 @@
     myEmail: null,
     familyMembers: [],
     familyMembersLoading: true,
+    activityLoading: false,   // Atividade Familiar — ver claude/atividade-familiar.md
     // ---------- Sistema de Convites de Família (2026-09-09) ----------
     familyInvites: [],           // convites ativos desta família — só carregado/visível para o dono
     familyInvitesLoading: false,
@@ -2419,6 +2426,119 @@
     certificados:'landmark', cripto:'coins', fundo:'trending', outro:'tag'
   };
   function investmentTypeIconOf(inv){ return INVESTMENT_TYPE_ICONS[inv.type] || 'tag'; }
+
+  // ---------- Simulador de Salário Líquido — tabela de retenção na fonte ----------
+  // ATUALIZAÇÃO ANUAL: estas tabelas mudam todos os anos (normalmente em
+  // janeiro, por Despacho do Governo — por vezes com correções a meio do
+  // ano). Para atualizar, substitui os valores de `brackets` e
+  // `dependentDeduction` de cada situação abaixo pelos da tabela oficial em
+  // vigor (Portal das Finanças → IRS → Tabelas de retenção na fonte, ou o
+  // Despacho publicado em Diário da República) — é o ÚNICO sítio do código
+  // que precisa de mudar. Mantém a mesma estrutura:
+  //   - `brackets`: ordenados por `upTo` crescente (o último com
+  //     `upTo:null` = "sem limite, taxa mais alta").
+  //   - cada bracket é `{upTo, rate, abater}` (abatimento fixo — o caso
+  //     normal) ou `{upTo, rate, smoothing:{factor, threshold}}` (zona de
+  //     transição estreita logo acima de um escalão, para suavizar a
+  //     passagem — o abatimento é calculado, não fixo:
+  //     abater = rate * smoothing.factor * (smoothing.threshold - R)).
+  //   - `dependentDeduction`: valor fixo subtraído por cada dependente a
+  //     cargo, além do abatimento do escalão.
+  //
+  // Valores atuais (2026, Continente): recolhidos de fontes fiscais
+  // secundárias que resumem o Despacho n.º 233-A/2026, de 6 de janeiro —
+  // NÃO confirmados linha-a-linha contra o ficheiro oficial do Portal das
+  // Finanças (esse ficheiro está atrás de um portal interativo, sem
+  // download direto). A tabela `nao_casado` foi cruzada com sucesso contra
+  // um exemplo prático independente (ECO, 6/jan/2026: "solteiro sem
+  // filhos, 1.000 € brutos → retenção ≈ 36 €", que bate certo com a
+  // fórmula de suavização do 2.º escalão) — dá confiança nos escalões,
+  // mas não é uma confirmação oficial completa. Confere sempre com o teu
+  // recibo de vencimento antes de tomares decisões com base nisto — o
+  // simulador mostra este aviso também na própria interface.
+  var IRS_WITHHOLDING_TABLE = {
+    year: 2026,
+    region: 'continente', // só Continente coberto por agora — Açores/Madeira têm tabelas próprias
+    sourceNote: 'Despacho n.º 233-A/2026, de 6 de janeiro (retenção na fonte sobre rendimentos do trabalho dependente, Continente). Valores não confirmados linha-a-linha contra a fonte oficial — confirma sempre com o teu recibo de vencimento.',
+    situations: {
+      nao_casado: {
+        label: 'Não casado / Casado ou união de facto — dois titulares',
+        brackets: [
+          {upTo:920.00, rate:0},
+          {upTo:1042.00, rate:0.125, smoothing:{factor:2.6, threshold:1273.85}},
+          {upTo:1108.00, rate:0.157, smoothing:{factor:1.35, threshold:1554.83}},
+          {upTo:1154.00, rate:0.157, abater:94.71},
+          {upTo:1212.00, rate:0.212, abater:158.18},
+          {upTo:1819.00, rate:0.241, abater:193.33},
+          {upTo:2119.00, rate:0.311, abater:320.66},
+          {upTo:2499.00, rate:0.349, abater:401.19},
+          {upTo:3305.00, rate:0.3836, abater:487.66},
+          {upTo:5547.00, rate:0.3969, abater:531.62},
+          {upTo:20221.00, rate:0.4495, abater:823.40},
+          {upTo:null, rate:0.4717, abater:1272.31}
+        ],
+        dependentDeduction: 34.29
+      },
+      casado_um_titular: {
+        label: 'Casado ou união de facto — único titular',
+        brackets: [
+          {upTo:991.00, rate:0},
+          {upTo:1042.00, rate:0.125, smoothing:{factor:2.6, threshold:1372.15}},
+          {upTo:1108.00, rate:0.125, smoothing:{factor:1.35, threshold:1677.85}},
+          {upTo:1119.00, rate:0.125, abater:96.17},
+          {upTo:1432.00, rate:0.1272, abater:98.64},
+          {upTo:1962.00, rate:0.157, abater:141.32},
+          {upTo:2240.00, rate:0.1938, abater:213.53},
+          {upTo:2773.00, rate:0.2277, abater:289.47},
+          {upTo:3389.00, rate:0.257, abater:370.72},
+          {upTo:5965.00, rate:0.2881, abater:476.12},
+          {upTo:20265.00, rate:0.3843, abater:1049.96},
+          {upTo:null, rate:0.4717, abater:2821.13}
+        ],
+        dependentDeduction: 42.86
+      }
+    }
+  };
+  var SALARY_SITUATION_OPTIONS = [
+    {key:'nao_casado', label:'Não casado / Casado (dois titulares)'},
+    {key:'casado_um_titular', label:'Casado / União de facto (único titular)'}
+  ];
+  var SOCIAL_SECURITY_RATE = 0.11; // regime geral, trabalhador por conta de outrem
+
+  // Escalão aplicável a uma remuneração — o primeiro cujo upTo (crescente)
+  // ainda cobre R; o último bracket tem upTo:null e serve de rede de
+  // segurança para qualquer valor acima do maior escalão definido.
+  function irsBracketFor(table, R){
+    for (var i=0; i<table.brackets.length; i++){
+      var b = table.brackets[i];
+      if (b.upTo == null || R <= b.upTo) return b;
+    }
+    return table.brackets[table.brackets.length-1];
+  }
+
+  function irsWithholdingFor(grossMonthly, situacao, numDependentes){
+    var table = IRS_WITHHOLDING_TABLE.situations[situacao] || IRS_WITHHOLDING_TABLE.situations.nao_casado;
+    var R = Math.max(0, Number(grossMonthly)||0);
+    var bracket = irsBracketFor(table, R);
+    var abater = bracket.smoothing
+      ? bracket.rate * bracket.smoothing.factor * (bracket.smoothing.threshold - R)
+      : (bracket.abater || 0);
+    var dependentesAbater = Math.max(0, Math.round(Number(numDependentes)||0)) * table.dependentDeduction;
+    var irs = Math.max(0, R * bracket.rate - abater - dependentesAbater);
+    return {bracket:bracket, irs:Math.round(irs*100)/100};
+  }
+
+  // Motor puro do simulador de salário líquido: nunca lê state, nunca
+  // escreve Firestore — só calcula. IRS + Segurança Social (11%, regime
+  // geral) sobre o vencimento base mensal; não inclui subsídio de
+  // alimentação, horas extra nem duodécimos (fora de âmbito, ver aviso na UI).
+  function calculateNetSalary(grossMonthly, situacao, numDependentes){
+    var R = Math.max(0, Number(grossMonthly)||0);
+    var ss = Math.round(R * SOCIAL_SECURITY_RATE * 100) / 100;
+    var w = irsWithholdingFor(R, situacao, numDependentes);
+    var net = Math.round((R - ss - w.irs) * 100) / 100;
+    return {gross:R, socialSecurity:ss, irs:w.irs, bracket:w.bracket, net:net};
+  }
 
   // ---------- Espaços Financeiros — constantes ----------
   // Tipos preparados no modelo de dados (inclui 'anual'), mas o assistente de
@@ -4011,7 +4131,18 @@
       startMonth: data.type === 'pontual' ? null : state.monthKey,
       endMonth: data.type === 'pontual' ? null : (data.endMonth || null),
       archived:false, createdAt:new Date().toISOString(),
-      spaceId: state.activeSpaceId
+      spaceId: state.activeSpaceId,
+      // Atividade Familiar (ver claude/atividade-familiar.md): marca esta
+      // criação como uma ação EXPLÍCITA do próprio utilizador, através do
+      // formulário — é o que a Cloud Function onPaymentCreated usa para
+      // decidir se gera um item de atividade ("Fulano criou uma despesa").
+      // Só este ramo (criação nova, nunca edição) grava estes dois campos —
+      // ensureLoanPayment/createSourceMovement/migrações não os gravam, e
+      // por isso nunca geram atividade. createdByUid nunca pode ser
+      // falsificado: as Firestore Rules exigem que corresponda sempre ao
+      // uid autenticado de quem está a criar.
+      createdByUid: state.myUid,
+      origin: 'user_form'
     };
     return db.collection('payments').add(payload).then(function(ref){
       return loadMonth(state.monthKey).then(function(){
@@ -5261,6 +5392,20 @@
     return uids.indexOf(state.myUid) !== -1;
   }
   function activeSpaceMonthly(){ var s = activeSpace(); return !s || s.type !== 'temporario'; }
+
+  // ---------- Atividade Familiar: nome a mostrar do autor de um item ----------
+  // Nunca escrito no próprio documento de atividade (ver claude/atividade-
+  // familiar.md) — resolvido aqui, a partir de state.familyMembers já
+  // carregado, sempre que a UI precisa de mostrar "Fulano criou uma
+  // despesa". Devolve null (nunca um placeholder tipo "Membro") quando não
+  // há nome definido ou o uid já não corresponde a nenhum membro atual
+  // (ex.: removido da família) — a UI usa nesse caso a frase totalmente
+  // genérica "Um membro da família…", nunca um nome a meio inventado.
+  function familyMemberDisplayName(uid){
+    var m = (state.familyMembers || []).find(function(x){ return x.id === uid || x.uid === uid; });
+    var name = m && m.name && String(m.name).trim();
+    return name || null;
+  }
 
   var ACTIVE_SPACE_KEY = 'contasActiveSpaceId';
   function loadActiveSpaceIdFromStorage(){
@@ -7371,6 +7516,23 @@
 
   var loanSimInputs = {amount:'', ratePct:'', durationValue:'', durationUnit:'years', startDate:todayStr(), error:null, lastResult:null};
 
+  // 'new' = simulador de crédito novo (já existia); 'refi' = simulador de
+  // refinanciamento/renegociação de um crédito já existente (novo). Nunca
+  // persistido em state — mesma filosofia de loanSimInputs abaixo.
+  var loanSimMode = 'new';
+
+  // Inputs do simulador de refinanciamento — só comparação, nunca aplica
+  // nada a sério (confirmado explicitamente pelo utilizador). Nunca chama
+  // applyLoanRenegotiation nem qualquer escrita no Firestore.
+  var loanRefiSimInputs = {loanId:'', newRatePct:'', newRemainingYears:'', error:null, lastResult:null};
+
+  function syncLoanRefiSimInputsFromDom(){
+    var elRate = document.getElementById('simRefiRate');
+    var elYears = document.getElementById('simRefiYears');
+    if (elRate) loanRefiSimInputs.newRatePct = elRate.value;
+    if (elYears) loanRefiSimInputs.newRemainingYears = elYears.value;
+  }
+
   function syncLoanSimInputsFromDom(){
     var elAmount = document.getElementById('simLoanAmount');
     var elRate = document.getElementById('simLoanRate');
@@ -7486,10 +7648,183 @@
     document.getElementById('fLoanRate').value = loanSimInputs.ratePct;
   }
 
+  // ---------- Simulador de refinanciamento (comparação, nunca aplica) ----------
+  function loanSimModeToggleHtml(){
+    return '<div class="segmented" style="margin:0 0 14px;">' +
+        '<button type="button" data-action="sim-loan-mode" data-mode="new"' + (loanSimMode==='new'?' class="active"':'') + '>Novo crédito</button>' +
+        '<button type="button" data-action="sim-loan-mode" data-mode="refi"' + (loanSimMode==='refi'?' class="active"':'') + '>Refinanciamento</button>' +
+      '</div>';
+  }
+
+  function loanRefiOptionsHtml(selectedId){
+    var opts = '<option value="">Escolhe um crédito…</option>';
+    (state.loans || []).filter(function(l){ return !l.archived; }).forEach(function(l){
+      opts += '<option value="' + escapeHtml(l.id) + '"' + (l.id === selectedId ? ' selected' : '') + '>' + escapeHtml(l.name || 'Crédito') + '</option>';
+    });
+    return opts;
+  }
+
+  // Situação atual de um crédito, calculada exatamente como o resto da app
+  // já faz (currentBalance/state.loanPayments/loanEndMonth) — a mesma
+  // baseline que "Atualizar valor" usaria se o utilizador gravasse uma
+  // renegociação a sério. Nunca lê/escreve Firestore.
+  function loanRefiCurrentSituation(loan){
+    var payment = state.loanPayments[loan.id];
+    if (!payment) return {loan:loan, payment:null, balance:currentBalance(loan)};
+    var balance = currentBalance(loan);
+    var todayMonth = monthKeyOf(new Date());
+    var end = loanEndMonth(loan, payment);
+    var remaining = Math.max(0, monthsBetweenKeys(todayMonth, end) + 1);
+    var monthlyPayment = Number(payment.amount) || 0;
+    var interest = loanInterestForSchedule(balance, monthlyPayment, monthlyRate(loan.rate), remaining);
+    return {
+      loan:loan, payment:payment, balance:balance, todayMonth:todayMonth,
+      rate:loan.rate, monthlyPayment:monthlyPayment, end:end, remaining:remaining,
+      interest:interest, totalRemaining:monthlyPayment*remaining
+    };
+  }
+
+  function loanRefiTrajectoryStatsHtml(title, t){
+    return '<div>' +
+      '<h4 class="sim-subhead">' + escapeHtml(title) + '</h4>' +
+      '<div class="loan-stat-grid">' +
+        statTileHtml('Prestação mensal', formatCurrency(t.monthlyPayment)) +
+        statTileHtml('Meses restantes', String(Math.round(t.remaining))) +
+        statTileHtml('Fim previsto', monthLabelOf(t.end)) +
+        statTileHtml('Juros restantes (est.)', formatCurrency(t.interest)) +
+        statTileHtml('Total a pagar (est.)', formatCurrency(t.totalRemaining)) +
+      '</div>' +
+    '</div>';
+  }
+
+  function loanRefiResultHtml(r){
+    var deltaPayment = r.hypothetical.monthlyPayment - r.current.monthlyPayment;
+    var deltaInterest = r.hypothetical.interest - r.current.interest;
+    var deltaMonths = r.hypothetical.remaining - r.current.remaining;
+    // Empilhado (nunca lado a lado): cada bloco já é um loan-stat-grid de
+    // 2 colunas — lado a lado ficaria a 4 colunas, ilegível em ecrãs
+    // estreitos (375-430px, a largura de referência desta app).
+    return loanRefiTrajectoryStatsHtml('Situação atual', r.current) +
+      loanRefiTrajectoryStatsHtml('Cenário simulado', r.hypothetical) +
+      '<div class="loan-stat-grid" style="margin-top:10px;">' +
+        statTileHtml('Δ Prestação mensal', (deltaPayment>=0?'+':'') + formatCurrency(deltaPayment)) +
+        statTileHtml('Δ Juros restantes', (deltaInterest>=0?'+':'') + formatCurrency(deltaInterest)) +
+        statTileHtml('Δ Meses restantes', (deltaMonths>=0?'+':'') + String(Math.round(deltaMonths))) +
+      '</div>' +
+      '<div class="sim-disclaimer">Simulação indicativa com base na tua prestação atual e no sistema de prestações constantes (francês). Não considera comissões de renegociação, imposto de selo ou outros custos que o banco possa cobrar, nem alterações futuras à taxa de juro. Esta simulação não altera nem grava nada — para aplicares uma renegociação a sério, usa "Atualizar valor" no crédito.</div>';
+  }
+
+  function loanRefiSimulatorViewHtml(){
+    var s = loanRefiSimInputs;
+    var loan = s.loanId ? (state.loans || []).find(function(l){ return l.id === s.loanId; }) : null;
+    var situation = loan ? loanRefiCurrentSituation(loan) : null;
+    var html = '<div class="cat-card">' +
+      '<h3>Simulador de refinanciamento</h3>' +
+      '<div class="hint">Este simulador compara cenários — não altera nem grava nada no teu crédito. Para aplicares uma renegociação a sério, usa "Atualizar valor" no crédito.</div>' +
+      '<div class="field"><label for="simRefiLoan">Crédito</label><select id="simRefiLoan" data-action="sim-refi-loan-select">' + loanRefiOptionsHtml(s.loanId) + '</select></div>';
+    if (loan && situation && !situation.payment){
+      html += '<div class="field-error" style="display:block;">Este crédito não está ligado a uma prestação no Orçamento — não é possível simular.</div>' + '</div>';
+      return html;
+    }
+    if (loan && situation){
+      html += '<div class="sim-layout">' +
+          '<div class="sim-inputs">' +
+            '<div class="field"><label for="simRefiRate">Nova taxa de juro anual (%)</label><input type="number" id="simRefiRate" min="0" step="0.01" placeholder="Deixa em branco se não mudou" value="' + escapeHtml(s.newRatePct) + '"></div>' +
+            '<div class="field"><label for="simRefiYears">Novo prazo restante (anos)</label><input type="number" id="simRefiYears" min="1" step="1" placeholder="Deixa em branco se não mudou" value="' + escapeHtml(s.newRemainingYears) + '"></div>' +
+            '<div class="field-error" id="simRefiError" style="display:' + (s.error ? 'block' : 'none') + ';">' + (s.error ? escapeHtml(s.error) : '') + '</div>' +
+            '<button type="button" class="btn primary" data-action="sim-refi-calc" style="width:100%;">Simular</button>' +
+          '</div>' +
+          '<div class="sim-results" id="simRefiResults">' + (s.lastResult ? loanRefiResultHtml(s.lastResult) : '<div class="empty-inline">Preenche a taxa e/ou o prazo novos e toca em "Simular" para veres a comparação.</div>') + '</div>' +
+        '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // Réplica só-leitura da resolução usada por applyLoanRenegotiation (ver
+  // essa função para a versão que escreve a sério): mesmas fórmulas, mesma
+  // convenção "em branco = não mudou", mas NUNCA toca no Firestore, nunca
+  // chama applyLoanRenegotiation/openSnapshotSheet. Confirmado por decisão
+  // explícita do utilizador — este simulador é só comparação.
+  function runLoanRefiSimulation(){
+    syncLoanRefiSimInputsFromDom();
+    var s = loanRefiSimInputs;
+    s.error = null; s.lastResult = null;
+    var loan = s.loanId ? (state.loans || []).find(function(l){ return l.id === s.loanId; }) : null;
+    if (!loan){
+      s.error = 'Escolhe um crédito para simulares.';
+      render();
+      return;
+    }
+    var payment = state.loanPayments[loan.id];
+    if (!payment){
+      s.error = 'Este crédito não está ligado a uma prestação no Orçamento — não é possível simular.';
+      render();
+      return;
+    }
+    var balance = currentBalance(loan);
+    if (balance <= 0.005){
+      s.error = 'Este crédito já está praticamente liquidado — não há o que simular.';
+      render();
+      return;
+    }
+    var rateRaw = (s.newRatePct || '').toString().trim();
+    var yearsRaw = (s.newRemainingYears || '').toString().trim();
+    if (!rateRaw && !yearsRaw){
+      s.error = 'Preenche a nova taxa e/ou o novo prazo para simulares uma renegociação.';
+      render();
+      return;
+    }
+    var newRatePct = null;
+    if (rateRaw){
+      newRatePct = parseFloat(rateRaw);
+      if (isNaN(newRatePct) || newRatePct < 0){
+        s.error = 'Introduz uma taxa de juro válida (0 ou superior), ou deixa em branco.';
+        render();
+        return;
+      }
+    }
+    var newRemainingMonths = null;
+    if (yearsRaw){
+      var years = parseFloat(yearsRaw);
+      if (isNaN(years) || years < 1){
+        s.error = 'Introduz um novo prazo válido (pelo menos 1 ano), ou deixa em branco.';
+        render();
+        return;
+      }
+      newRemainingMonths = Math.round(years*12);
+    }
+
+    var current = loanRefiCurrentSituation(loan);
+
+    var todayMonth = monthKeyOf(new Date());
+    var effectiveRate = newRatePct != null ? newRatePct : loan.rate;
+    var previousEnd = loanEndMonth(loan, payment);
+    var end = newRemainingMonths ? monthKeyAdd(todayMonth, newRemainingMonths - 1) : previousEnd;
+    var remaining = Math.max(0, monthsBetweenKeys(todayMonth, end) + 1);
+    if (remaining <= 0){
+      s.error = 'O novo prazo introduzido já terminou — introduz um prazo maior.';
+      render();
+      return;
+    }
+    var newPayment = Math.round(installmentFor(balance, monthlyRate(effectiveRate), remaining) * 100) / 100;
+    var newInterest = loanInterestForSchedule(balance, newPayment, monthlyRate(effectiveRate), remaining);
+
+    s.lastResult = {
+      loan: loan,
+      current: current,
+      hypothetical: {
+        rate: effectiveRate, monthlyPayment: newPayment, end: end, remaining: remaining,
+        interest: newInterest, totalRemaining: newPayment*remaining
+      }
+    };
+    render();
+  }
+
   function renderLoanView(content){
     var toggle = subviewToggleHtml('loan', 'Os meus créditos', state.loanSubview);
     if (state.loanSubview === 'simulator'){
-      content.innerHTML = toggle + loanSimulatorViewHtml();
+      content.innerHTML = toggle + loanSimModeToggleHtml() + (loanSimMode === 'refi' ? loanRefiSimulatorViewHtml() : loanSimulatorViewHtml());
       return;
     }
     if (state.loansLoading){
@@ -8228,6 +8563,84 @@
     content.innerHTML = html;
   }
 
+  // ---------- Simulador de Salário Líquido ----------
+  // Vista independente, sem Firestore — puramente local (ver
+  // IRS_WITHHOLDING_TABLE/calculateNetSalary acima). Nunca persistido em
+  // state, mesmo padrão de loanRefiSimInputs.
+  var salarySimInputs = {grossMonthly:'', situacao:'nao_casado', numDependentes:'0', lastResult:null, error:null};
+
+  function syncSalarySimInputsFromDom(){
+    var elGross = document.getElementById('simSalaryGross');
+    var elSituacao = document.getElementById('simSalarySituacao');
+    var elDependentes = document.getElementById('simSalaryDependentes');
+    if (elGross) salarySimInputs.grossMonthly = elGross.value;
+    if (elSituacao) salarySimInputs.situacao = elSituacao.value;
+    if (elDependentes) salarySimInputs.numDependentes = elDependentes.value;
+  }
+
+  function salarySituacaoOptionsHtml(selected){
+    return SALARY_SITUATION_OPTIONS.map(function(o){
+      return '<option value="' + o.key + '"' + (o.key === selected ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>';
+    }).join('');
+  }
+
+  function salarySimResultHtml(r){
+    var pct = r.gross > 0 ? ((r.irs + r.socialSecurity) / r.gross * 100) : 0;
+    return '<div class="loan-stat-grid">' +
+        statTileHtml('Retenção de IRS', formatCurrency(r.irs)) +
+        statTileHtml('Segurança Social (11%)', formatCurrency(r.socialSecurity)) +
+        statTileHtml('Salário líquido estimado', formatCurrency(r.net)) +
+        statTileHtml('Taxa marginal aplicada', fmtPercent(r.bracket.rate * 100)) +
+      '</div>' +
+      '<p class="hint" style="margin-top:10px;">No total, ' + fmtPercent(pct) + ' do bruto fica retido entre IRS e Segurança Social.</p>';
+  }
+
+  function renderSalarySimulatorView(content){
+    var s = salarySimInputs;
+    var table = IRS_WITHHOLDING_TABLE;
+    var html = '<div class="cat-card">' +
+      '<h3>Simulador de salário líquido</h3>' +
+      '<div class="hint">Valores não confirmados oficialmente linha-a-linha — confere sempre com o teu recibo de vencimento. Cobre só o vencimento base mensal (Continente); não inclui subsídio de alimentação, horas extra, duodécimos de férias/Natal, nem regimes especiais (independente, pensionista, deficiência). Tabela em vigor: ' + table.year + ', ' + escapeHtml(table.sourceNote) + '</div>' +
+      '<div class="sim-layout">' +
+        '<div class="sim-inputs">' +
+          '<div class="field"><label for="simSalaryGross">Rendimento bruto mensal (€)</label><input type="number" id="simSalaryGross" min="0" step="0.01" placeholder="Ex.: 1500" value="' + escapeHtml(s.grossMonthly) + '"></div>' +
+          '<div class="field"><label for="simSalarySituacao">Situação familiar</label><select id="simSalarySituacao" data-action="sim-salary-situacao-select">' + salarySituacaoOptionsHtml(s.situacao) + '</select></div>' +
+          '<div class="field"><label for="simSalaryDependentes">Número de dependentes a cargo</label><input type="number" id="simSalaryDependentes" min="0" step="1" value="' + escapeHtml(s.numDependentes) + '"></div>' +
+          '<div class="field-error" id="simSalaryError" style="display:' + (s.error ? 'block' : 'none') + ';">' + (s.error ? escapeHtml(s.error) : '') + '</div>' +
+          '<button type="button" class="btn primary" data-action="sim-salary-calc" style="width:100%;">Calcular</button>' +
+        '</div>' +
+        '<div class="sim-results" id="simSalaryResults">' + (s.lastResult ? salarySimResultHtml(s.lastResult) : '<div class="empty-inline">Preenche os dados e toca em "Calcular" para veres a retenção de IRS, o desconto de Segurança Social e o líquido estimado.</div>') + '</div>' +
+      '</div>' +
+      '<div class="sim-disclaimer">Simulação indicativa, baseada nas tabelas de retenção na fonte do Continente em vigor em ' + table.year + '. Não considera subsídios, horas extra, duodécimos, nem alterações futuras às tabelas — estas mudam todos os anos (normalmente em janeiro).</div>' +
+    '</div>';
+    content.innerHTML = html;
+  }
+
+  function runSalarySimulation(){
+    syncSalarySimInputsFromDom();
+    var s = salarySimInputs;
+    s.error = null; s.lastResult = null;
+    var gross = parseFloat(s.grossMonthly);
+    if (isNaN(gross) || gross < 0){
+      s.error = 'Introduz um rendimento bruto mensal válido (0 ou superior).';
+      render();
+      return;
+    }
+    var dependentes = parseFloat(s.numDependentes);
+    if (s.numDependentes !== '' && (isNaN(dependentes) || dependentes < 0)){
+      s.error = 'Introduz um número de dependentes válido (0 ou superior).';
+      render();
+      return;
+    }
+    if (!IRS_WITHHOLDING_TABLE.situations[s.situacao]){
+      s.error = 'Escolhe uma situação familiar válida.';
+      render();
+      return;
+    }
+    s.lastResult = calculateNetSalary(gross, s.situacao, isNaN(dependentes) ? 0 : dependentes);
+    render();
+  }
+
   // ---------- Recorrências (gestão dedicada) ----------
   function recurrenceStatusOf(p){
     var nowKey = monthKeyOf(new Date());
@@ -8511,9 +8924,10 @@
   var VIEW_LABELS = {
     home:'Início', month:'Orçamento', movimentos:'Movimentos', patrimonio:'Património',
     year:'Visão anual', loan:'Créditos', investment:'Investimentos', poupancas:'Poupanças',
-    recorrencias:'Recorrências', familia:'Família', relatorio:'Relatório Mensal'
+    recorrencias:'Recorrências', familia:'Família', relatorio:'Relatório Mensal',
+    salario:'Simulador de Salário'
   };
-  var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia','relatorio'];
+  var MORE_VIEWS = ['year','loan','investment','poupancas','recorrencias','familia','relatorio','salario'];
 
   function render(){
     updateAlertCenter();
@@ -8531,6 +8945,7 @@
     var isRecorrencias = state.view === 'recorrencias';
     var isFamilia = state.view === 'familia';
     var isRelatorio = state.view === 'relatorio';
+    var isSalario = state.view === 'salario';
 
     document.getElementById('periodLabel').textContent = isYear ? String(state.year) : monthLabelOf(state.monthKey);
     var headerSubtitle = document.getElementById('headerSubtitle');
@@ -8591,7 +9006,7 @@
       return;
     }
 
-    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia || isRelatorio ||
+    fab.hidden = isYear || isPatrimony || isRecorrencias || isFamilia || isRelatorio || isSalario ||
       (isLoan && state.loanSubview === 'simulator') || (isInvestment && state.investmentSubview === 'simulator');
 
     if (isHome){
@@ -8614,6 +9029,8 @@
       renderFamiliaView(content);
     } else if (isRelatorio){
       renderRelatorioView(content);
+    } else if (isSalario){
+      renderSalarySimulatorView(content);
     } else {
       renderMonthView(content);
     }
@@ -9985,6 +10402,18 @@
     if (db) upsertMyFamilyMember();
   });
 
+  // Atividade Familiar (ver claude/atividade-familiar.md): preferência local
+  // de push, "ligada" por omissão (ponto 20 do pedido) — hoje sem nenhum
+  // efeito prático, porque o sistema de push desta app ainda não existe
+  // (push-client.js e ficheiros associados são só referenciados, nunca
+  // implementados). Guardada já para quando o push for construído; o
+  // histórico em Alertas → Atividade nunca depende desta opção.
+  var fActivityPushPref = document.getElementById('fActivityPushPref');
+  try { fActivityPushPref.checked = localStorage.getItem('contasActivityPushPref') !== '0'; } catch(e){}
+  fActivityPushPref.addEventListener('change', function(){
+    try { localStorage.setItem('contasActivityPushPref', fActivityPushPref.checked ? '1' : '0'); } catch(e){}
+  });
+
   // ---------- Ecrã de boas-vindas (primeiro login após criar conta) ----------
   var WELCOME_TIPS = [
     {icon:'plusCircle', title:'Regista os teus pagamentos', note:'Usa o botão + para criares despesas e receitas. Marca-as como "Recorrente" e não precisas de as repetir todos os meses.'},
@@ -10151,7 +10580,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v64'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v67'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -11370,6 +11799,13 @@
       runLoanSimulation();
     } else if (action === 'sim-loan-save'){
       saveLoanSimAsLoan();
+    } else if (action === 'sim-loan-mode'){
+      loanSimMode = actionEl.getAttribute('data-mode');
+      render();
+    } else if (action === 'sim-refi-calc'){
+      runLoanRefiSimulation();
+    } else if (action === 'sim-salary-calc'){
+      runSalarySimulation();
     } else if (action === 'sim-invest-calc'){
       runInvestmentSimulation();
     } else if (action === 'sim-invest-scenarios-toggle'){
@@ -11519,16 +11955,34 @@
     }
   });
 
-  // Seletor "saltar para o mês" do Relatório Mensal — único <select> dentro
-  // de #content, por isso um listener de 'change' delegado à parte do
-  // listener de 'click' acima (que não recebe eventos 'change').
+  // Seletores <select> dentro de #content (ex.: saltar para o mês do
+  // Relatório Mensal, escolher o crédito no simulador de refinanciamento) —
+  // um listener de 'change' delegado à parte do listener de 'click' acima
+  // (que não recebe eventos 'change').
   document.getElementById('content').addEventListener('change', function(ev){
-    var sel = ev.target.closest('select[data-action="relatorio-goto-month"]');
-    if (!sel) return;
-    var wantedMonth = sel.value;
-    if (wantedMonth && wantedMonth !== state.reportMonthKey){
-      state.reportMonthKey = wantedMonth;
-      if (db) loadReportData(state.reportMonthKey, state.activeSpaceId); else render();
+    var monthSel = ev.target.closest('select[data-action="relatorio-goto-month"]');
+    if (monthSel){
+      var wantedMonth = monthSel.value;
+      if (wantedMonth && wantedMonth !== state.reportMonthKey){
+        state.reportMonthKey = wantedMonth;
+        if (db) loadReportData(state.reportMonthKey, state.activeSpaceId); else render();
+      }
+      return;
+    }
+    var loanSel = ev.target.closest('select[data-action="sim-refi-loan-select"]');
+    if (loanSel){
+      loanRefiSimInputs.loanId = loanSel.value;
+      loanRefiSimInputs.error = null;
+      loanRefiSimInputs.lastResult = null;
+      render();
+      return;
+    }
+    var salarySel = ev.target.closest('select[data-action="sim-salary-situacao-select"]');
+    if (salarySel){
+      salarySimInputs.situacao = salarySel.value;
+      salarySimInputs.error = null;
+      salarySimInputs.lastResult = null;
+      render();
     }
   });
 
@@ -11827,6 +12281,7 @@
     {nav:'investment', icon:'trending', label:'Investimentos'},
     {nav:'poupancas', icon:'piggy', label:'Poupanças por objetivo'},
     {nav:'relatorio', icon:'report', label:'Relatórios'},
+    {nav:'salario', icon:'banknote', label:'Simulador de Salário'},
     {nav:'recorrencias', icon:'refresh', label:'Recorrências'},
     {nav:'familia', icon:'users', label:'Família'},
     {nav:'ajuda', icon:'help', label:'Ajuda e Feedback'},
@@ -12304,11 +12759,130 @@
     return alertCenterStore;
   }
 
+  // ---------- Atividade Familiar (ver claude/atividade-familiar.md) ----------
+  // Segundo tipo de item no sino, distinto dos Alertas financeiros: "outro
+  // membro da família criou uma despesa/receita". Carregado por PULL (nunca
+  // onSnapshot), no mesmo timing que o resto do arranque/abertura do Centro —
+  // consistente com o resto da app (loadMonth/loadYear/loadPayments/etc.).
+  var activityCenterStore = null, alertCenterTab = 'alerts';
+  function initializeActivityCenter(uid,repository){
+    if(activityCenterStore)activityCenterStore.dispose();
+    activityCenterStore = window.MABActivityStore ? window.MABActivityStore.create({uid:uid,repo:repository||null,storage:localStorage,onChange:function(){updateAlertCenter();}}) : null;
+    return activityCenterStore;
+  }
+
+  // Mesma lógica de "Spaces a que tenho acesso" já usada por alertFacts()
+  // (spaces não arquivados de que sou membro, mais sempre o Espaço por
+  // omissão da família) — reaproveitada aqui isoladamente, sem depender do
+  // resto do cálculo de alertFacts (que também envolve monthKey/orçamento,
+  // irrelevante para a Atividade).
+  function accessibleSpaceIdsForActivity(){
+    var ids = (state.spaces || []).filter(function(s){ return !s.archived && amIMemberOfSpace(s); }).map(function(s){ return s.id; });
+    if (state.familyId && ids.indexOf(state.familyId) === -1) ids.push(state.familyId);
+    return ids;
+  }
+
+  // Carrega os últimos itens de Atividade Familiar visíveis para este
+  // utilizador. Nunca uma query sem filtro de Space (repetiria o erro
+  // documentado em firestore.rules: um único documento sem permissão chumba
+  // a query INTEIRA) — sempre where('spaceId','in',chunk), paginado a 10
+  // Spaces de cada vez (limite do operador "in" do Firestore). O autor
+  // nunca é notificado da própria ação — filtrado aqui, depois da query
+  // voltar (as Rules, por si só, não têm como saber "quem sou eu" além de
+  // exigir sessão iniciada e acesso ao Space).
+  function loadFamilyActivity(){
+    if (!db || !db.activityQuery || !state.myUid) return Promise.resolve([]);
+    var ids = accessibleSpaceIdsForActivity();
+    if (!ids.length) return Promise.resolve([]);
+    var chunks = [];
+    for (var i=0;i<ids.length;i+=10) chunks.push(ids.slice(i,i+10));
+    var uid = state.myUid;
+    state.activityLoading = true;
+    return Promise.all(chunks.map(function(chunk){
+      return db.activityQuery().where('spaceId','in',chunk).orderBy('createdAt','desc').limit(50).get()
+        .then(function(snap){ return snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); })
+        .catch(function(err){ console.warn('MAB360: falha ao carregar atividade familiar.', err); return []; });
+    })).then(function(results){
+      if (uid !== state.myUid) return []; // sessão mudou entretanto — descarta
+      var all = [];
+      results.forEach(function(list){ all = all.concat(list); });
+      all = all.filter(function(a){ return a.actorUid !== state.myUid; });
+      all.sort(function(a,b){ return String(b.createdAt).localeCompare(String(a.createdAt)); });
+      all = all.slice(0,50);
+      state.activityLoading = false;
+      if (activityCenterStore) activityCenterStore.update(all);
+      updateAlertCenter();
+      return all;
+    }).catch(function(){
+      state.activityLoading = false;
+      return [];
+    });
+  }
+
+  // Nome da categoria a mostrar — reutiliza categoryOf() (a mesma função já
+  // usada por todo o resto da app para resolver o nome/cor de uma
+  // categoria), passando-lhe um "entry" mínimo construído a partir do item
+  // de atividade. Nunca duplica a lógica de categorias.
+  function activityCategoryLabel(a){
+    var def = categoryOf({kind:a.kind, category:a.categoryKey});
+    return def ? def.label : (a.categoryKey || 'Outros');
+  }
+
+  function activityDayLabel(iso){
+    var d = new Date(iso); d.setHours(0,0,0,0);
+    var today = new Date(); today.setHours(0,0,0,0);
+    var diff = Math.round((today - d) / 86400000);
+    if (diff === 0) return 'Hoje';
+    if (diff === 1) return 'Ontem';
+    return d.toLocaleDateString('pt-PT', {day:'2-digit', month:'long', year: d.getFullYear()!==today.getFullYear() ? 'numeric' : undefined});
+  }
+
+  function activityItemHtml(a){
+    var name = familyMemberDisplayName(a.actorUid);
+    var who = name ? escapeHtml(name) : 'Um membro da família';
+    var verb = a.kind === 'despesa' ? 'adicionou uma despesa' : 'adicionou uma receita';
+    var catLabel = activityCategoryLabel(a);
+    var time = a.createdAt ? new Date(a.createdAt).toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'}) : '';
+    var initial = name ? name.trim().charAt(0).toUpperCase() : '?';
+    var unreadSuffix = a.readAt ? '' : ' · Novo';
+    var id = escapeHtml(a.id);
+    return '<article class="alerts-item info"><div class="alerts-item-head">' + '<span class="icon-badge sm">' + escapeHtml(initial) + '</span>' +
+      '<div><strong>' + who + '</strong><div class="hint">' + escapeHtml(verb) + ' · ' + escapeHtml(catLabel) + unreadSuffix + '</div></div></div>' +
+      '<p>' + euro(a.amount) + ' · ' + escapeHtml(time) + '</p>' +
+      '<div class="alerts-item-actions"><button type="button" class="btn ghost" data-activity-action="open" data-activity-id="' + id + '">Abrir movimento</button></div>' +
+      '</article>';
+  }
+
+  function renderActivityCenterBody(){
+    var model = activityCenterStore ? activityCenterStore.model() : {items:[], badge:0, error:'', pending:0};
+    var html = '';
+    if (!window.MABActivityStore) html += '<div class="hint">Não foi possível preparar a Atividade Familiar. Atualiza a app para tentar novamente.</div>';
+    else if (state.activityLoading) html += '<div class="hint">A carregar a atividade da família…</div>';
+    else if (!model.items.length) html += '<div class="empty"><h3>Sem atividade recente.</h3><p>Quando outro membro da família criar uma despesa ou receita num Space partilhado contigo, aparece aqui.</p></div>';
+    else {
+      var lastLabel = null;
+      model.items.forEach(function(a){
+        var label = activityDayLabel(a.createdAt);
+        if (label !== lastLabel){ html += '<div class="menu-sheet-section-label">' + escapeHtml(label) + '</div>'; lastLabel = label; }
+        html += activityItemHtml(a);
+      });
+    }
+    if (model.error) html += '<p class="hint" role="status">' + escapeHtml(model.error) + '</p>';
+    else if (model.pending) html += '<p class="hint" role="status">Ações guardadas neste dispositivo; a aguardar sincronização.</p>';
+    document.getElementById('alertCenterBody').innerHTML = html;
+  }
+
   function updateAlertCenter(){
     if(!alertCenterStore)return;
     alertCenterStore.update(alertFacts());
     var model=alertCenterStore.model();
-    ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var button=document.getElementById(id);if(!button)return;button.setAttribute('aria-label',model.badge ? model.badge+' alertas não lidos':'Alertas');var badge=button.querySelector('.alerts-badge');badge.hidden=!model.badge;badge.textContent=model.badge>9?'9+':String(model.badge);});
+    // Badge combinado (ponto 10 do pedido de Atividade Familiar): a bolha do
+    // sino soma alertas não lidos + atividade não lida — o Centro, mais
+    // abaixo (renderAlertCenter), continua a mostrar os dois números em
+    // separado, por separador.
+    var activityBadge = activityCenterStore ? (activityCenterStore.model().badge||0) : 0;
+    var totalBadge = (model.badge||0) + activityBadge;
+    ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var button=document.getElementById(id);if(!button)return;button.setAttribute('aria-label',totalBadge ? totalBadge+' notificações não lidas':'Alertas');var badge=button.querySelector('.alerts-badge');badge.hidden=!totalBadge;badge.textContent=totalBadge>9?'9+':String(totalBadge);});
     if(document.getElementById('alertCenterOverlay').classList.contains('open'))renderAlertCenter();
     if(alertWakeTimer)clearTimeout(alertWakeTimer);
     var now=Date.now(),next=new Date();next.setHours(24,0,1,0);var wake=next.getTime();
@@ -12336,7 +12910,20 @@
   }
 
   function renderAlertCenter(){
-    var model=alertCenterStore?alertCenterStore.model():{active:[],all:[],badge:0};
+    // Separação clara Alertas/Atividade (ponto 9 do pedido de Atividade
+    // Familiar): dois tipos de item nunca misturados na mesma lista — um
+    // segmented control próprio decide qual dos dois é mostrado.
+    var alertsModel=alertCenterStore?alertCenterStore.model():{active:[],all:[],badge:0};
+    var activityModel=activityCenterStore?activityCenterStore.model():{items:[],badge:0};
+    var tabAlerts=document.querySelector('#alertCenterTabs [data-tab="alerts"]');
+    var tabActivity=document.querySelector('#alertCenterTabs [data-tab="activity"]');
+    if(tabAlerts)tabAlerts.textContent='Alertas'+(alertsModel.badge?' ('+alertsModel.badge+')':'');
+    if(tabActivity)tabActivity.textContent='Atividade'+(activityModel.badge?' ('+activityModel.badge+')':'');
+    Array.prototype.forEach.call(document.querySelectorAll('#alertCenterTabs button'),function(b){b.classList.toggle('active',b.dataset.tab===alertCenterTab);b.setAttribute('aria-pressed',String(b.dataset.tab===alertCenterTab));});
+    var filtersEl=document.getElementById('alertCenterFilters');
+    if(filtersEl)filtersEl.hidden=alertCenterTab!=='alerts';
+    if(alertCenterTab==='activity'){ renderActivityCenterBody(); return; }
+    var model=alertsModel;
     var list=alertCenterFilter==='all'?model.all:model.active;
     var scope=activeSpace();
     var html='<p class="hint">Orçamento e movimentos: '+escapeHtml(scope?scope.name:'Space atual')+' · '+escapeHtml(activeSpaceMonthly()?monthLabelOf(state.monthKey):'período completo')+'. Os restantes módulos usam os dados familiares carregados.</p>';
@@ -12352,7 +12939,8 @@
   }
 
   function openAlertCenter(){
-    alertCenterFilter='active';updateAlertCenter();renderAlertCenter();document.getElementById('alertCenterOverlay').classList.add('open');
+    alertCenterFilter='active';alertCenterTab='alerts';updateAlertCenter();renderAlertCenter();document.getElementById('alertCenterOverlay').classList.add('open');
+    loadFamilyActivity();
   }
   function closeAlertCenter(){document.getElementById('alertCenterOverlay').classList.remove('open');}
 
@@ -12381,13 +12969,46 @@
     }).catch(function(){showToast('Não foi possível abrir o detalhe. Tenta novamente.');return false;});
   }
 
+  // Atividade Familiar — variante mais curta de navigateAlert(): não avalia
+  // nenhuma "regra de alerta", só muda de Space se preciso e tenta focar o
+  // movimento correspondente. "Este movimento já não está disponível." é um
+  // texto específico (ponto 18 do pedido), distinto do genérico dos
+  // alertas, porque aqui sabemos exatamente que tipo de entidade se procura
+  // (sempre um "entry", nunca outra coisa).
+  function navigateActivity(activityId){
+    if(!activityCenterStore)return Promise.resolve(false);
+    var a=activityCenterStore.model().items.find(function(x){return x.id===activityId;});
+    if(!a)return Promise.resolve(false);
+    var uid=state.myUid,family=state.familyId;
+    activityCenterStore.act(activityId,'read');closeAlertCenter();
+    var targetSpace=a.spaceId||state.familyId;
+    var change=targetSpace!==state.activeSpaceId?setActiveSpace(targetSpace):Promise.resolve();
+    return Promise.resolve(change).then(function(){
+      if(uid!==state.myUid||family!==state.familyId)return false;
+      if(a.monthKey&&/^\d{4}-\d{2}$/.test(a.monthKey))state.monthKey=a.monthKey;
+      state.view='movimentos';state.searchQuery='';state.movFilter='all';document.getElementById('searchInput').value='';
+      return Promise.resolve(loadForView(state.view)).then(function(){
+        if(uid!==state.myUid||family!==state.familyId)return false;
+        var id=entryDocId(a.monthKey,a.paymentId);
+        var element=Array.prototype.find.call(document.querySelectorAll('#content [data-entry-id]'),function(el){return el.getAttribute('data-entry-id')===id;});
+        if(element){element.setAttribute('tabindex','-1');element.focus({preventScroll:true});element.scrollIntoView({block:'center',behavior:'smooth'});}
+        else showToast('Este movimento já não está disponível.');
+        return true;
+      });
+    }).catch(function(){showToast('Não foi possível abrir o movimento. Tenta novamente.');return false;});
+  }
+
   document.getElementById('openAlertCenter').innerHTML=icon('bell')+'<span class="alerts-badge" hidden></span>';
   document.getElementById('openAlertCenterDesktop').innerHTML=icon('bell')+'<span>Alertas</span><span class="alerts-badge" hidden></span>';
   ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){document.getElementById(id).addEventListener('click',openAlertCenter);});
   document.getElementById('closeAlertCenter').addEventListener('click',closeAlertCenter);
   document.getElementById('alertCenterOverlay').addEventListener('click',function(ev){if(ev.target===this)closeAlertCenter();});
   document.getElementById('alertCenterFilters').addEventListener('click',function(ev){var b=ev.target.closest('button[data-filter]');if(b){alertCenterFilter=b.dataset.filter;renderAlertCenter();}});
-  document.getElementById('alertCenterBody').addEventListener('click',function(ev){var b=ev.target.closest('[data-alert-action]');if(!b||!alertCenterStore)return;if(b.dataset.alertAction==='open')navigateAlert(b.dataset.alertKey);else{alertCenterStore.act(b.dataset.alertKey,b.dataset.alertAction,Number(b.dataset.alertDays));render();}});
+  document.getElementById('alertCenterTabs').addEventListener('click',function(ev){var b=ev.target.closest('button[data-tab]');if(b){alertCenterTab=b.dataset.tab;renderAlertCenter();}});
+  document.getElementById('alertCenterBody').addEventListener('click',function(ev){
+    var ab=ev.target.closest('[data-activity-action]');
+    if(ab){ if(ab.dataset.activityAction==='open')navigateActivity(ab.dataset.activityId); return; }
+    var b=ev.target.closest('[data-alert-action]');if(!b||!alertCenterStore)return;if(b.dataset.alertAction==='open')navigateAlert(b.dataset.alertKey);else{alertCenterStore.act(b.dataset.alertKey,b.dataset.alertAction,Number(b.dataset.alertDays));render();}});
   window.addEventListener('online',function(){if(alertCenterStore)alertCenterStore.retry();});
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&alertCenterStore){alertCenterStore.retry();render();}});
 
@@ -12432,6 +13053,7 @@
     showLogin: function(){
       state.alertsBootReady=false;
       if(alertCenterStore){alertCenterStore.dispose();alertCenterStore=null;}
+      if(activityCenterStore){activityCenterStore.dispose();activityCenterStore=null;}
       if(alertWakeTimer)clearTimeout(alertWakeTimer);
       closeAlertCenter();
       ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var b=document.getElementById(id);b.setAttribute('aria-label','Alertas');b.querySelector('.alerts-badge').hidden=true;});
@@ -12449,6 +13071,7 @@
       state.alertGlobalFamily = null;
       state.alertScopeLoaded = null;
       initializeAlertCenter(state.myUid,state.familyId,profile && profile.alertRepository);
+      initializeActivityCenter(state.myUid,profile && profile.activityRepository);
       state.isAdmin = !!(profile && profile.isAdmin); // custom claim — ver Admin -> Feedback
       // Placeholder seguro imediato (o Espaço por omissão tem sempre este id) —
       // loadSpaces() confirma/substitui pelo Espaço realmente ativo (guardado
@@ -12456,6 +13079,10 @@
       // activeSpaceId válido entretanto.
       state.activeSpaceId = defaultSpaceId();
       loadSpaces().then(function(){
+        // Atividade Familiar: carregada em paralelo, sem bloquear o resto do
+        // arranque (é só para o badge do sino — nunca crítica para a app
+        // ficar utilizável) — ver claude/atividade-familiar.md.
+        loadFamilyActivity();
         return backfillMissingSpaceIds();
       }).then(function(){ return loadLoans(); }).then(function(){
         return migrateExistingLoansToPayments();
@@ -12475,6 +13102,7 @@
     noFamily: function(email){
       state.alertsBootReady=false;
       if(alertCenterStore){alertCenterStore.dispose();alertCenterStore=null;}
+      if(activityCenterStore){activityCenterStore.dispose();activityCenterStore=null;}
       if(alertWakeTimer)clearTimeout(alertWakeTimer);
       closeAlertCenter();
       ['openAlertCenter','openAlertCenterDesktop'].forEach(function(id){var b=document.getElementById(id);b.setAttribute('aria-label','Alertas');b.querySelector('.alerts-badge').hidden=true;});
@@ -12509,6 +13137,7 @@
 <script src="./xtb-import.js"></script>
 <script src="./alerts-engine.js"></script>
 <script src="./alerts-store.js"></script>
+<script src="./activity-store.js"></script>
 <script src="./push-config.js"></script>
 <script src="./push-policy.js"></script>
 <script type="module">
@@ -12616,6 +13245,51 @@
     };
   }
 
+  // ---------- Atividade Familiar: consulta a `activity` de UMA família ----------
+  // Irmã de wrapCollGroupQuery acima — mesma API encadeável (where/orderBy/
+  // limit/startAfter/get) — mas construída sobre collection() em vez de
+  // collectionGroup(), porque a Atividade nunca precisa de atravessar mais
+  // do que uma família (ao contrário do painel de administração). O
+  // adaptador de sempre (wrapColl, acima) não tem orderBy/limit — nunca é
+  // alterado aqui, para não arriscar nada do resto da app que já o usa.
+  function wrapCollQuery(firestore, path, c){
+    c = c || {wheres: [], orderBys: [], limitN: null, startAfterSnap: null};
+    return {
+      where(field, op, value){ return wrapCollQuery(firestore, path, Object.assign({}, c, {wheres: c.wheres.concat([{field:field,op:op,value:value}])})); },
+      orderBy(field, dir){ return wrapCollQuery(firestore, path, Object.assign({}, c, {orderBys: c.orderBys.concat([{field:field, dir:dir||'asc'}])})); },
+      limit(n){ return wrapCollQuery(firestore, path, Object.assign({}, c, {limitN:n})); },
+      startAfter(cursorItem){ return wrapCollQuery(firestore, path, Object.assign({}, c, {startAfterSnap: cursorItem && cursorItem._snap})); },
+      _buildQuery(){
+        var base = collection(firestore, path);
+        var parts = c.wheres.map(function(w){ return where(w.field, w.op, w.value); });
+        c.orderBys.forEach(function(o){ parts.push(orderBy(o.field, o.dir)); });
+        if (c.startAfterSnap) parts.push(startAfter(c.startAfterSnap));
+        if (c.limitN) parts.push(limit(c.limitN));
+        return parts.length ? query.apply(null, [base].concat(parts)) : base;
+      },
+      get(){
+        return getDocs(this._buildQuery()).then(function(snap){
+          var docs = [];
+          snap.forEach(function(d){ docs.push({id:d.id, exists:true, data:function(){ return d.data(); }, path:d.ref.path, _snap:d}); });
+          return {docs:docs, size:docs.length, empty:docs.length===0};
+        });
+      }
+    };
+  }
+
+  // Estado de leitura da Atividade Familiar — irmã de makeAlertRepository,
+  // mas mais simples (get/set só, sem subscribe: a Atividade é carregada
+  // por pull — loadFamilyActivity() em index.html — nunca por onSnapshot).
+  // Aponta a users/{uid}/activityStates, protegida pela regra homónima em
+  // firestore.rules (só o próprio uid lê/escreve).
+  function makeActivityRepository(firestore,uid){
+    var base=collection(firestore,'users',uid,'activityStates');
+    return {
+      get:function(key){return getDoc(doc(base,key)).then(function(s){return s.exists()?s.data():null;});},
+      set:function(key,value){return setDoc(doc(base,key),value);}
+    };
+  }
+
   function makeAlertRepository(firestore,uid){
     var base=collection(firestore,'users',uid,'alertStates');
     return {
@@ -12651,6 +13325,10 @@
       },
       // Só para o painel de administração — ver nota acima.
       collectionGroup: function(name){ return wrapCollGroupQuery(firestore, name); },
+      // Atividade Familiar (ver claude/atividade-familiar.md) — consulta só
+      // a atividade DESTA família (prefixo já embutido, tal como
+      // collection()), nunca entre famílias.
+      activityQuery: function(){ return wrapCollQuery(firestore, prefix + 'activity'); },
       docByPath: function(path){ return wrapDoc(doc(firestore, path)); }
     };
   }
@@ -12866,7 +13544,7 @@
                 return;
               }
               var isAdminClaim = !!(tokenResult && tokenResult.claims && tokenResult.claims.admin === true);
-              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email, isAdmin: isAdminClaim, alertRepository: makeAlertRepository(firestore,user.uid)});
+              window.__ContasApp.start(makeAdapter(firestore, familyId), familyId, {uid: user.uid, email: user.email, isAdmin: isAdminClaim, alertRepository: makeAlertRepository(firestore,user.uid), activityRepository: makeActivityRepository(firestore,user.uid)});
             }).catch(function(err){
               window.__ContasApp.fail(err);
             });
