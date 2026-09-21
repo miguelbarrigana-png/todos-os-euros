@@ -1,0 +1,121 @@
+
+MAB360
+Política de Privacidade
+Última atualização: 21 de setembro de 2026
+
+A MAB360 é uma aplicação de gestão financeira pessoal e familiar. Esta página explica, em linguagem simples, que dados a app recolhe, para quê, onde ficam guardados e que controlo tens sobre eles. Não existe nenhuma equipa de marketing ou de dados a ler isto por trás — é uma explicação direta do que o código realmente faz.
+
+Nesta página
+
+Quem somos
+Que dados recolhemos
+O que nunca recolhemos
+Como funciona a partilha em família
+Para que usamos os dados
+Base legal (RGPD)
+Onde os dados ficam guardados
+Partilha com terceiros
+Segurança
+Quanto tempo guardamos os dados
+Os teus direitos
+Menores de idade
+Alterações a esta política
+Contacto
+1.
+Quem somos
+A MAB360 (mab360.pt) é o responsável pelo tratamento dos dados pessoais recolhidos através da aplicação. Para qualquer questão sobre esta política ou sobre os teus dados, o contacto está na secção final desta página.
+
+2.
+Que dados recolhemos
+Só recolhemos o que é necessário para a app funcionar. Não existe nenhum SDK de publicidade ou de análise de comportamento de terceiros integrado na aplicação.
+
+Conta e autenticação
+O teu endereço de email, usado pelo Firebase Authentication (Google) para criares conta e entrares na app. Não pedimos nome completo, morada nem número de telefone para criar conta.
+
+Dados financeiros que introduzes
+Tudo o que registas na app — despesas, receitas, créditos, investimentos, poupanças, orçamentos e o teu património — fica guardado na base de dados (Cloud Firestore) associado à tua família e ao espaço financeiro onde o criaste. Estes dados existem exclusivamente para a app te mostrar os teus próprios números; nunca são analisados por nós para outro fim.
+
+Dados de família e convites
+Se partilhares uma família com outras pessoas, guardamos a lista de membros (email associado à conta de cada um, e o nome que cada pessoa escolher mostrar), o teu papel (dono/membro) e o estado dos convites que criares — nunca o conteúdo desses convites depois de usados ou expirados.
+
+Feedback e reportes de problemas (opcional)
+Se usares "Ajuda e Feedback" para reportar um bug ou dar uma sugestão, guardamos o texto que escreveste e a categoria escolhida. Só se ativares a opção "Incluir informação técnica" (ligada por defeito, podes desligar) enviamos também: o ecrã onde estavas, a versão da app, o teu navegador/sistema, idioma, tema claro/escuro, se estavas online, se a app estava instalada como PWA, e o tamanho do ecrã — informação técnica para ajudar a perceber o problema, nunca valores financeiros.
+
+Notificações push (se ativares)
+Se ligares as notificações da app, o teu dispositivo recebe um identificador (token) que usamos apenas para te enviar as notificações que pediste — nunca para publicidade.
+
+Preferências locais
+Algumas preferências (tema claro/escuro, se queres receber notificações de atividade da família) ficam guardadas apenas no teu dispositivo (localStorage), nunca nos nossos servidores.
+
+3.
+O que nunca recolhemos
+Mesmo na informação técnica de diagnóstico do feedback, nunca incluímos automaticamente: saldos, valores de despesas ou receitas, montantes investidos ou em dívida, nomes de despesas, créditos, investimentos ou poupanças, dados bancários, passwords, tokens de autenticação ou chaves de acesso.
+
+Se escreveres esse tipo de informação voluntariamente no texto de uma mensagem de feedback, é guardada tal como a escreveste — a app não a filtra, mas também nunca a acrescenta por conta própria.
+
+4.
+Como funciona a partilha em família
+Os teus dados financeiros só são visíveis a quem tu decidires. A entrada numa família exige um convite com um código temporário, com validade e número de usos limitado, gerado por quem já está na família — nunca um código permanente adivinhável. Cada espaço financeiro (por exemplo, uma conta partilhada com o parceiro, ou um espaço privado) só é visível às pessoas com acesso a esse espaço específico; um espaço marcado como privado nunca é visível a mais ninguém, nem sequer a outros membros da mesma família.
+
+5.
+Para que usamos os dados
+Para te autenticar e manter a tua conta segura.
+Para guardar e mostrar-te os teus próprios dados financeiros, em qualquer dispositivo onde entres.
+Para partilhar dados apenas com as pessoas e espaços que tu escolheres dentro da tua família.
+Para responder a reportes de problemas e sugestões que envies.
+Para te enviar notificações que tu próprio ativares (por exemplo, alertas de orçamento).
+Não usamos os teus dados para publicidade, não os vendemos, e não os partilhamos com corretoras de dados.
+
+6.
+Base legal (RGPD)
+Tratamento	Base legal
+Conta, dados financeiros, partilha familiar	Execução do contrato — é o serviço que pediste ao criar conta.
+Informação técnica de diagnóstico no feedback	Consentimento — a opção vem ligada por defeito, mas podes desligá-la a qualquer momento antes de enviar.
+Notificações push	Consentimento — só se ativares.
+Registos de segurança e prevenção de abuso	Interesse legítimo em manter a app e os dados de todos os utilizadores seguros.
+7.
+Onde os dados ficam guardados
+Os dados são guardados na infraestrutura do Firebase / Google Cloud, o fornecedor de backend usado pela app. A Google atua como subcontratante ao abrigo dos seus próprios termos e das suas cláusulas contratuais para o RGPD. Não copiamos nem replicamos os teus dados para nenhuma outra infraestrutura.
+
+8.
+Partilha com terceiros
+Não existe nenhum SDK de publicidade, de analytics de terceiros ou de redes sociais integrado na app. O único subcontratante envolvido no tratamento dos teus dados é a Google (Firebase), como infraestrutura técnica de autenticação, base de dados e funções de servidor — nunca como destinatário independente dos teus dados para fins próprios.
+
+9.
+Segurança
+O acesso aos dados é controlado ao nível da base de dados (não só na interface da app), através de regras de segurança do Firestore que verificam, em cada pedido, se a conta autenticada pertence à família e tem acesso ao espaço financeiro em causa. Em particular:
+
+A família a que uma conta pertence fica fixa após a criação da conta e não pode ser alterada por manipulação do pedido.
+Convites de família usam códigos temporários com validade e número de usos limitado — não o identificador permanente da conta.
+Espaços privados nunca são visíveis a contas sem acesso explícito, mesmo dentro da mesma família.
+10.
+Quanto tempo guardamos os dados
+Guardamos os teus dados enquanto a tua conta existir. Se pedires a eliminação da conta, apagamos os teus dados pessoais e financeiros associados, exceto quando formos legalmente obrigados a conservar algum registo por período mais longo (por exemplo, obrigações fiscais ou de segurança).
+
+11.
+Os teus direitos
+Ao abrigo do RGPD, tens o direito de:
+
+Aceder aos dados que temos sobre ti.
+Corrigir dados incorretos ou desatualizados.
+Pedir a eliminação da tua conta e dos teus dados.
+Pedir a portabilidade dos teus dados num formato estruturado.
+Opor-te a um tratamento específico.
+Apresentar reclamação à CNPD (cnpd.pt).
+Para exercer qualquer um destes direitos, contacta-nos através do email abaixo.
+
+12.
+Menores de idade
+A MAB360 não é dirigida a crianças e não recolhe intencionalmente dados de menores de 16 anos.
+
+13.
+Alterações a esta política
+Se esta política mudar de forma relevante, atualizamos a data no topo desta página. Recomendamos que a consultes periodicamente.
+
+14.
+Contacto
+Para questões sobre privacidade ou para exercer os teus direitos:
+
+info@mab360.pt
+
+MAB360 · mab360.pt
