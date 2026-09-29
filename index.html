@@ -3218,8 +3218,7 @@
     var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
     var sDSemSource = summaryOf(despesasSemSource);
     var plannedOutflow = plannedOutflowTotal(split.despesas, false, budgets);
-    var plannedOutflowSemSource = plannedOutflowTotal(split.despesas, true, budgets);
-    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedOutflowSemSource);
+    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedSavingsTotal(sR.total, split.despesas, budgets));
 
     var hasRealData = entries.some(function(e){ return !e.virtual; });
     var prevApplicable = computeApplicable(ctx.payments, prevMonthKey);
@@ -5772,6 +5771,15 @@
     return {receitas:receitasReais, despesas:despesasReais, poupanca:poupanca, rate:rate};
   }
 
+  // Mesma forma do objeto devolvido por calculateSavingsRate, mas a partir
+  // de um valor de poupança já calculado (ver plannedSavingsTotal) em vez de
+  // o derivar de receitas−despesas — usado pela "Poupança prevista", que
+  // deixou de ser uma simples subtração (ver nota em plannedSavingsTotal).
+  function savingsRateFromAmount(receitasReais, poupanca){
+    var rate = receitasReais > 0 ? (poupanca / receitasReais) * 100 : null;
+    return {receitas:receitasReais, despesas:receitasReais - poupanca, poupanca:poupanca, rate:rate};
+  }
+
   // Total das despesas REAIS (paid:true) do mês em categorias classificadas
   // como essenciais para o Espaço ativo — reaproveita isEssentialCategory,
   // já existente e usada pelo Fundo de Emergência, sem qualquer alteração
@@ -5911,13 +5919,13 @@
   // por categoria (ver plannedOutflowTotal, excludeSourceLinked=true) — só
   // afeta a taxa PREVISTA; a REALIZADA (abaixo, eligible.done) continua a
   // ser sempre o que já foi mesmo pago, nunca o orçamento.
-  function budgetSavingsRates(sR, sD, sDSemSource, plannedEligibleTotal){
+  function budgetSavingsRates(sR, sD, sDSemSource, plannedSavingsAmount){
     var eligible = sDSemSource || sD;
-    return {planned:calculateSavingsRate(sR.total, plannedEligibleTotal != null ? plannedEligibleTotal : eligible.total),
+    return {planned:savingsRateFromAmount(sR.total, plannedSavingsAmount),
       actual:calculateSavingsRate(sR.done, eligible.done)};
   }
-  function savingsRateCardHtml(sR, sD, sDSemSource, plannedEligibleTotal){
-    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedEligibleTotal), rate = rates.planned;
+  function savingsRateCardHtml(sR, sD, sDSemSource, plannedSavingsAmount){
+    var rates = budgetSavingsRates(sR, sD, sDSemSource, plannedSavingsAmount), rate = rates.planned;
     var value = rate.rate === null ? '—' : fmtPercent(rate.rate);
     var cls = rate.rate === null ? '' : (rate.rate >= 0 ? ' positive' : ' negative');
     var html = '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
@@ -5925,7 +5933,7 @@
       '<div class="trio-tile"><div class="trio-label">Taxa de poupança prevista</div><div class="trio-value mono'+cls+'">'+value+'</div></div></div>';
     if (rate.rate === null) html += '<div class="hint">Sem receitas previstas neste mês.</div>';
     html += '<div class="hint">Taxa realizada: '+(rates.actual.rate === null ? 'Sem receitas recebidas' : fmtPercent(rates.actual.rate))+'</div>';
-    html += '<div class="hint">A taxa exclui aportes de poupança, investimento e abatimentos extra ligados. O disponível planeado considera, por categoria, o maior entre o orçamento definido e o que já foi lançado.</div></div>';
+    html += '<div class="hint">A poupança prevista soma o que está planeado para Poupança e Investimentos com a margem (receitas − despesas) das restantes categorias. Por categoria, considera o maior entre o orçamento definido e o que já foi lançado.</div></div>';
     var essentialTotal = calculateEssentialSpending(state.entries.filter(function(e){return kindOf(e) === 'despesa';}));
     var pctEssential = sR.done > 0 ? essentialTotal/sR.done*100 : null;
     html += '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
@@ -6323,6 +6331,32 @@
     return total;
   }
 
+  // "Poupança prevista" — pedido do utilizador: deixou de fazer sentido ser
+  // sempre exatamente igual a "Disponível planeado" (Receitas − Despesas),
+  // já que as categorias Poupança/Investimentos já estavam incluídas nessas
+  // despesas — o resultado escondia por completo o que era mesmo poupança.
+  // Passa a ser: o total das categorias Poupança + Investimentos (o que está
+  // mesmo reservado para poupar/investir este mês) MAIS a margem
+  // (receitas − despesas) de todas as OUTRAS categorias normais — essa
+  // margem é também poupança "não alocada", só que sobrou de categorias de
+  // despesa normais em vez de ir para uma categoria de poupança dedicada.
+  // Reaproveita categoryBudgetBreakdown() — a mesma fonte de verdade de
+  // sempre — e o mesmo critério "maior entre orçamento e lançado" por
+  // categoria já usado em plannedOutflowTotal, só muda como os totais por
+  // categoria são agrupados no fim. `budgetsOverride`: mesma razão de ser
+  // que em plannedOutflowTotal — o Relatório Mensal precisa do orçamento do
+  // MÊS DO RELATÓRIO, não do mês corrente.
+  function plannedSavingsTotal(receitasTotal, entries, budgetsOverride){
+    var rows = categoryBudgetBreakdown(entries, budgetsOverride);
+    var poupancaInvestimentos = 0, outrasCategorias = 0;
+    rows.forEach(function(r){
+      var effectiveTotal = (r.budget != null) ? Math.max(r.budget, r.total) : r.total;
+      if (r.def.key === 'poupanca' || r.def.key === 'investimentos') poupancaInvestimentos += effectiveTotal;
+      else outrasCategorias += effectiveTotal;
+    });
+    return poupancaInvestimentos + (receitasTotal - outrasCategorias);
+  }
+
   function catTint(color){ return 'background:color-mix(in srgb, ' + color + ' 16%, transparent); color:' + color + ';'; }
 
   // Redesenho "Despesas por categoria" (ver claude/despesas-categoria-
@@ -6598,7 +6632,7 @@
     var activeSpTV = activeSpace();
     if (!activeSpTV || activeSpTV.type !== 'temporario'){
       var despesasSemSource = split.despesas.filter(function(e){ return !e.sourceType; });
-      html += savingsRateCardHtml(sR, sD, summaryOf(despesasSemSource), plannedOutflowTotal(split.despesas, true));
+      html += savingsRateCardHtml(sR, sD, summaryOf(despesasSemSource), plannedSavingsTotal(sR.total, split.despesas));
     }
 
     html += zeroBudgetBannerHtml(sR.total, plannedOutflow);
@@ -10580,7 +10614,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v67'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v68'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
