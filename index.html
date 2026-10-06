@@ -694,6 +694,47 @@
   .emergency-fund-card .hint{margin-top:8px;}
   .emergency-fund-card .hint:first-of-type{margin-top:10px;}
 
+  /* ---------- Cash Flow Projetado (Home) ---------- */
+  .cashflow-card{padding:16px 14px 14px;}
+  .cf-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:12px;}
+  .cf-balance-label{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint);}
+  .cf-balance{font-size:26px; font-weight:800; letter-spacing:-.02em; line-height:1.15;}
+  .cf-updated{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+  .cf-update-btn{flex:0 0 auto; padding:8px 12px; font-size:12.5px; background:var(--surface-2); color:var(--text);}
+  .cf-alert{margin-bottom:10px;}
+  .cf-chart-wrap{margin:4px -2px 0;}
+  .cf-chart{display:block; width:100%; height:auto; max-height:260px; touch-action:pan-y; user-select:none; -webkit-user-select:none;}
+  .cf-chart .cf-hit{cursor:crosshair;}
+  .cf-readout{min-height:1.5em; margin:2px 4px 0; font-size:12px; color:var(--text-muted);}
+  .cf-readout .negative, .cashflow-card .negative{color:var(--danger);}
+  .cashflow-card .trio-value.warning{color:var(--warning);}
+  .cf-legend{display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:11.5px; color:var(--text-muted); margin:8px 2px 0;}
+  .cf-key{display:inline-block; width:18px; height:0; border-top:2.4px solid var(--accent); margin-right:6px; vertical-align:middle;}
+  .cf-key.dashed{border-top:1.6px dashed var(--text-faint); margin-left:6px;}
+  .cf-tiles{margin-top:12px;}
+  .cf-tile .trio-label{white-space:normal; line-height:1.2; min-height:2.4em; display:flex; align-items:flex-end; justify-content:center;}
+  .cf-tile-note{font-size:11px; color:var(--text-faint); font-weight:600; margin-top:3px; min-height:1.2em;}
+  .cf-note{margin-top:8px;}
+  .cf-empty{display:flex; gap:12px; align-items:flex-start; color:var(--text-muted); font-size:13px; line-height:1.55;}
+  .cf-empty .icon{flex-shrink:0; width:20px; height:20px; color:var(--text-faint); margin-top:2px;}
+  .cf-cta{display:block; width:100%; margin-top:14px;}
+  .cf-d-row{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border);}
+  .cf-d-row.head, .cf-d-row.foot{font-weight:800;}
+  .cf-d-row.est{opacity:.85;}
+  .cf-d-title{font-size:13.5px; font-weight:800;}
+  .cf-d-sub{font-size:11.5px; color:var(--text-faint); font-weight:600;}
+  .cf-d-amt{font-size:14px; font-weight:800; white-space:nowrap;}
+  .cf-d-right{text-align:right;}
+  .cf-d-bal{font-size:12px; color:var(--text-muted); margin-top:4px;}
+  .cf-d-day{padding:10px 0; border-bottom:1px solid var(--border);}
+  .cf-d-item{display:flex; justify-content:space-between; gap:12px; font-size:13px; padding:3px 0;}
+  .cf-d-item.est{color:var(--text-muted);}
+  .cf-d-item .negative{color:var(--danger);} .cf-d-item .positive{color:var(--success);}
+  .cf-d-amt.negative{color:var(--danger);}
+  .cf-tag{font-size:10.5px; font-weight:800; background:var(--warning-soft); color:var(--warning); border-radius:6px; padding:1px 6px; margin-left:4px; white-space:nowrap;}
+  .cf-d-sect{font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin:16px 0 4px;}
+  #cashFlowDetailBody{max-height:62vh; overflow-y:auto; -webkit-overflow-scrolling:touch;}
+
   /* Taxa de Poupança Mensal — mesmo padrão de cor já usado em .saldo-value/
      .mini-card-value, só que aplicado ao valor de dentro de um trio-tile. */
   .savings-rate-card{margin-top:10px;}
@@ -1891,6 +1932,40 @@
   </div>
 </div>
 
+<!-- Cash Flow Projetado (ver claude/cash-flow-projetado.md): detalhe cronológico
+     da projeção e folha "Atualizar saldo". O saldo é só o ponto de partida da
+     projeção — nunca cria movimentos nem altera o Património. -->
+<div class="overlay" id="cashFlowDetailOverlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Detalhe do cash flow">
+    <div class="sheet-handle"></div>
+    <div id="cashFlowDetailBody"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="closeCashFlowDetail">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="cashFlowBalanceOverlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cashFlowBalanceTitle">
+    <div class="sheet-handle"></div>
+    <h2 id="cashFlowBalanceTitle">Quanto tens disponível hoje?</h2>
+    <div class="field">
+      <label for="fCashFlowBalance">Saldo disponível hoje (€)</label>
+      <input type="number" id="fCashFlowBalance" inputmode="decimal" step="0.01" placeholder="Ex.: 2350">
+    </div>
+    <div class="field">
+      <label for="fCashFlowMin">Saldo mínimo desejado (€) — opcional</label>
+      <input type="number" id="fCashFlowMin" inputmode="decimal" step="0.01" min="0" placeholder="Ex.: 500">
+    </div>
+    <p class="hint">É só o ponto de partida da projeção: não cria movimentos nem altera o Património ou o Orçamento. <span id="cashFlowBalanceScope"></span></p>
+    <div class="field-error" id="cashFlowBalanceError"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" id="cashFlowBalanceCancel">Cancelar</button>
+      <button type="button" class="btn primary" id="cashFlowBalanceSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="pushSettingsOverlay">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pushSettingsTitle">
     <div class="sheet-handle"></div><h2 id="pushSettingsTitle">Notificações</h2>
@@ -2266,6 +2341,7 @@
     familyMembers: [],
     familyMembersLoading: true,
     activityLoading: false,   // Atividade Familiar — ver claude/atividade-familiar.md
+    cashFlow: {spaceId:null, balance:null, loading:false, loaded:false, syncPending:false, remoteError:false}, // Cash Flow Projetado — saldo do Espaço ativo (ver claude/cash-flow-projetado.md)
     // ---------- Sistema de Convites de Família (2026-09-09) ----------
     familyInvites: [],           // convites ativos desta família — só carregado/visível para o dono
     familyInvitesLoading: false,
@@ -5563,7 +5639,8 @@
     return Promise.all([
       loadSettingsForSpace(state.activeSpaceId),
       isTemp ? loadTemporarySpaceEntries(state.activeSpaceId) : loadMonth(state.monthKey),
-      loadCategoryBudgets()
+      loadCategoryBudgets(),
+      loadCashFlowBalance()
     ]);
   }
 
@@ -5933,7 +6010,7 @@
       '<div class="trio-tile"><div class="trio-label">Taxa de poupança prevista</div><div class="trio-value mono'+cls+'">'+value+'</div></div></div>';
     if (rate.rate === null) html += '<div class="hint">Sem receitas previstas neste mês.</div>';
     html += '<div class="hint">Taxa realizada: '+(rates.actual.rate === null ? 'Sem receitas recebidas' : fmtPercent(rates.actual.rate))+'</div>';
-    html += '<div class="hint">A poupança prevista soma o que está planeado para Poupança e Investimentos com a margem (receitas − despesas) das restantes categorias. Por categoria, considera o maior entre o orçamento definido e o que já foi lançado.</div></div>';
+    html += '<div class="hint">A poupança prevista é a margem (receitas − despesas) das categorias normais, excluindo Poupança, Investimentos e Créditos. Por categoria, considera o maior entre o orçamento definido e o que já foi lançado.</div></div>';
     var essentialTotal = calculateEssentialSpending(state.entries.filter(function(e){return kindOf(e) === 'despesa';}));
     var pctEssential = sR.done > 0 ? essentialTotal/sR.done*100 : null;
     html += '<div class="cat-card savings-rate-card"><div class="trio-grid" style="grid-template-columns:repeat(2,1fr);">' +
@@ -6331,30 +6408,32 @@
     return total;
   }
 
-  // "Poupança prevista" — pedido do utilizador: deixou de fazer sentido ser
-  // sempre exatamente igual a "Disponível planeado" (Receitas − Despesas),
-  // já que as categorias Poupança/Investimentos já estavam incluídas nessas
-  // despesas — o resultado escondia por completo o que era mesmo poupança.
-  // Passa a ser: o total das categorias Poupança + Investimentos (o que está
-  // mesmo reservado para poupar/investir este mês) MAIS a margem
-  // (receitas − despesas) de todas as OUTRAS categorias normais — essa
-  // margem é também poupança "não alocada", só que sobrou de categorias de
-  // despesa normais em vez de ir para uma categoria de poupança dedicada.
-  // Reaproveita categoryBudgetBreakdown() — a mesma fonte de verdade de
-  // sempre — e o mesmo critério "maior entre orçamento e lançado" por
-  // categoria já usado em plannedOutflowTotal, só muda como os totais por
-  // categoria são agrupados no fim. `budgetsOverride`: mesma razão de ser
-  // que em plannedOutflowTotal — o Relatório Mensal precisa do orçamento do
-  // MÊS DO RELATÓRIO, não do mês corrente.
+  // "Poupança prevista" — v69: correção sobre a v68 (ver
+  // claude/poupanca-prevista-categorias.md). A v68 somava o total de
+  // Poupança+Investimentos à margem das outras categorias — mas isso
+  // contava esse dinheiro "a dobrar" (uma vez por já não ser subtraído,
+  // outra vez por ser somado a seguir), o que o próprio utilizador
+  // identificou como não fazendo sentido. A partir da v69, essas categorias
+  // deixam simplesmente de entrar na subtração — nunca são somadas de
+  // volta. "Poupança prevista" passa a ser só a margem (receitas − despesas)
+  // das categorias verdadeiramente normais, excluindo por completo Poupança,
+  // Investimentos e Créditos (o "excedente" usado em abatimentos extra —
+  // ver claude/abatimento-extra-efeito.md, que já usa este termo para o
+  // dinheiro usado para abater um crédito). Reaproveita
+  // categoryBudgetBreakdown() — a mesma fonte de verdade de sempre — e o
+  // mesmo critério "maior entre orçamento e lançado" por categoria já usado
+  // em plannedOutflowTotal. `budgetsOverride`: mesma razão de ser que em
+  // plannedOutflowTotal — o Relatório Mensal precisa do orçamento do MÊS DO
+  // RELATÓRIO, não do mês corrente.
   function plannedSavingsTotal(receitasTotal, entries, budgetsOverride){
     var rows = categoryBudgetBreakdown(entries, budgetsOverride);
-    var poupancaInvestimentos = 0, outrasCategorias = 0;
+    var outrasCategorias = 0;
     rows.forEach(function(r){
+      if (r.def.key === 'poupanca' || r.def.key === 'investimentos' || r.def.key === 'creditos') return;
       var effectiveTotal = (r.budget != null) ? Math.max(r.budget, r.total) : r.total;
-      if (r.def.key === 'poupanca' || r.def.key === 'investimentos') poupancaInvestimentos += effectiveTotal;
-      else outrasCategorias += effectiveTotal;
+      outrasCategorias += effectiveTotal;
     });
-    return poupancaInvestimentos + (receitasTotal - outrasCategorias);
+    return receitasTotal - outrasCategorias;
   }
 
   function catTint(color){ return 'background:color-mix(in srgb, ' + color + ' 16%, transparent); color:' + color + ';'; }
@@ -7185,6 +7264,9 @@
     // ---- 5. Precisa da tua atenção (máx. 1-2) ----
     html += homeAttentionHtml(homeAttentionAlerts(sD, disponivel, overdueList));
 
+    // ---- 5b. Cash flow do mês (liquidez; não usa nem altera o Orçamento) ----
+    html += cashFlowSectionHtml();
+
     // ---- 6. Visão financeira (1 cartão, linhas clicáveis) ----
     html += homeFinancialOverviewHtml(netw);
 
@@ -7193,6 +7275,597 @@
 
     content.innerHTML = html;
   }
+
+  // ---------- Cash Flow Projetado do mês ----------
+  // Ferramenta de LIQUIDEZ da Home — conceito diferente do Orçamento ("quanto
+  // posso gastar") e do Património: responde a "quanto dinheiro devo ter na
+  // conta em cada dia até ao fim do mês?". O saldo introduzido pelo
+  // utilizador é só o ponto de partida desta projeção: nunca cria um ativo,
+  // um movimento, nem altera orçamento/Património (ver claude/cash-flow-
+  // projetado.md).
+  //
+  // Esta função é PURA (sem state, sem Firestore, sem DOM): recebe tudo por
+  // argumento, devolve um objeto. A UI só renderiza o resultado. Todas as
+  // somas são feitas em CÊNTIMOS inteiros (nunca somar floats em euros).
+  //
+  // Fórmula (por dia d, de hoje até ao último dia do mês):
+  //   conhecido[d] = conhecido[d-1] + entradasDatadas[d] − saídasDatadas[d]
+  //   prudente[d]  = prudente[d-1]  + entradasDatadas[d] − saídasDatadas[d] − orçamentoEstimado[d]
+  // com conhecido[hoje-1] = prudente[hoje-1] = saldo introduzido.
+  //
+  // Regras (todas documentadas em claude/cash-flow-projetado.md):
+  //  - Movimentos já pagos/recebidos NUNCA entram (o saldo já os reflete).
+  //  - Pendente com data de hoje ou futura → entra no próprio dia.
+  //  - Despesa vencida e não paga → "saída pendente imediata": conta HOJE.
+  //  - Receita vencida e não recebida → NÃO conta por omissão (regra
+  //    conservadora); só entra hoje com includeOverdueIncome:true. É sempre
+  //    reportada em overdue.incomeTotal para a UI a poder mostrar.
+  //  - Orçamento restante por categoria = max(0, orçamento − já gasto (pago)
+  //    − despesas pendentes da categoria, datadas ou vencidas). Nunca duplica
+  //    movimentos já lançados e nunca é negativo. Categoria sem orçamento →
+  //    0 (usa só os movimentos lançados; nada inventado).
+  //  - O orçamento restante reparte-se linearmente pelos dias DEPOIS de hoje
+  //    (dias restantes = último dia − hoje); se hoje já é o último dia, cai
+  //    todo hoje. A repartição é exata ao cêntimo (a soma das parcelas é
+  //    sempre igual ao total).
+  var CASHFLOW_STALE_DAYS = 3;
+  function cashFlowCents(n){ return Math.round((Number(n) || 0) * 100); }
+  function cashFlowEuros(c){ return c / 100; }
+  function cashFlowPad2(n){ return String(n).padStart(2, '0'); }
+  // Data LOCAL (nunca toISOString/UTC — pode mudar o dia perto da meia-noite).
+  function cashFlowDateKey(d){
+    return d.getFullYear() + '-' + cashFlowPad2(d.getMonth() + 1) + '-' + cashFlowPad2(d.getDate());
+  }
+  function cashFlowLocalMidnight(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+  function buildMonthlyCashFlowProjection(input){
+    input = input || {};
+    var now = (input.now && typeof input.now.getTime === 'function' && isFinite(input.now.getTime())) ? input.now : new Date();
+    var entries = input.entries || [];
+    var balance = input.balance || null;
+    var staleDays = input.staleDays != null ? input.staleDays : CASHFLOW_STALE_DAYS;
+    var includeOverdueIncome = !!input.includeOverdueIncome;
+    var categoryKeyOf = typeof input.categoryKeyOf === 'function' ? input.categoryKeyOf : function(e){ return e.category || 'outros'; };
+
+    var y = now.getFullYear(), m = now.getMonth();
+    var monthKey = y + '-' + cashFlowPad2(m + 1);
+    var todayDay = now.getDate();
+    var lastDay = new Date(y, m + 1, 0).getDate();
+    var todayStart = cashFlowLocalMidnight(now);
+
+    var base = {
+      status: 'ok', monthKey: monthKey, todayKey: cashFlowDateKey(now), todayDay: todayDay, lastDay: lastDay,
+      daysRemaining: lastDay - todayDay, openingBalance: null, updatedAt: null, daysSinceUpdate: null, isStale: false,
+      minBalanceTarget: null, dailySeries: [], events: [],
+      knownEndBalance: null, prudentEndBalance: null,
+      minimumBalance: null, minimumDate: null, minimumDay: null,
+      knownMinimumBalance: null, knownMinimumDate: null,
+      firstNegativeDate: null, firstNegativeDay: null, knownFirstNegativeDate: null, belowTargetDate: null,
+      scheduledInflows: 0, scheduledOutflows: 0, unscheduledBudgetRemaining: 0,
+      overdue: {outflowTotal: 0, outflowCount: 0, incomeTotal: 0, incomeCount: 0, incomeIncluded: includeOverdueIncome},
+      budgetBreakdown: [], budgetsAvailable: false, paidSinceUpdate: {count: 0, net: 0}
+    };
+
+    var amountValid = balance && balance.amount != null && balance.amount !== '' && isFinite(Number(balance.amount));
+    if (!amountValid){ base.status = 'no-balance'; return base; }
+    var updated = balance.updatedAt ? new Date(balance.updatedAt) : null;
+    if (!updated || isNaN(updated.getTime())){ base.status = 'needs-update'; base.openingBalance = Number(balance.amount); return base; }
+    base.openingBalance = Number(balance.amount);
+    base.updatedAt = updated.toISOString();
+    var updatedMonthKey = updated.getFullYear() + '-' + cashFlowPad2(updated.getMonth() + 1);
+    var daysSince = Math.max(0, Math.round((todayStart - cashFlowLocalMidnight(updated)) / 86400000));
+    base.daysSinceUpdate = daysSince;
+    base.isStale = daysSince >= staleDays;
+    base.previousMonthKey = updatedMonthKey;
+    // Mudança de mês: nunca reutilizar em silêncio um saldo de outro mês.
+    if (updatedMonthKey !== monthKey){ base.status = 'needs-update'; return base; }
+    if (balance.minBalance != null && isFinite(Number(balance.minBalance)) && Number(balance.minBalance) > 0){
+      base.minBalanceTarget = Number(balance.minBalance);
+    }
+
+    var openingC = cashFlowCents(balance.amount);
+    var inflowC = {}, outflowC = {};
+    for (var d = todayDay; d <= lastDay; d++){ inflowC[d] = 0; outflowC[d] = 0; }
+    var events = [];
+    var perCat = {}; // key -> {paidC, committedC}
+    function cat(key){ return perCat[key] || (perCat[key] = {paidC: 0, committedC: 0}); }
+    var overdueOutC = 0, overdueOutN = 0, overdueInC = 0, overdueInN = 0;
+    var paidSinceC = 0, paidSinceN = 0;
+
+    entries.forEach(function(e){
+      if (!e || e.example || e.monthKey !== monthKey) return;
+      var isIncome = kindOf(e) === 'receita';
+      var c = cashFlowCents(effectiveAmount(e));
+      if (e.paid){
+        if (!isIncome) cat(categoryKeyOf(e)).paidC += c;
+        if (e.paidAt){
+          var pa = new Date(e.paidAt);
+          if (!isNaN(pa.getTime()) && pa.getTime() > updated.getTime()){ paidSinceN++; paidSinceC += isIncome ? c : -c; }
+        }
+        return; // já refletido no saldo introduzido — nunca entra na projeção
+      }
+      var due = Math.min(Math.max(Number(e.dueDay) || 1, 1), lastDay);
+      var overdue = due < todayDay;
+      var day = overdue ? todayDay : due;
+      if (isIncome){
+        if (overdue){
+          overdueInC += c; overdueInN++;
+          if (!includeOverdueIncome) return;
+        }
+        inflowC[day] += c;
+        events.push({day: day, originalDay: due, name: e.name || '', signed: cashFlowEuros(c), kind: 'receita', category: e.category || null, overdue: overdue, id: e.id || null});
+      } else {
+        cat(categoryKeyOf(e)).committedC += c; // reserva orçamento da categoria (datado ou vencido)
+        if (overdue){ overdueOutC += c; overdueOutN++; }
+        outflowC[day] += c;
+        events.push({day: day, originalDay: due, name: e.name || '', signed: -cashFlowEuros(c), kind: 'despesa', category: e.category || null, overdue: overdue, id: e.id || null});
+      }
+    });
+
+    // ---- Orçamento restante ainda não calendarizado (sem dupla contagem) ----
+    var budgets = input.categoryBudgets;
+    var budgetsAvailable = input.budgetsAvailable !== false && !!budgets && typeof budgets === 'object';
+    var breakdown = [], remainingTotalC = 0;
+    if (budgetsAvailable){
+      var keys = {};
+      Object.keys(budgets).forEach(function(k){ keys[k] = true; });
+      Object.keys(perCat).forEach(function(k){ keys[k] = true; });
+      Object.keys(keys).forEach(function(k){
+        var b = Number(budgets[k]);
+        if (!isFinite(b) || b <= 0) return; // categoria sem orçamento: só movimentos lançados
+        var bc = cashFlowCents(b), p = cat(k);
+        var rem = Math.max(0, bc - p.paidC - p.committedC);
+        breakdown.push({key: k, budget: b, paid: cashFlowEuros(p.paidC), committed: cashFlowEuros(p.committedC), remaining: cashFlowEuros(rem)});
+        remainingTotalC += rem;
+      });
+    }
+    base.budgetsAvailable = budgetsAvailable;
+    base.budgetBreakdown = breakdown;
+
+    // ---- Repartição linear (exata ao cêntimo) pelos dias depois de hoje ----
+    var shareC = {};
+    for (d = todayDay; d <= lastDay; d++) shareC[d] = 0;
+    var n = lastDay - todayDay;
+    if (remainingTotalC > 0){
+      if (n === 0) shareC[todayDay] = remainingTotalC;
+      else for (var k = 1; k <= n; k++){
+        shareC[todayDay + k] = Math.round(remainingTotalC * k / n) - Math.round(remainingTotalC * (k - 1) / n);
+      }
+    }
+
+    // ---- Série diária ----
+    var known = openingC, prudent = openingC, series = [];
+    var minP = null, minPDay = null, minK = null, minKDay = null;
+    var negP = null, negK = null, belowT = null;
+    var targetC = base.minBalanceTarget != null ? cashFlowCents(base.minBalanceTarget) : null;
+    var inTotal = 0, outTotal = 0;
+    for (d = todayDay; d <= lastDay; d++){
+      known += inflowC[d] - outflowC[d];
+      prudent += inflowC[d] - outflowC[d] - shareC[d];
+      inTotal += inflowC[d]; outTotal += outflowC[d];
+      var dk = y + '-' + cashFlowPad2(m + 1) + '-' + cashFlowPad2(d);
+      series.push({day: d, dateKey: dk, inflow: cashFlowEuros(inflowC[d]), outflow: cashFlowEuros(outflowC[d]),
+        budgetShare: cashFlowEuros(shareC[d]), known: cashFlowEuros(known), prudent: cashFlowEuros(prudent)});
+      if (minP === null || prudent < minP){ minP = prudent; minPDay = d; }
+      if (minK === null || known < minK){ minK = known; minKDay = d; }
+      if (negP === null && prudent < 0) negP = d;
+      if (negK === null && known < 0) negK = d;
+      if (belowT === null && targetC !== null && prudent < targetC && prudent >= 0) belowT = d;
+    }
+    function dateOf(day){ return day == null ? null : y + '-' + cashFlowPad2(m + 1) + '-' + cashFlowPad2(day); }
+    events.sort(function(a, b){ return (a.day - b.day) || (a.signed - b.signed) || String(a.name).localeCompare(String(b.name)); });
+
+    base.dailySeries = series;
+    base.events = events;
+    base.knownEndBalance = series[series.length - 1].known;
+    base.prudentEndBalance = series[series.length - 1].prudent;
+    base.minimumBalance = cashFlowEuros(minP); base.minimumDay = minPDay; base.minimumDate = dateOf(minPDay);
+    base.knownMinimumBalance = cashFlowEuros(minK); base.knownMinimumDate = dateOf(minKDay);
+    base.firstNegativeDay = negP; base.firstNegativeDate = dateOf(negP);
+    base.knownFirstNegativeDate = dateOf(negK);
+    base.belowTargetDate = dateOf(belowT);
+    base.scheduledInflows = cashFlowEuros(inTotal);
+    base.scheduledOutflows = cashFlowEuros(outTotal);
+    base.unscheduledBudgetRemaining = cashFlowEuros(remainingTotalC);
+    base.overdue = {outflowTotal: cashFlowEuros(overdueOutC), outflowCount: overdueOutN,
+      incomeTotal: cashFlowEuros(overdueInC), incomeCount: overdueInN, incomeIncluded: includeOverdueIncome};
+    base.paidSinceUpdate = {count: paidSinceN, net: cashFlowEuros(paidSinceC)};
+    return base;
+  }
+
+  // ---------- Cash Flow Projetado — saldo (persistência) ----------
+  // O saldo vive em `settings/cashflow_<spaceId>` (mesma coleção/ideia de
+  // `settings/categories_<spaceId>`: o ID embute o Espaço, por isso as Rules
+  // podem decidir quem lê/escreve pelo Espaço — Espaço partilhado → saldo
+  // partilhado pelos membros com acesso; privado → só o dono). NUNCA toca em
+  // payments/entries/savingsGoals/investments/loans: não cria ativo nem
+  // movimento. Cópia local (localStorage) por família+Espaço: dá offline e
+  // mantém o saldo mesmo que a escrita remota ainda não tenha sido aceite
+  // (ex.: Rules por publicar) — nesse caso a UI diz que só está neste
+  // dispositivo, nunca finge sincronização.
+  var CASHFLOW_LS_PREFIX = 'contasCashFlowBalance_v1_';
+  var cashFlowLoadSeq = 0;
+  var cashFlowLastProjection = null;
+  var cashFlowChartGeom = null;
+  function cashFlowSettingsDocId(spaceId){ return 'cashflow_' + spaceId; }
+  function cashFlowLocalKey(spaceId){ return CASHFLOW_LS_PREFIX + (state.familyId || '') + '_' + spaceId; }
+  function cashFlowReadLocal(spaceId){
+    try {
+      var raw = localStorage.getItem(cashFlowLocalKey(spaceId));
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (!obj || !obj.balance || !isFinite(Number(obj.balance.amount)) || !obj.balance.updatedAt) return null;
+      return obj;
+    } catch(e){ return null; }
+  }
+  function cashFlowWriteLocal(spaceId, obj){
+    try { localStorage.setItem(cashFlowLocalKey(spaceId), JSON.stringify(obj)); } catch(e){}
+  }
+  function cashFlowEmptyState(spaceId){
+    return {spaceId: spaceId, balance: null, loading: false, loaded: false, syncPending: false, remoteError: false};
+  }
+  function cashFlowBalanceFromDoc(data){
+    if (!data || !isFinite(Number(data.balance)) || !data.updatedAt) return null;
+    var mb = Number(data.minBalance);
+    return {amount: Number(data.balance), updatedAt: String(data.updatedAt), minBalance: (isFinite(mb) && mb > 0) ? mb : null, updatedByUid: data.updatedByUid || null};
+  }
+  function cashFlowApplicableSpace(){
+    var s = activeSpace();
+    return !s || s.type !== 'temporario'; // sem estrutura mensal → sem Cash Flow (ver nota no relatório)
+  }
+
+  function loadCashFlowBalance(){
+    var spaceId = state.activeSpaceId;
+    if (!spaceId || !cashFlowApplicableSpace()) return Promise.resolve();
+    var seq = ++cashFlowLoadSeq;
+    var local = cashFlowReadLocal(spaceId);
+    if (!state.cashFlow || state.cashFlow.spaceId !== spaceId){
+      state.cashFlow = cashFlowEmptyState(spaceId);
+      if (local){ state.cashFlow.balance = local.balance; state.cashFlow.syncPending = !!local.pending; }
+    }
+    state.cashFlow.loading = true;
+    function finish(){
+      if (seq !== cashFlowLoadSeq || state.activeSpaceId !== spaceId) return;
+      state.cashFlow.loading = false; state.cashFlow.loaded = true;
+      render();
+    }
+    if (!db){ finish(); return Promise.resolve(); }
+    return db.collection('settings').doc(cashFlowSettingsDocId(spaceId)).get().then(function(doc){
+      if (seq !== cashFlowLoadSeq || state.activeSpaceId !== spaceId) return;
+      var remote = doc.exists ? cashFlowBalanceFromDoc(doc.data()) : null;
+      var localObj = cashFlowReadLocal(spaceId);
+      var chosen = remote, pending = false;
+      // Uma gravação local ainda por sincronizar e mais recente vence o remoto.
+      if (localObj && localObj.pending && (!remote || String(localObj.balance.updatedAt) > String(remote.updatedAt))){
+        chosen = localObj.balance; pending = true;
+      }
+      state.cashFlow.balance = chosen;
+      state.cashFlow.syncPending = pending;
+      state.cashFlow.remoteError = false;
+      if (remote && !pending) cashFlowWriteLocal(spaceId, {balance: remote, pending: false});
+      if (pending) cashFlowPushRemote(spaceId, chosen);
+    }).catch(function(err){
+      if (seq !== cashFlowLoadSeq) return;
+      // Offline/sem permissão: continua com o último saldo guardado neste dispositivo.
+      console.error('loadCashFlowBalance failed', err);
+      state.cashFlow.remoteError = true;
+    }).then(finish);
+  }
+
+  function cashFlowPushRemote(spaceId, bal){
+    if (!db) return Promise.resolve(false);
+    var payload = {kind: 'cashFlowBalance', spaceId: spaceId, balance: bal.amount, updatedAt: bal.updatedAt, minBalance: bal.minBalance, updatedByUid: bal.updatedByUid || null};
+    return db.collection('settings').doc(cashFlowSettingsDocId(spaceId)).set(payload).then(function(){
+      cashFlowWriteLocal(spaceId, {balance: bal, pending: false});
+      var cf = state.cashFlow;
+      if (cf && cf.spaceId === spaceId && cf.balance && cf.balance.updatedAt === bal.updatedAt){ cf.syncPending = false; cf.remoteError = false; render(); }
+      return true;
+    }).catch(function(err){
+      console.error('cashFlow remote save failed', err);
+      var cf = state.cashFlow;
+      if (cf && cf.spaceId === spaceId && cf.balance && cf.balance.updatedAt === bal.updatedAt){ cf.remoteError = true; render(); }
+      return false;
+    });
+  }
+
+  // Gravação otimista: o saldo passa a valer já neste dispositivo (a projeção
+  // recalcula de imediato); a escrita remota corre a seguir e nunca bloqueia
+  // a UI (offline, o Firestore só confirma quando houver rede).
+  function saveCashFlowBalance(amount, minBalance){
+    var spaceId = state.activeSpaceId;
+    var mb = Number(minBalance);
+    var bal = {amount: Math.round(Number(amount) * 100) / 100, updatedAt: new Date().toISOString(),
+      minBalance: (isFinite(mb) && mb > 0) ? Math.round(mb * 100) / 100 : null, updatedByUid: state.myUid || null};
+    cashFlowWriteLocal(spaceId, {balance: bal, pending: true});
+    state.cashFlow = {spaceId: spaceId, balance: bal, loading: false, loaded: true, syncPending: true, remoteError: false};
+    render();
+    return cashFlowPushRemote(spaceId, bal);
+  }
+
+  // ---------- Cash Flow Projetado — apresentação ----------
+  function cashFlowDayLabel(dateKey){
+    var p = String(dateKey).split('-');
+    return parseInt(p[2], 10) + ' ' + MONTHS_ABBR_PT[parseInt(p[1], 10) - 1].toLowerCase();
+  }
+  function cashFlowDayLabelLong(dateKey){
+    var p = String(dateKey).split('-');
+    return parseInt(p[2], 10) + ' de ' + MONTHS_PT[parseInt(p[1], 10) - 1];
+  }
+  function cashFlowUpdatedLabel(iso, now){
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var time = d.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit'});
+    var diff = Math.round((cashFlowLocalMidnight(now) - cashFlowLocalMidnight(d)) / 86400000);
+    if (diff <= 0) return 'hoje às ' + time;
+    if (diff === 1) return 'ontem às ' + time;
+    return cashFlowDayLabel(cashFlowDateKey(d)) + ' às ' + time;
+  }
+  function cashFlowSigned(n){ return (n >= 0 ? '+' : '−') + euro(Math.abs(n)); }
+  function cashFlowProjectionNow(){
+    return buildMonthlyCashFlowProjection({
+      now: new Date(), entries: state.entries, categoryBudgets: state.categoryBudgets,
+      budgetsAvailable: !state.categoryBudgetsLoading && !state.categoryBudgetsError,
+      balance: state.cashFlow ? state.cashFlow.balance : null,
+      categoryKeyOf: function(e){ return categoryOf(e).key; }
+    });
+  }
+  function cashFlowScopeHint(){
+    var s = activeSpace();
+    if (s && s.visibility === 'privado') return 'Só tu vês este saldo (Espaço privado).';
+    return 'Partilhado com quem tem acesso a este Espaço' + (s && s.name ? ' (' + s.name + ')' : '') + '.';
+  }
+
+  function cashFlowNiceTicks(lo, hi){
+    var range = hi - lo; if (!(range > 0)) return [lo];
+    var raw = range / 3, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), norm = raw / mag;
+    var step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+    var ticks = [];
+    for (var v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100 + 0);
+    return ticks;
+  }
+
+  function cashFlowChartSvg(proj){
+    var W = 320, H = 158, pl = 36, pr = 12, pt = 16, pb = 22;
+    var s = proj.dailySeries, n = s.length;
+    var showKnown = proj.budgetsAvailable && proj.unscheduledBudgetRemaining > 0.004;
+    var vals = [];
+    s.forEach(function(p){ vals.push(p.prudent); if (showKnown) vals.push(p.known); });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var span = hi - lo; if (span < 1) span = Math.max(1, Math.abs(hi) * 0.1);
+    var vLo = lo - span * 0.14, vHi = hi + span * 0.14;
+    function x(i){ return n === 1 ? pl + (W - pl - pr) / 2 : pl + i * (W - pl - pr) / (n - 1); }
+    function y(v){ return pt + (vHi - v) / (vHi - vLo) * (H - pt - pb); }
+    cashFlowChartGeom = {W: W, pl: pl, pr: pr, n: n, vLo: vLo, vHi: vHi, H: H, pt: pt, pb: pb};
+
+    var out = '<svg class="cf-chart" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Saldo projetado dia a dia até ao fim do mês">';
+    // zona abaixo de zero
+    if (vLo < 0 && vHi > 0){
+      out += '<rect x="' + pl + '" y="' + y(0).toFixed(1) + '" width="' + (W - pl - pr) + '" height="' + (H - pb - y(0)).toFixed(1) + '" fill="var(--danger-soft)" opacity=".7"/>';
+    }
+    // grelha + eixo Y
+    cashFlowNiceTicks(vLo, vHi).forEach(function(t){
+      var yy = y(t).toFixed(1);
+      out += '<line x1="' + pl + '" y1="' + yy + '" x2="' + (W - pr) + '" y2="' + yy + '" stroke="var(--border)" stroke-width="1"' + (t === 0 ? '' : ' stroke-dasharray="2 4"') + '/>';
+      out += '<text x="' + (pl - 5) + '" y="' + (Number(yy) + 3.5) + '" text-anchor="end" font-size="9.5" font-family="Manrope, sans-serif" font-weight="600" fill="var(--text-faint)">' + Math.round(t).toLocaleString('pt-PT') + '</text>';
+    });
+    // saldo mínimo desejado
+    if (proj.minBalanceTarget != null && proj.minBalanceTarget > vLo && proj.minBalanceTarget < vHi){
+      var ty = y(proj.minBalanceTarget).toFixed(1);
+      out += '<line x1="' + pl + '" y1="' + ty + '" x2="' + (W - pr) + '" y2="' + ty + '" stroke="var(--warning)" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>';
+    }
+    // zona entre as duas linhas (o orçamento restante estimado)
+    if (showKnown && n > 1){
+      var top = '', bottom = '';
+      s.forEach(function(p, i){ top += (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.known).toFixed(1); });
+      for (var j = n - 1; j >= 0; j--) bottom += 'L' + x(j).toFixed(1) + ',' + y(s[j].prudent).toFixed(1);
+      out += '<path d="' + top + bottom + 'Z" fill="var(--accent)" opacity=".12"/>';
+      var kd = ''; s.forEach(function(p, i){ kd += (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.known).toFixed(1); });
+      out += '<path d="' + kd + '" fill="none" stroke="var(--text-faint)" stroke-width="1.4" stroke-dasharray="4 3" stroke-linejoin="round"/>';
+    }
+    // linha principal (saldo projetado, com orçamento restante)
+    var pd = ''; s.forEach(function(p, i){ pd += (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.prudent).toFixed(1); });
+    if (n > 1) out += '<path d="' + pd + '" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>';
+    // eixo X
+    var ticks = [], want = Math.min(5, n);
+    for (var t = 0; t < want; t++){ var idx = want === 1 ? 0 : Math.round(t * (n - 1) / (want - 1)); if (ticks.indexOf(idx) === -1) ticks.push(idx); }
+    ticks.forEach(function(idx, k){
+      var p = s[idx], anchor = idx === 0 ? 'start' : (idx === n - 1 ? 'end' : 'middle');
+      var xx = x(idx), tx = anchor === 'start' ? Math.max(xx - 4, pl - 4) : (anchor === 'end' ? Math.min(xx + 4, W - 2) : xx);
+      var label = (k === 0 || idx === n - 1) ? cashFlowDayLabel(p.dateKey) : String(p.day);
+      out += '<text x="' + tx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + anchor + '" font-size="10" font-family="Manrope, sans-serif" font-weight="600" fill="var(--text-faint)">' + label + '</text>';
+    });
+    // marcadores: hoje, ponto mais baixo, fim
+    function dot(i, v, color, r){ return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="' + r + '" fill="' + color + '" stroke="var(--surface)" stroke-width="1.5"/>'; }
+    function valueLabel(i, v, color, anchorPref){
+      var xx = x(i), yy = y(v), below = yy < (H - pb) * 0.45;
+      var anchor = anchorPref || (xx < pl + 36 ? 'start' : (xx > W - pr - 36 ? 'end' : 'middle'));
+      var tx = anchor === 'start' ? xx - 2 : (anchor === 'end' ? xx + 2 : xx);
+      return '<text x="' + tx.toFixed(1) + '" y="' + (below ? yy + 15 : yy - 8).toFixed(1) + '" text-anchor="' + anchor + '" font-size="10" font-family="Manrope, sans-serif" font-weight="800" fill="' + color + '">' + euro(v).replace(',00', '') + '</text>';
+    }
+    var minIdx = proj.minimumDay - proj.todayDay;
+    var minColor = proj.minimumBalance < 0 ? 'var(--danger)' : (proj.minBalanceTarget != null && proj.minimumBalance < proj.minBalanceTarget ? 'var(--warning)' : 'var(--text)');
+    out += dot(n - 1, s[n - 1].prudent, s[n - 1].prudent < 0 ? 'var(--danger)' : 'var(--accent)', 4);
+    if (minIdx !== n - 1) out += valueLabel(n - 1, s[n - 1].prudent, 'var(--text-muted)', 'end');
+    if (minIdx !== 0 && minIdx !== n - 1){ out += dot(minIdx, proj.minimumBalance, minColor, 4.5) + valueLabel(minIdx, proj.minimumBalance, minColor); }
+    else if (minIdx === n - 1){ out += valueLabel(n - 1, proj.minimumBalance, minColor, 'end'); }
+    out += dot(0, s[0].prudent, 'var(--surface)', 4.5).replace('stroke="var(--surface)"', 'stroke="var(--accent)"').replace('stroke-width="1.5"', 'stroke-width="2.2"');
+    out += '<text x="' + (x(0) + 1).toFixed(1) + '" y="' + (y(s[0].prudent) < pt + 16 ? y(s[0].prudent) + 17 : y(s[0].prudent) - 9).toFixed(1) + '" font-size="9.5" font-family="Manrope, sans-serif" font-weight="800" fill="var(--accent-ink)">Hoje</text>';
+    // cursor (preenchido por JS ao tocar/passar)
+    out += '<g class="cf-cursor" style="display:none"><line class="cf-cursor-line" x1="0" x2="0" y1="' + pt + '" y2="' + (H - pb) + '" stroke="var(--text-faint)" stroke-width="1"/><circle class="cf-cursor-dot" r="4.5" cx="0" cy="0" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/></g>';
+    out += '<rect class="cf-hit" x="' + pl + '" y="0" width="' + (W - pl - pr) + '" height="' + H + '" fill="transparent"/>';
+    return out + '</svg>';
+  }
+
+  function cashFlowScrub(ev){
+    var svg = ev.target && ev.target.closest ? ev.target.closest('.cf-chart') : null;
+    var g = cashFlowChartGeom, proj = cashFlowLastProjection;
+    if (!svg || !g || !proj) return;
+    var rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    var xv = (ev.clientX - rect.left) / rect.width * g.W;
+    var idx = g.n === 1 ? 0 : Math.round((xv - g.pl) / ((g.W - g.pl - g.pr) / (g.n - 1)));
+    idx = Math.max(0, Math.min(g.n - 1, idx));
+    var p = proj.dailySeries[idx];
+    var cx = g.n === 1 ? g.pl + (g.W - g.pl - g.pr) / 2 : g.pl + idx * (g.W - g.pl - g.pr) / (g.n - 1);
+    var cy = g.pt + (g.vHi - p.prudent) / (g.vHi - g.vLo) * (g.H - g.pt - g.pb);
+    var grp = svg.querySelector('.cf-cursor');
+    if (grp){
+      grp.style.display = '';
+      var ln = grp.querySelector('.cf-cursor-line'), dt = grp.querySelector('.cf-cursor-dot');
+      ln.setAttribute('x1', cx); ln.setAttribute('x2', cx);
+      dt.setAttribute('cx', cx); dt.setAttribute('cy', cy);
+    }
+    var ro = svg.parentNode.querySelector('.cf-readout');
+    if (ro){
+      var showKnown = proj.budgetsAvailable && proj.unscheduledBudgetRemaining > 0.004;
+      ro.innerHTML = '<strong>' + cashFlowDayLabel(p.dateKey) + '</strong> · Saldo projetado <strong class="' + (p.prudent < 0 ? 'negative' : '') + '">' + euro(p.prudent) + '</strong>' +
+        (showKnown ? ' · só datados ' + euro(p.known) : '');
+    }
+  }
+
+  // Cartão da Home. Devolve '' quando o módulo não se aplica (Espaço
+  // temporário) — a Home fica exatamente como era.
+  function cashFlowSectionHtml(){
+    if (!cashFlowApplicableSpace()) return '';
+    var now = new Date();
+    var currentKey = monthKeyOf(now);
+    var head = function(withDetail){
+      return '<div class="section-head"><h2>Cash flow do mês</h2>' + (withDetail ? '<button type="button" class="link-btn" data-action="cashflow-detail">Ver detalhe</button>' : '') + '</div>';
+    };
+    cashFlowLastProjection = null;
+    // O Cash Flow é sempre do mês CALENDÁRIO atual, nunca do mês que se está
+    // a navegar (state.entries/orçamentos são do mês em vista).
+    if (state.monthKey !== currentKey){
+      return head(false) + '<div class="cat-card cashflow-card"><div class="cf-empty">' + icon('calendar') +
+        '<div>O cash flow mostra sempre o mês atual (' + monthLabelOf(currentKey) + ').<br><button type="button" class="link-btn" data-action="cashflow-go-current">Voltar ao mês atual</button></div></div></div>';
+    }
+    var cf = state.cashFlow;
+    if (!cf || cf.spaceId !== state.activeSpaceId || (!cf.loaded && !cf.balance)){
+      return head(false) + '<div class="cat-card cashflow-card"><div class="cf-empty">' + icon('refresh') + '<div>A carregar o saldo…</div></div></div>';
+    }
+    var proj = cashFlowProjectionNow();
+    if (proj.status === 'no-balance'){
+      return head(false) + '<div class="cat-card cashflow-card"><div class="cf-empty">' + icon('wallet') +
+        '<div><strong>Quanto dinheiro vais ter na conta até ao fim do mês?</strong><br>Indica quanto tens disponível hoje e a MAB360 projeta o saldo dia a dia, com as receitas e despesas que já tens previstas e o orçamento que ainda falta gastar.</div></div>' +
+        '<button type="button" class="btn primary cf-cta" data-action="cashflow-edit">Indicar saldo de hoje</button>' +
+        '<div class="hint">Só serve de ponto de partida: não cria movimentos nem altera o Património ou o Orçamento. ' + cashFlowScopeHint() + '</div></div>';
+    }
+    if (proj.status === 'needs-update'){
+      return head(false) + '<div class="cat-card cashflow-card"><div class="cf-empty">' + icon('calendar') +
+        '<div><strong>Atualiza o saldo para começar a projeção de ' + MONTHS_PT[now.getMonth()] + '.</strong><br>O último saldo guardado (' + euro(proj.openingBalance) + ') é de outro mês, por isso não o usamos como se fosse o saldo de hoje.</div></div>' +
+        '<button type="button" class="btn primary cf-cta" data-action="cashflow-edit">Atualizar saldo</button></div>';
+    }
+    cashFlowLastProjection = proj;
+    var html = head(true) + '<div class="cat-card cashflow-card">';
+    html += '<div class="cf-top"><div><div class="cf-balance-label">Saldo atual</div><div class="cf-balance mono">' + euro(proj.openingBalance) + '</div>' +
+      '<div class="cf-updated">Atualizado ' + cashFlowUpdatedLabel(proj.updatedAt, now) + '</div></div>' +
+      '<button type="button" class="btn ghost cf-update-btn" data-action="cashflow-edit">Atualizar saldo</button></div>';
+    if (proj.isStale){
+      html += '<div class="alert-banner warning cf-alert">' + icon('refresh') + '<div><strong>Saldo atualizado há ' + proj.daysSinceUpdate + ' dias.</strong> A projeção só é tão boa quanto o saldo inicial — <button type="button" class="link-btn" data-action="cashflow-edit">atualizar</button>.</div></div>';
+    }
+    if (proj.firstNegativeDate){
+      html += '<div class="alert-banner danger cf-alert">' + icon('alert') + '<div><strong>Atenção.</strong> Com os movimentos e orçamento atuais, o saldo pode ficar negativo a ' + cashFlowDayLabelLong(proj.firstNegativeDate) + '.' +
+        (proj.knownFirstNegativeDate ? ' Já acontece só com os movimentos datados.' : '') + '</div></div>';
+    } else if (proj.belowTargetDate){
+      html += '<div class="alert-banner warning cf-alert">' + icon('alert') + '<div><strong>Abaixo do mínimo.</strong> O saldo pode descer abaixo de ' + euro(proj.minBalanceTarget) + ' a ' + cashFlowDayLabelLong(proj.belowTargetDate) + '.</div></div>';
+    }
+    var showKnown = proj.budgetsAvailable && proj.unscheduledBudgetRemaining > 0.004;
+    html += '<div class="cf-chart-wrap">' + cashFlowChartSvg(proj) + '<div class="cf-readout hint" aria-live="polite">Toca no gráfico para ver o saldo de cada dia.</div></div>';
+    html += '<div class="cf-legend"><span class="cf-key line"></span>Saldo projetado' + (showKnown ? '<span class="cf-key dashed"></span>Só movimentos com data' : '') + '</div>';
+    var minNeg = proj.minimumBalance < 0, minWarn = !minNeg && proj.minBalanceTarget != null && proj.minimumBalance < proj.minBalanceTarget;
+    html += '<div class="trio-grid cf-tiles">' +
+      '<div class="trio-tile cf-tile"><div class="trio-label">Saldo hoje</div><div class="trio-value mono">' + euro(proj.openingBalance) + '</div><div class="cf-tile-note">&nbsp;</div></div>' +
+      '<div class="trio-tile cf-tile"><div class="trio-label">Ponto mais baixo</div><div class="trio-value mono' + (minNeg ? ' negative' : (minWarn ? ' warning' : '')) + '">' + euro(proj.minimumBalance) + '</div><div class="cf-tile-note">' + cashFlowDayLabel(proj.minimumDate) + '</div></div>' +
+      '<div class="trio-tile cf-tile"><div class="trio-label">Fim do mês</div><div class="trio-value mono' + (proj.prudentEndBalance < 0 ? ' negative' : '') + '">' + euro(proj.prudentEndBalance) + '</div><div class="cf-tile-note">' + cashFlowDayLabel(proj.dailySeries[proj.dailySeries.length - 1].dateKey) + '</div></div>' +
+    '</div>';
+    if (showKnown){
+      html += '<div class="hint cf-note">Sem o orçamento restante (' + euro(proj.unscheduledBudgetRemaining) + ' por gastar, repartido pelos dias que faltam): <strong>' + euro(proj.knownEndBalance) + '</strong> no fim do mês.</div>';
+    } else if (!proj.budgetsAvailable){
+      html += '<div class="hint cf-note">Não foi possível ler os orçamentos deste mês — a projeção usa só os movimentos com data.</div>';
+    }
+    if (proj.overdue.outflowCount){
+      html += '<div class="hint cf-note">' + proj.overdue.outflowCount + (proj.overdue.outflowCount === 1 ? ' despesa vencida por pagar' : ' despesas vencidas por pagar') + ' (' + euro(proj.overdue.outflowTotal) + ') contam como saída de hoje.</div>';
+    }
+    if (proj.overdue.incomeCount && !proj.overdue.incomeIncluded){
+      html += '<div class="hint cf-note">' + proj.overdue.incomeCount + (proj.overdue.incomeCount === 1 ? ' receita vencida por confirmar' : ' receitas vencidas por confirmar') + ' (' + euro(proj.overdue.incomeTotal) + ') — não incluída' + (proj.overdue.incomeCount === 1 ? '' : 's') + ' até serem marcadas como recebidas ou reagendadas.</div>';
+    }
+    if (proj.paidSinceUpdate.count){
+      html += '<div class="hint cf-note">Marcaste ' + proj.paidSinceUpdate.count + (proj.paidSinceUpdate.count === 1 ? ' movimento' : ' movimentos') + ' como ' + (proj.paidSinceUpdate.count === 1 ? 'pago/recebido' : 'pagos/recebidos') + ' depois de atualizares o saldo (' + cashFlowSigned(proj.paidSinceUpdate.net) + '). O saldo não muda sozinho — atualiza-o se já se refletiu na conta.</div>';
+    }
+    if (state.cashFlow.syncPending){
+      html += '<div class="hint cf-note">' + (state.cashFlow.remoteError ? 'Saldo guardado só neste dispositivo — não foi possível sincronizar com a família.' : 'A sincronizar o saldo…') + '</div>';
+    }
+    return html + '</div>';
+  }
+
+  function cashFlowDetailHtml(proj){
+    if (!proj || proj.status !== 'ok') return '<p class="hint">Indica o saldo de hoje para ver a projeção.</p>';
+    var now = new Date();
+    var showKnown = proj.budgetsAvailable && proj.unscheduledBudgetRemaining > 0.004;
+    var html = '<h2>Cash flow de ' + MONTHS_PT[now.getMonth()] + '</h2>';
+    html += '<p class="hint" style="margin:0 0 12px">Saldo projetado = saldo de hoje + entradas com data − saídas com data' + (showKnown ? ' − orçamento restante estimado (repartido pelos dias que faltam)' : '') + '.</p>';
+    html += '<div class="cf-d-row head"><div><div class="cf-d-title">Hoje · ' + cashFlowDayLabel(proj.todayKey) + '</div><div class="cf-d-sub">Saldo inicial</div></div><div class="mono cf-d-amt">' + euro(proj.openingBalance) + '</div></div>';
+    var byDay = {};
+    proj.events.forEach(function(ev){ (byDay[ev.day] = byDay[ev.day] || []).push(ev); });
+    var gap = null;
+    function flushGap(){
+      if (!gap || gap.share <= 0.004) { gap = null; return; }
+      var label = gap.from === gap.to ? cashFlowDayLabel(gap.fromKey) : (gap.from + '–' + cashFlowDayLabel(gap.toKey));
+      html += '<div class="cf-d-row est"><div><div class="cf-d-title">' + label + '</div><div class="cf-d-sub">Orçamento estimado</div></div><div class="cf-d-right"><div class="mono cf-d-amt negative">' + cashFlowSigned(-gap.share) + '</div><div class="cf-d-bal">Saldo: ' + euro(gap.balance) + '</div></div></div>';
+      gap = null;
+    }
+    proj.dailySeries.forEach(function(p){
+      var items = byDay[p.day] || [];
+      if (!items.length){
+        if (p.budgetShare > 0){
+          if (!gap) gap = {from: p.day, to: p.day, fromKey: p.dateKey, toKey: p.dateKey, share: 0, balance: p.prudent};
+          gap.to = p.day; gap.toKey = p.dateKey; gap.share += p.budgetShare; gap.balance = p.prudent;
+        }
+        return;
+      }
+      flushGap();
+      html += '<div class="cf-d-day"><div class="cf-d-title">' + cashFlowDayLabel(p.dateKey) + '</div>';
+      items.forEach(function(ev){
+        html += '<div class="cf-d-item"><span>' + escapeHtml(ev.name || (ev.kind === 'receita' ? 'Receita' : 'Despesa')) + (ev.overdue ? ' <span class="cf-tag">vencido a ' + ev.originalDay + '</span>' : '') + '</span><span class="mono ' + (ev.signed < 0 ? 'negative' : 'positive') + '">' + cashFlowSigned(ev.signed) + '</span></div>';
+      });
+      if (p.budgetShare > 0.004) html += '<div class="cf-d-item est"><span>Orçamento estimado do dia</span><span class="mono negative">' + cashFlowSigned(-p.budgetShare) + '</span></div>';
+      html += '<div class="cf-d-bal">Saldo: <strong>' + euro(p.prudent) + '</strong>' + (showKnown ? ' · só datados ' + euro(p.known) : '') + '</div></div>';
+    });
+    flushGap();
+    var last = proj.dailySeries[proj.dailySeries.length - 1];
+    html += '<div class="cf-d-row foot"><div><div class="cf-d-title">' + cashFlowDayLabel(last.dateKey) + '</div><div class="cf-d-sub">Saldo previsto no fim do mês</div></div><div class="mono cf-d-amt ' + (last.prudent < 0 ? 'negative' : '') + '">' + euro(last.prudent) + '</div></div>';
+    html += '<p class="hint" style="margin-top:10px">Ponto mais baixo: <strong>' + euro(proj.minimumBalance) + '</strong> a ' + cashFlowDayLabelLong(proj.minimumDate) + (showKnown ? ' · sem orçamento restante: ' + euro(proj.knownMinimumBalance) + ' a ' + cashFlowDayLabelLong(proj.knownMinimumDate) : '') + '.</p>';
+    if (proj.budgetBreakdown.length){
+      var rows = proj.budgetBreakdown.filter(function(b){ return b.remaining > 0.004; });
+      if (rows.length){
+        html += '<div class="cf-d-sect">Orçamento ainda por gastar (não calendarizado)</div>';
+        rows.forEach(function(b){
+          var def = despesaCategoryDefByKey(b.key);
+          html += '<div class="cf-d-item"><span>' + escapeHtml(def ? def.label : b.key) + ' <span class="cf-d-sub">· orçamento ' + euro(b.budget) + ' − pago ' + euro(b.paid) + ' − pendente ' + euro(b.committed) + '</span></span><span class="mono">' + euro(b.remaining) + '</span></div>';
+        });
+      }
+    }
+    return html;
+  }
+
+  var cashFlowDetailOverlay = null, cashFlowBalanceOverlay = null;
+  function openCashFlowDetail(){
+    var proj = cashFlowLastProjection || cashFlowProjectionNow();
+    document.getElementById('cashFlowDetailBody').innerHTML = cashFlowDetailHtml(proj);
+    cashFlowDetailOverlay.classList.add('open');
+  }
+  function closeCashFlowDetail(){ cashFlowDetailOverlay.classList.remove('open'); }
+  function openCashFlowBalanceSheet(){
+    var bal = state.cashFlow && state.cashFlow.balance;
+    var same = bal && String(bal.updatedAt).slice(0, 7) === monthKeyOf(new Date());
+    document.getElementById('fCashFlowBalance').value = same ? bal.amount : '';
+    document.getElementById('fCashFlowMin').value = bal && bal.minBalance ? bal.minBalance : '';
+    document.getElementById('cashFlowBalanceScope').textContent = cashFlowScopeHint();
+    document.getElementById('cashFlowBalanceError').style.display = 'none';
+    cashFlowBalanceOverlay.classList.add('open');
+    setTimeout(function(){ var f = document.getElementById('fCashFlowBalance'); if (f) f.focus(); }, 60);
+  }
+  function closeCashFlowBalanceSheet(){ cashFlowBalanceOverlay.classList.remove('open'); }
 
   // ---------- Movimentos ----------
   function renderMovimentosView(content){
@@ -10373,6 +11046,57 @@
   }
   document.getElementById('closeHomeHealth').addEventListener('click', closeHomeHealth);
   homeHealthOverlay.addEventListener('click', function(ev){ if (ev.target === homeHealthOverlay) closeHomeHealth(); });
+
+  // ---------- Cash Flow Projetado — ligação dos controlos ----------
+  cashFlowDetailOverlay = document.getElementById('cashFlowDetailOverlay');
+  cashFlowBalanceOverlay = document.getElementById('cashFlowBalanceOverlay');
+  document.getElementById('closeCashFlowDetail').addEventListener('click', closeCashFlowDetail);
+  cashFlowDetailOverlay.addEventListener('click', function(ev){ if (ev.target === cashFlowDetailOverlay) closeCashFlowDetail(); });
+  document.getElementById('cashFlowBalanceCancel').addEventListener('click', closeCashFlowBalanceSheet);
+  cashFlowBalanceOverlay.addEventListener('click', function(ev){ if (ev.target === cashFlowBalanceOverlay) closeCashFlowBalanceSheet(); });
+  function submitCashFlowBalance(){
+    var errorEl = document.getElementById('cashFlowBalanceError');
+    var raw = document.getElementById('fCashFlowBalance').value;
+    var value = parseFloat(raw);
+    if (raw === '' || !isFinite(value) || Math.abs(value) > 1e9){
+      errorEl.textContent = 'Introduz o saldo que tens disponível hoje (pode ser negativo).';
+      errorEl.style.display = 'block';
+      return;
+    }
+    var rawMin = document.getElementById('fCashFlowMin').value;
+    var minValue = rawMin === '' ? null : parseFloat(rawMin);
+    if (minValue !== null && (!isFinite(minValue) || minValue < 0)){
+      errorEl.textContent = 'O saldo mínimo tem de ser zero ou mais (ou deixa o campo vazio).';
+      errorEl.style.display = 'block';
+      return;
+    }
+    errorEl.style.display = 'none';
+    closeCashFlowBalanceSheet();
+    saveCashFlowBalance(value, minValue).then(function(ok){
+      showToast(ok ? 'Saldo guardado' : 'Saldo guardado neste dispositivo', {icon:'check'});
+    });
+  }
+  document.getElementById('cashFlowBalanceSave').addEventListener('click', submitCashFlowBalance);
+  document.getElementById('fCashFlowBalance').addEventListener('keydown', function(ev){ if (ev.key === 'Enter'){ ev.preventDefault(); submitCashFlowBalance(); } });
+  // Tooltip do gráfico: arrastar/tocar mostra o saldo de cada dia.
+  document.getElementById('content').addEventListener('pointerdown', cashFlowScrub);
+  document.getElementById('content').addEventListener('pointermove', cashFlowScrub);
+  // Mudança de dia: a projeção recalcula-se sempre a partir de new Date() em
+  // cada render — este temporizador (e o regresso ao primeiro plano) só
+  // garantem que há um render logo a seguir à meia-noite local.
+  var cashFlowDayTimer = null, cashFlowRenderedKey = cashFlowDateKey(new Date());
+  function scheduleCashFlowDayRefresh(){
+    clearTimeout(cashFlowDayTimer);
+    var n = new Date();
+    var ms = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 2).getTime() - n.getTime();
+    cashFlowDayTimer = setTimeout(function(){ cashFlowRenderedKey = cashFlowDateKey(new Date()); if (state.view === 'home') render(); scheduleCashFlowDayRefresh(); }, Math.max(1000, ms));
+  }
+  scheduleCashFlowDayRefresh();
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) return;
+    var k = cashFlowDateKey(new Date());
+    if (k !== cashFlowRenderedKey){ cashFlowRenderedKey = k; scheduleCashFlowDayRefresh(); if (state.view === 'home') render(); }
+  });
   document.getElementById('savingsMoveSave').addEventListener('click', function(){
     if (!pendingMoveGoalId || savingsMoveSaving) return;
     var raw = document.getElementById('fSavingsMoveValue').value;
@@ -10614,7 +11338,7 @@
   // são "dados financeiros") — tudo o resto vem só do que a pessoa
   // escreveu nos campos de texto, ou de informação técnica genérica do
   // dispositivo/browser (nunca do conteúdo da app).
-  var APP_VERSION = 'v68'; // manter sincronizado com CACHE_NAME em sw.js
+  var APP_VERSION = 'v70'; // manter sincronizado com CACHE_NAME em sw.js
 
   var FEEDBACK_CATEGORIES = [
     {key:'orcamento', label:'Orçamento'},
@@ -11798,6 +12522,13 @@
       openHomeEmergencyFund();
     } else if (action === 'open-home-health'){
       openHomeHealth();
+    } else if (action === 'cashflow-edit'){
+      openCashFlowBalanceSheet();
+    } else if (action === 'cashflow-detail'){
+      openCashFlowDetail();
+    } else if (action === 'cashflow-go-current'){
+      state.monthKey = monthKeyOf(new Date());
+      if (db) loadMonth(state.monthKey); else render();
     } else if (action === 'quick-expense'){
       // Ação rápida "Despesa" na Home — mesmo caminho que o "+" já usa fora
       // de Orçamento/Créditos/Investimentos/Poupanças (openQuickAdd → openForm),
@@ -12422,7 +13153,7 @@
     else if (view === 'loan'){ if (db) return Promise.all([loadLoans(), loadPendingSourceEntries('credit')]); }
     else if (view === 'investment'){ if (db) return Promise.all([loadInvestments(), loadPendingSourceEntries('investment')]); }
     else if (view === 'poupancas'){ if (db) return Promise.all([loadSavingsGoals(), loadPendingSourceEntries('savings')]); }
-    else if (view === 'home'){ if (db) return loadLoans().then(function(){return Promise.all([loadMonth(state.monthKey), loadInvestments(), loadSavingsGoals(), loadEmergencyFundHistory()]);}); }
+    else if (view === 'home'){ if (db) return loadLoans().then(function(){return Promise.all([loadMonth(state.monthKey), loadInvestments(), loadSavingsGoals(), loadEmergencyFundHistory(), loadCashFlowBalance()]);}); }
     else if (view === 'patrimonio'){ if (db) return Promise.all([loadLoans(), loadInvestments(), loadSavingsGoals(), loadPendingSourceEntries('credit'), loadPendingSourceEntries('investment'), loadPendingSourceEntries('savings')]); }
     else if (view === 'month' || view === 'movimentos'){ if (db) return Promise.all([loadMonth(state.monthKey), loadCategoryBudgets()]); }
     else if (view === 'recorrencias'){
@@ -12682,7 +13413,7 @@
     moreSheetOverlay:'closeMoreSheet', quickAddOverlay:'closeQuickAdd',
     spaceSwitchOverlay:'closeSpaceSwitch', spaceFormOverlay:'closeSpaceForm', editSpaceOverlay:'closeEditSpace',
     emergencyFundCalcOverlay:'closeEmergencyFundCalc',
-    alertCenterOverlay:'closeAlertCenter', emergencyFundFormOverlay:'cancelEmergencyFundForm', homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth',
+    alertCenterOverlay:'closeAlertCenter', emergencyFundFormOverlay:'cancelEmergencyFundForm', homeEmergencyFundOverlay:'closeHomeEmergencyFund', homeHealthOverlay:'closeHomeHealth', cashFlowDetailOverlay:'closeCashFlowDetail', cashFlowBalanceOverlay:'cashFlowBalanceCancel',
     feedbackHubOverlay:'closeFeedbackHub', reportProblemOverlay:'reportProblemCancel', giveFeedbackOverlay:'giveFeedbackCancel'
   };
   function topOpenOverlay(){
