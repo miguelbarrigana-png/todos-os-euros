@@ -8,44 +8,44 @@
 // Without it, phones can keep showing an old version indefinitely.
 // (The cache key name itself is an internal identifier, left as-is for
 // upgrade compatibility with installs already running v5.)
-var CACHE_NAME = 'contas-em-dia-v68';
+var CACHE_NAME = 'contas-em-dia-v70';
 var SHELL_FILES = [
-  './',
-  './index.html',
-  './xtb-import.js',
-  './manifest.json',
-  './alerts-engine.js',
-  './alerts-store.js',
-  './activity-store.js',
-  './push-config.js',
-  './push-policy.js',
-  './push-client.js',
-  './push-worker.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/logo-mark.png',
-  './icons/logo-mark-192.png',
-  './icons/splash-layer-structure.png',
-  './icons/splash-layer-motion.png'
+'./',
+'./index.html',
+'./xtb-import.js',
+'./manifest.json',
+'./alerts-engine.js',
+'./alerts-store.js',
+'./activity-store.js',
+'./push-config.js',
+'./push-policy.js',
+'./push-client.js',
+'./push-worker.js',
+'./icons/icon-192.png',
+'./icons/icon-512.png',
+'./icons/logo-mark.png',
+'./icons/logo-mark-192.png',
+'./icons/splash-layer-structure.png',
+'./icons/splash-layer-motion.png'
 ];
  
 self.addEventListener('install', function (event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function (cache) {
-      return cache.addAll(SHELL_FILES);
-    }).then(function () { return self.skipWaiting(); })
-  );
+event.waitUntil(
+caches.open(CACHE_NAME).then(function (cache) {
+return cache.addAll(SHELL_FILES);
+}).then(function () { return self.skipWaiting(); })
+);
 });
  
 self.addEventListener('activate', function (event) {
-  event.waitUntil(
-    caches.keys().then(function (names) {
-      return Promise.all(
-        names.filter(function (n) { return n !== CACHE_NAME; })
-             .map(function (n) { return caches.delete(n); })
-      );
-    }).then(function () { return self.clients.claim(); })
-  );
+event.waitUntil(
+caches.keys().then(function (names) {
+return Promise.all(
+names.filter(function (n) { return n !== CACHE_NAME; })
+.map(function (n) { return caches.delete(n); })
+);
+}).then(function () { return self.clients.claim(); })
+);
 });
  
 // Page navigations and index.html: network-first, so a phone that's online
@@ -54,45 +54,45 @@ self.addEventListener('activate', function (event) {
 // manifest — these rarely change): cache-first, fast and works offline.
 // Everything else (Firebase, fonts, etc.): network, falling back to cache.
 self.addEventListener('fetch', function (event) {
-  var req = event.request;
-  if (req.method !== 'GET') return;
+var req = event.request;
+if (req.method !== 'GET') return;
  
-  var isNavigation = req.mode === 'navigate' || req.url.indexOf('index.html') !== -1;
+var isNavigation = req.mode === 'navigate' || req.url.indexOf('index.html') !== -1;
  
-  if (isNavigation) {
-    event.respondWith(
-      fetch(req, { cache: 'no-store' }).then(function (res) {
-        var copy = res.clone();
-        caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
-        return res;
-      }).catch(function () {
-        return caches.match(req).then(function (cached) {
-          return cached || caches.match('./index.html');
-        });
-      })
-    );
-    return;
-  }
+if (isNavigation) {
+event.respondWith(
+fetch(req, { cache: 'no-store' }).then(function (res) {
+var copy = res.clone();
+caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
+return res;
+}).catch(function () {
+return caches.match(req).then(function (cached) {
+return cached || caches.match('./index.html');
+});
+})
+);
+return;
+}
  
-  var isShellFile = SHELL_FILES.some(function (f) {
-    return req.url.indexOf(f.replace('./', '')) !== -1;
-  }) || new URL(req.url).origin === self.location.origin;
+var isShellFile = SHELL_FILES.some(function (f) {
+return req.url.indexOf(f.replace('./', '')) !== -1;
+}) || new URL(req.url).origin === self.location.origin;
  
-  if (isShellFile) {
-    event.respondWith(
-      caches.match(req).then(function (cached) {
-        return cached || fetch(req).then(function (res) {
-          var copy = res.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
-          return res;
-        });
-      }).catch(function () { return caches.match('./index.html'); })
-    );
-  } else {
-    event.respondWith(
-      fetch(req).catch(function () { return caches.match(req); })
-    );
-  }
+if (isShellFile) {
+event.respondWith(
+caches.match(req).then(function (cached) {
+return cached || fetch(req).then(function (res) {
+var copy = res.clone();
+caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
+return res;
+});
+}).catch(function () { return caches.match('./index.html'); })
+);
+} else {
+event.respondWith(
+fetch(req).catch(function () { return caches.match(req); })
+);
+}
 });
  
 // Push é complementar: não altera os handlers de instalação, atualização e cache.
